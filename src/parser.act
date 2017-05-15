@@ -1,0 +1,115 @@
+/*
+ * Copyright 2017 Katherine Flavel
+ *
+ * See LICENCE for the full copyright terms.
+ */
+
+%prefixes%
+
+	terminal = JSON_;
+	function = p_;
+
+%persistents%
+
+	lex_state :lex_state;
+	act_state :act_state;
+
+%maps%
+
+	string -> string;
+	number -> double;
+	bool   -> int;
+	null   -> int;
+
+%header% @{
+
+	#include <assert.h>
+
+	#include "json.h"
+	#include "parser.h"
+
+	struct jsvt_string {
+		const char *s;
+		size_t len;
+	};
+
+	struct act_state {
+		enum json_type type;
+		enum json_type save;
+	};
+
+	typedef struct jsvt_string string;
+
+	#define true  1
+	#define false 0
+
+	#define JSON_ARRAY__END  JSON_ARRAY_END
+	#define JSON_OBJECT__END JSON_OBJECT_END
+
+	#define CURRENT_TERMINAL act_state->type
+	#define ERROR_TERMINAL   JSON_ERROR
+	#define ADVANCE_LEXER    act_state->type = json_next(lex_state);
+	#define SAVE_LEXER(type) act_state->save = type;
+	#define RESTORE_LEXER    act_state->type = act_state->save;
+
+@}, @{
+
+	#include <stdio.h>
+
+	#include "json.h"
+
+	typedef struct act_state * act_state;
+	typedef json_stream * lex_state;
+
+	void
+	parse(json_stream *json);
+
+@};
+
+%terminals%
+
+	STRING: () -> (s :string) = @{
+		assert(act_state->type == JSON_STRING);
+
+		@s.s = json_get_string(lex_state, &@s.len);
+	@};
+
+	NUMBER: () -> (n :number) = @{
+		assert(act_state->type == JSON_NUMBER);
+
+		@n = json_get_number(lex_state);
+	@};
+
+	TRUE: () -> (v :bool) = @{
+		@v = true;
+	@};
+
+	FALSE: () -> (v :bool) = @{
+		@v = false;
+	@};
+
+	NULL: () -> (n :null) = @{
+		@n = 0;
+	@};
+
+%actions%
+
+%trailer% @{
+
+	void
+	parse(json_stream *lex_state)
+	{
+		struct act_state a, *act_state = &a;
+
+		assert(json != NULL);
+		assert(dispatch != NULL);
+
+		ADVANCE_LEXER;
+
+		p_file(lex_state, act_state);
+	}
+
+@}, @{
+
+@};
+

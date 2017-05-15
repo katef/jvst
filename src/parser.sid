@@ -1,0 +1,65 @@
+/*
+ * Copyright 2017 Katherine Flavel
+ *
+ * See LICENCE for the full copyright terms.
+ */
+
+%types%
+
+	string;
+	bool;
+	number;
+	null;
+
+%terminals%
+
+	!ERROR;
+	DONE;
+	OBJECT; OBJECT_END;
+	ARRAY;  ARRAY_END;
+	STRING: () -> (:string);
+	NUMBER: () -> (:number);
+	TRUE:   () -> (:bool);
+	FALSE:  () -> (:bool);
+	NULL:   () -> (:null);
+
+%productions%
+
+	object = {
+		OBJECT;
+		! = STRING;
+		/* TODO: ... */
+		OBJECT_END;
+	};
+
+	array = {
+		ARRAY;
+		/* TODO: ... */
+		ARRAY_END;
+	};
+
+	schema = {
+		object;
+	||
+		array;
+	||
+		! = STRING;
+	||
+		! = NUMBER;
+	||
+		! = TRUE;
+	||
+		! = FALSE;
+	||
+		! = NULL;
+	};
+
+	file = {
+		schema;
+		DONE;
+	};
+
+%entry%
+
+	file;
+
