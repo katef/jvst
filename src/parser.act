@@ -28,6 +28,7 @@
 	#include "json.h"
 	#include "parser.h"
 	#include "jdom.h"
+	#include "ast.h"
 
 	struct act_state {
 		enum json_type type;
