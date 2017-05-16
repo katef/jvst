@@ -98,8 +98,7 @@
 	{
 		struct act_state a, *act_state = &a;
 
-		assert(json != NULL);
-		assert(dispatch != NULL);
+		assert(lex_state != NULL);
 
 		ADVANCE_LEXER;
 
