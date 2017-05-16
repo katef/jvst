@@ -16,9 +16,9 @@ CFLAGS.${src} += -std=c99
 DFLAGS.${src} += -std=c99
 .endfor
 
-PROG += jsvt
+PROG += jvst
 
 .for src in ${SRC:Msrc/*.c}
-${BUILD}/bin/jsvt: ${BUILD}/${src:R}.o
+${BUILD}/bin/jvst: ${BUILD}/${src:R}.o
 .endfor
 

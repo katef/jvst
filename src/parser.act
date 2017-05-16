@@ -28,7 +28,7 @@
 	#include "json.h"
 	#include "parser.h"
 
-	struct jsvt_string {
+	struct jvst_string {
 		const char *s;
 		size_t len;
 	};
@@ -38,7 +38,7 @@
 		enum json_type save;
 	};
 
-	typedef struct jsvt_string string;
+	typedef struct jvst_string string;
 
 	#define true  1
 	#define false 0
