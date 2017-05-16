@@ -27,18 +27,14 @@
 
 	#include "json.h"
 	#include "parser.h"
-
-	struct jvst_string {
-		const char *s;
-		size_t len;
-	};
+	#include "jdom.h"
 
 	struct act_state {
 		enum json_type type;
 		enum json_type save;
 	};
 
-	typedef struct jvst_string string;
+	typedef struct json_string string;
 
 	#define true  1
 	#define false 0
