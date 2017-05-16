@@ -19,11 +19,14 @@
 	string -> string;
 	number -> double;
 	bool   -> int;
-	null   -> int;
 
 %header% @{
 
+	#define _POSIX_C_SOURCE 200809L
+
 	#include <assert.h>
+	#include <stdlib.h>
+	#include <string.h>
 
 	#include "json.h"
 	#include "parser.h"
@@ -31,8 +34,12 @@
 	#include "ast.h"
 
 	struct act_state {
-		enum json_type type;
+		enum json_type t;
 		enum json_type save;
+		union {
+			struct json_string str;
+			json_number n;
+		} u;
 	};
 
 	typedef struct json_string string;
@@ -43,11 +50,25 @@
 	#define JSON_ARRAY__END  JSON_ARRAY_END
 	#define JSON_OBJECT__END JSON_OBJECT_END
 
-	#define CURRENT_TERMINAL act_state->type
+	#define CURRENT_TERMINAL act_state->t
 	#define ERROR_TERMINAL   JSON_ERROR
-	#define ADVANCE_LEXER    act_state->type = json_next(lex_state);
-	#define SAVE_LEXER(type) act_state->save = type;
-	#define RESTORE_LEXER    act_state->type = act_state->save;
+	#define ADVANCE_LEXER    act_state->t = json_next(lex_state)
+	#define SAVE_LEXER(t)    act_state->save = (t)
+	#define RESTORE_LEXER    act_state->t = act_state->save
+
+	char *
+	xstrndup(const char *s, size_t n)
+	{
+		char *new;
+
+		new = strndup(s, n);
+		if (new == NULL) {
+			perror("xstrndup");
+			abort();
+		}
+
+		return new;
+	}
 
 @}, @{
 
@@ -66,13 +87,19 @@
 %terminals%
 
 	STRING: () -> (s :string) = @{
-		assert(act_state->type == JSON_STRING);
+		assert(act_state->t == JSON_STRING);
 
 		@s.s = json_get_string(lex_state, &@s.len);
+		if (@s.s == NULL) {
+			perror("json_get_string");
+			exit(1);
+		}
+
+		@s.s = xstrndup(@s.s, @s.len);
 	@};
 
 	NUMBER: () -> (n :number) = @{
-		assert(act_state->type == JSON_NUMBER);
+		assert(act_state->t == JSON_NUMBER);
 
 		@n = json_get_number(lex_state);
 	@};
@@ -83,10 +110,6 @@
 
 	FALSE: () -> (v :bool) = @{
 		@v = false;
-	@};
-
-	NULL: () -> (n :null) = @{
-		@n = 0;
 	@};
 
 %actions%

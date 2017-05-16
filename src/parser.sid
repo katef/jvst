@@ -9,7 +9,6 @@
 	string;
 	bool;
 	number;
-	null;
 
 %terminals%
 
@@ -21,7 +20,7 @@
 	NUMBER: () -> (:number);
 	TRUE:   () -> (:bool);
 	FALSE:  () -> (:bool);
-	NULL:   () -> (:null);
+	NULL;
 
 %productions%
 
@@ -51,7 +50,7 @@
 	||
 		! = FALSE;
 	||
-		! = NULL;
+		NULL;
 	};
 
 	file = {
