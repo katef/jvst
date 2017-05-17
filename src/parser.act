@@ -271,12 +271,12 @@
 			@!;
 		}
 
-		ast->kw |= KW_MULTIPLE_OF;
+		ast->kws |= KWS_MULTIPLE_OF;
 		ast->multiple_of = @n;
 	@};
 
 	<set-maximum>: (n :number) -> () = @{
-		ast->kw |= KW_MAXIMUM;
+		ast->kws |= KWS_MAXIMUM;
 		ast->maximum = @n;
 	@};
 

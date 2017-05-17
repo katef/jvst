@@ -61,7 +61,7 @@ struct ast_schema {
 	 * Multiple occurances of a keyword override the previous instance,
 	 * according to ajv.
 	 *
-	 * The .kw bitmap indicates presence for keywords which are set
+	 * The .kws bitmap indicates presence for keywords which are set
 	 * (i.e. that their corresponding fields have meaningful values).
 	 *
 	 * Some keywords are not present in this bitmap, because their
@@ -94,17 +94,17 @@ struct ast_schema {
 	 * "default":  TODO: unimplemented
 	 * "examples": TODO: unimplemented
 	 */
-	enum ast_kw {
-		KW_VALUE                 = 1 << 0,
+	enum ast_kws {
+		KWS_VALUE                 = 1 << 0,
 
-		KW_MULTIPLE_OF           = 1 << 1,
-		KW_MAXIMUM               = 1 << 2, /* also "exclusiveMaximum" */
-		KW_MINIMUM               = 1 << 3, /* also "exclusiveMinimum" */
+		KWS_MULTIPLE_OF           = 1 << 1,
+		KWS_MAXIMUM               = 1 << 2, /* also "exclusiveMaximum" */
+		KWS_MINIMUM               = 1 << 3, /* also "exclusiveMinimum" */
 
-		KW_MINMAX_LENGTH         = 1 << 5, /* .min_length and .max_length */
-		KW_MINMAX_ITEMS          = 1 << 7, /* .min_items  and .max_items */
-		KW_MINMAX_PROPERTIES     = 1 << 8  /* .min_properties and .max_properties */
-	} kw;
+		KWS_MINMAX_LENGTH         = 1 << 5, /* .min_length and .max_length */
+		KWS_MINMAX_ITEMS          = 1 << 7, /* .min_items  and .max_items */
+		KWS_MINMAX_PROPERTIES     = 1 << 8  /* .min_properties and .max_properties */
+	} kws;
 
 	/* TODO: transform post-parse to populate AST_STRING to .pattern instead */
 	struct json_value value;
