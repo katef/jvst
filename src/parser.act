@@ -27,6 +27,7 @@
 %header% @{
 
 	#include <assert.h>
+	#include <stdarg.h>
 	#include <stdlib.h>
 	#include <string.h>
 
@@ -55,6 +56,41 @@
 	#define ADVANCE_LEXER    act_state->t = json_next(lex_state)
 	#define SAVE_LEXER(t)    act_state->save = (t)
 	#define RESTORE_LEXER    act_state->t = act_state->save
+
+	static void
+	xerr(json_stream *json, enum kw k, const char *fmt, ...)
+	{
+		va_list ap;
+
+		assert(json != NULL);
+
+		/* XXX: one token ahead */
+		fprintf(stderr, "%zu: ", json_get_lineno(json));
+
+		if (k != 0) {
+			fprintf(stderr, "\"%s\": ", kw_name(k));
+		}
+
+		va_start(ap, fmt);
+		vfprintf(stderr, fmt, ap);
+		va_end(ap);
+
+		fprintf(stderr, "\n");
+
+		exit(1);
+	}
+
+	static void
+	xerr_syntax(json_stream *json, const char *name)
+	{
+		assert(json != NULL);
+
+		if (name == NULL) {
+			xerr(json, 0, "Syntax error");
+		} else {
+			xerr(json, 0, "Syntax error: expected %s", name);
+		}
+	}
 
 @}, @{
 
@@ -101,7 +137,7 @@
 	<kw-lookup>: (s :string) -> (k :kw) = @{
 		@k = kw_lookup(&@s);
 		if (@k == 0) {
-			/* TODO: error? */
+			xerr(lex_state, 0, "Unrecognised keyword: \"%s\"", @s.s);
 			@!;
 		}
 	@};
@@ -109,8 +145,7 @@
 	<type-lookup>: (s :string) -> (t :type) = @{
 		@t = type_lookup(&@s);
 		if (@t == 0) {
-			fprintf(stderr, "Unknown type name: \"%s\"\n", @s.s);
-			@!;
+			xerr(lex_state, KW_TYPE, "Unknown type name: \"%s\"", @s.s);
 		}
 	@};
 
@@ -168,8 +203,7 @@
 
 	<set-multipleof>: (n :number) -> () = @{
 		if (!(@n > 0)) {
-			fprintf(stderr, "multipleOf: expected > 0, got %f\n", @n);
-			@!;
+			xerr(lex_state, KW_MULTIPLE_OF, "expected > 0, got %f", @n);
 		}
 
 		ast->kws |= KWS_MULTIPLE_OF;
@@ -197,18 +231,32 @@
 			break;
 
 		default:
-			fprintf(stderr, "Type must be one of: "
-				"\"null\", \"boolean\", \"object\", \"array\", \"number\", \"string\" or \"integer\"\n");
-			@!;
+			xerr(lex_state, KW_TYPE, "Type must be one of: "
+				"\"null\", \"boolean\", \"object\", \"array\", \"number\", \"string\" or \"integer\"");
 		}
 
 		if ((ast->types & @t)) {
 			/* TODO: quote C&V for errors */
-			fprintf(stderr, "Duplicate type; type names must be unique\n");
-			@!;
+			xerr(lex_state, KW_TYPE, "Duplicate type; type names must be unique");
 		}
 
 		ast->types |= @t;
+	@};
+
+	<err-unimplemented> = @{
+		xerr(lex_state, 0, "unimplemented");
+	@};
+
+	<err-syntax> = @{
+		xerr_syntax(lex_state, NULL);
+	@};
+
+	<err-expected-directive> = @{
+		xerr_syntax(lex_state, "keyword directive");
+	@};
+
+	<err-expected-schema> = @{
+		xerr_syntax(lex_state, "schema");
 	@};
 
 %trailer% @{

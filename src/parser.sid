@@ -78,8 +78,14 @@
 
 	<clear-types>;
 
+	<err-unimplemented>;
+	<err-syntax>;
+	<err-expected-directive>;
+	<err-expected-schema>;
+
 	placeholder = {
 		NULL;
+		<err-unimplemented>;
 	};
 
 	directive-schema = {
@@ -246,6 +252,8 @@
 	||
 		? = <kw-examples>(k);
 		placeholder;
+	##
+		<err-expected-directive>;
 	};
 
 	list-of-directives = {
@@ -255,6 +263,8 @@
 		list-of-directives;
 	||
 		$;
+	##
+		<err-expected-directive>;
 	};
 
 	array = {
@@ -279,11 +289,15 @@
 		! = FALSE;
 	||
 		NULL;
+	##
+		<err-expected-schema>;
 	};
 
 	file = {
 		schema;
 		DONE;
+	##
+		<err-syntax>;
 	};
 
 %entry%
