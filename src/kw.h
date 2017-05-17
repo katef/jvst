@@ -54,5 +54,8 @@ enum kw {
 enum kw
 kw_lookup(const struct json_string *str);
 
+const char *
+kw_name(enum kw k);
+
 #endif
 
