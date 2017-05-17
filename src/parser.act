@@ -45,7 +45,7 @@
 
 	typedef struct json_string string;
 	typedef json_number number;
-	typedef enum lxkw_token kw;
+	typedef enum kw kw;
 	typedef enum json_valuetype type;
 
 	#define true  1
@@ -61,43 +61,72 @@
 	#define RESTORE_LEXER    act_state->t = act_state->save
 
 	/* TODO: move to kw.c */
-	static enum lxkw_token
+	static enum kw
 	kw_lookup(const struct json_string *str)
 	{
-		struct lxkw_lx lx = { 0 };
-		struct lx_arr a;
-		enum lxkw_token k, e;
+		size_t i;
+
+		struct {
+			const char *s;
+			enum kw k;
+		} a[] = {
+			{ "$schema",              KW_SCHEMA                },
+			{ "$ref",                 KW_REF                   },
+			{ "$id",                  KW_ID                    },
+
+			{ "multipleOf",           KW_MULTIPLE_OF           },
+			{ "maximum",              KW_MAXIMUM               },
+			{ "exclusiveMaximum",     KW_EXCLUSIVE_MAXIMUM     },
+			{ "minimum",              KW_MINIMUM               },
+			{ "exclusiveMinimum",     KW_EXCLUSIVE_MINIMUM     },
+			{ "maxLength",            KW_MAX_LENGTH            },
+			{ "minLength",            KW_MIN_LENGTH            },
+			{ "pattern",              KW_PATTERN               },
+			{ "items",                KW_ITEMS                 },
+			{ "additionalItems",      KW_ADDITIONAL_ITEMS      },
+			{ "maxItems",             KW_MAX_ITEMS             },
+			{ "minItems",             KW_MIN_ITEMS             },
+			{ "uniqueItems",          KW_UNIQUE_ITEMS          },
+			{ "contains",             KW_CONTAINS              },
+			{ "maxProperties",        KW_MAX_PROPERTIES        },
+			{ "minProperties",        KW_MIN_PROPERTIES        },
+			{ "required",             KW_REQUIRED              },
+			{ "properties",           KW_PROPERTIES            },
+			{ "patternProperties",    KW_PATTERN_PROPERTIES    },
+			{ "additionalProperties", KW_ADDITIONAL_PROPERTIES },
+			{ "dependencies",         KW_DEPENDENCIES          },
+			{ "propertyNames",        KW_PROPERTY_NAMES        },
+
+			{ "enum",                 KW_ENUM                  },
+			{ "const",                KW_CONST                 },
+			{ "type",                 KW_TYPE                  },
+			{ "allOf",                KW_ALL_OF                },
+			{ "anyOf",                KW_ANY_OF                },
+			{ "oneOf",                KW_ONE_OF                },
+			{ "not",                  KW_NOT                   },
+
+			/* metadata */
+			{ "definitions",          KW_DEFINITIONS           },
+			{ "description",          KW_DESCRIPTION           },
+			{ "default",              KW_DEFAULT               },
+			{ "examples",             KW_EXAMPLES              }
+		};
 
 		assert(str != NULL);
 		assert(str->s != NULL);
-		assert(str->len >= 1);
 
-/* XXX: lx_arr.p ought to be const */
-		a.p   = str->s;
-		a.len = str->len - 1;
+		for (i = 0; i < sizeof a / sizeof *a; i++) {
+			/* TODO: json_strcmp() */
+			if (str->len != strlen(a[i].s) + 1) {
+				continue;
+			}
 
-		lxkw_init(&lx);
-
-		lx.lgetc  = lxkw_agetc;
-		lx.opaque = &a;
-
-		k = lxkw_next(&lx);
-		switch (k) {
-		case LXKW_ERROR:
-		case LXKW_EOF:
-		case LXKW_UNKNOWN:
-			return k;
-
-		default:
-			break;
+			if (0 == strcmp(str->s, a[i].s)) {
+				return a[i].k;
+			}
 		}
 
-		e = lxkw_next(&lx);
-		if (e != LXKW_EOF) {
-			return e;
-		}
-
-		return k;
+		return 0;
 	}
 
 	/* TODO: move to jdom.c */
@@ -107,17 +136,17 @@
 		size_t i;
 
 		struct {
-			enum json_valuetype t;
 			const char *s;
+			enum json_valuetype t;
 		} a[] = {
-			{ JSON_VALUE_OBJECT,  "object"  },
-			{ JSON_VALUE_ARRAY,   "array"   },
-			{ JSON_VALUE_STRING,  "string"  },
-			{ JSON_VALUE_NUMBER,  "number"  },
-			{ JSON_VALUE_INTEGER, "integer" },
-			{ JSON_VALUE_BOOL,    "boolean" },
-			{ JSON_VAlUE_NULL,    "null"    },
-			{ ~0U,                "any"     }
+			{ "object",  JSON_VALUE_OBJECT  },
+			{ "array",   JSON_VALUE_ARRAY   },
+			{ "string",  JSON_VALUE_STRING  },
+			{ "number",  JSON_VALUE_NUMBER  },
+			{ "integer", JSON_VALUE_INTEGER },
+			{ "boolean", JSON_VALUE_BOOL    },
+			{ "null",    JSON_VAlUE_NULL    },
+			{ "any",     ~0U                }
 		};
 
 		assert(str != NULL);
@@ -195,12 +224,8 @@
 
 	<kw-lookup>: (s :string) -> (k :kw) = @{
 		@k = kw_lookup(&@s);
-		if (@k == LXKW_ERROR) {
-			/* TODO: perror? */
-			exit(EXIT_FAILURE);
-		}
-
-		if (@k == LXKW_UNKNOWN) {
+		if (@k == 0) {
+			/* TODO: error? */
 			@!;
 		}
 	@};
@@ -213,45 +238,45 @@
 		}
 	@};
 
-	<kw-schema>:               (k :kw) -> (v :bool) = @{ @v = (@k == LXKW_SCHEMA);               @};
-	<kw-ref>:                  (k :kw) -> (v :bool) = @{ @v = (@k == LXKW_REF);                  @};
-	<kw-id>:                   (k :kw) -> (v :bool) = @{ @v = (@k == LXKW_ID);                   @};
+	<kw-schema>:               (k :kw) -> (v :bool) = @{ @v = (@k == KW_SCHEMA);                @};
+	<kw-ref>:                  (k :kw) -> (v :bool) = @{ @v = (@k == KW_REF);                   @};
+	<kw-id>:                   (k :kw) -> (v :bool) = @{ @v = (@k == KW_ID);                    @};
 
-	<kw-multipleof>:           (k :kw) -> (v :bool) = @{ @v = (@k == LXKW_MULTIPLEOF);           @};
-	<kw-maximum>:              (k :kw) -> (v :bool) = @{ @v = (@k == LXKW_MAXIMUM);              @};
-	<kw-exclusivemaximum>:     (k :kw) -> (v :bool) = @{ @v = (@k == LXKW_EXCLUSIVEMAXIMUM);     @};
-	<kw-minimum>:              (k :kw) -> (v :bool) = @{ @v = (@k == LXKW_MINIMUM);              @};
-	<kw-exclusiveminimum>:     (k :kw) -> (v :bool) = @{ @v = (@k == LXKW_EXCLUSIVEMINIMUM);     @};
-	<kw-maxlength>:            (k :kw) -> (v :bool) = @{ @v = (@k == LXKW_MAXLENGTH);            @};
-	<kw-minlength>:            (k :kw) -> (v :bool) = @{ @v = (@k == LXKW_MINLENGTH);            @};
-	<kw-pattern>:              (k :kw) -> (v :bool) = @{ @v = (@k == LXKW_PATTERN);              @};
-	<kw-items>:                (k :kw) -> (v :bool) = @{ @v = (@k == LXKW_ITEMS);                @};
-	<kw-additionalitems>:      (k :kw) -> (v :bool) = @{ @v = (@k == LXKW_ADDITIONALITEMS);      @};
-	<kw-maxitems>:             (k :kw) -> (v :bool) = @{ @v = (@k == LXKW_MAXITEMS);             @};
-	<kw-minitems>:             (k :kw) -> (v :bool) = @{ @v = (@k == LXKW_MINITEMS);             @};
-	<kw-uniqueitems>:          (k :kw) -> (v :bool) = @{ @v = (@k == LXKW_UNIQUEITEMS);          @};
-	<kw-contains>:             (k :kw) -> (v :bool) = @{ @v = (@k == LXKW_CONTAINS);             @};
-	<kw-maxproperties>:        (k :kw) -> (v :bool) = @{ @v = (@k == LXKW_MAXPROPERTIES);        @};
-	<kw-minproperties>:        (k :kw) -> (v :bool) = @{ @v = (@k == LXKW_MINPROPERTIES);        @};
-	<kw-required>:             (k :kw) -> (v :bool) = @{ @v = (@k == LXKW_REQUIRED);             @};
-	<kw-properties>:           (k :kw) -> (v :bool) = @{ @v = (@k == LXKW_PROPERTIES);           @};
-	<kw-patternproperties>:    (k :kw) -> (v :bool) = @{ @v = (@k == LXKW_PATTERNPROPERTIES);    @};
-	<kw-additionalproperties>: (k :kw) -> (v :bool) = @{ @v = (@k == LXKW_ADDITIONALPROPERTIES); @};
-	<kw-dependencies>:         (k :kw) -> (v :bool) = @{ @v = (@k == LXKW_DEPENDENCIES);         @};
-	<kw-propertynames>:        (k :kw) -> (v :bool) = @{ @v = (@k == LXKW_PROPERTYNAMES);        @};
+	<kw-multipleof>:           (k :kw) -> (v :bool) = @{ @v = (@k == KW_MULTIPLE_OF);           @};
+	<kw-maximum>:              (k :kw) -> (v :bool) = @{ @v = (@k == KW_MAXIMUM);               @};
+	<kw-exclusivemaximum>:     (k :kw) -> (v :bool) = @{ @v = (@k == KW_EXCLUSIVE_MAXIMUM);     @};
+	<kw-minimum>:              (k :kw) -> (v :bool) = @{ @v = (@k == KW_MINIMUM);               @};
+	<kw-exclusiveminimum>:     (k :kw) -> (v :bool) = @{ @v = (@k == KW_EXCLUSIVE_MINIMUM);     @};
+	<kw-maxlength>:            (k :kw) -> (v :bool) = @{ @v = (@k == KW_MAX_LENGTH);            @};
+	<kw-minlength>:            (k :kw) -> (v :bool) = @{ @v = (@k == KW_MIN_LENGTH);            @};
+	<kw-pattern>:              (k :kw) -> (v :bool) = @{ @v = (@k == KW_PATTERN);               @};
+	<kw-items>:                (k :kw) -> (v :bool) = @{ @v = (@k == KW_ITEMS);                 @};
+	<kw-additionalitems>:      (k :kw) -> (v :bool) = @{ @v = (@k == KW_ADDITIONAL_ITEMS);      @};
+	<kw-maxitems>:             (k :kw) -> (v :bool) = @{ @v = (@k == KW_MAX_ITEMS);             @};
+	<kw-minitems>:             (k :kw) -> (v :bool) = @{ @v = (@k == KW_MIN_ITEMS);             @};
+	<kw-uniqueitems>:          (k :kw) -> (v :bool) = @{ @v = (@k == KW_UNIQUE_ITEMS);          @};
+	<kw-contains>:             (k :kw) -> (v :bool) = @{ @v = (@k == KW_CONTAINS);              @};
+	<kw-maxproperties>:        (k :kw) -> (v :bool) = @{ @v = (@k == KW_MAX_PROPERTIES);        @};
+	<kw-minproperties>:        (k :kw) -> (v :bool) = @{ @v = (@k == KW_MIN_PROPERTIES);        @};
+	<kw-required>:             (k :kw) -> (v :bool) = @{ @v = (@k == KW_REQUIRED);              @};
+	<kw-properties>:           (k :kw) -> (v :bool) = @{ @v = (@k == KW_PROPERTIES);            @};
+	<kw-patternproperties>:    (k :kw) -> (v :bool) = @{ @v = (@k == KW_PATTERN_PROPERTIES);    @};
+	<kw-additionalproperties>: (k :kw) -> (v :bool) = @{ @v = (@k == KW_ADDITIONAL_PROPERTIES); @};
+	<kw-dependencies>:         (k :kw) -> (v :bool) = @{ @v = (@k == KW_DEPENDENCIES);          @};
+	<kw-propertynames>:        (k :kw) -> (v :bool) = @{ @v = (@k == KW_PROPERTY_NAMES);        @};
 
-	<kw-enum>:                 (k :kw) -> (v :bool) = @{ @v = (@k == LXKW_ENUM);                 @};
-	<kw-const>:                (k :kw) -> (v :bool) = @{ @v = (@k == LXKW_CONST);                @};
-	<kw-type>:                 (k :kw) -> (v :bool) = @{ @v = (@k == LXKW_TYPE);                 @};
-	<kw-allof>:                (k :kw) -> (v :bool) = @{ @v = (@k == LXKW_ALLOF);                @};
-	<kw-anyof>:                (k :kw) -> (v :bool) = @{ @v = (@k == LXKW_ANYOF);                @};
-	<kw-oneof>:                (k :kw) -> (v :bool) = @{ @v = (@k == LXKW_ONEOF);                @};
-	<kw-not>:                  (k :kw) -> (v :bool) = @{ @v = (@k == LXKW_NOT);                  @};
+	<kw-enum>:                 (k :kw) -> (v :bool) = @{ @v = (@k == KW_ENUM);                  @};
+	<kw-const>:                (k :kw) -> (v :bool) = @{ @v = (@k == KW_CONST);                 @};
+	<kw-type>:                 (k :kw) -> (v :bool) = @{ @v = (@k == KW_TYPE);                  @};
+	<kw-allof>:                (k :kw) -> (v :bool) = @{ @v = (@k == KW_ALL_OF);                @};
+	<kw-anyof>:                (k :kw) -> (v :bool) = @{ @v = (@k == KW_ANY_OF);                @};
+	<kw-oneof>:                (k :kw) -> (v :bool) = @{ @v = (@k == KW_ONE_OF);                @};
+	<kw-not>:                  (k :kw) -> (v :bool) = @{ @v = (@k == KW_NOT);                   @};
 
-	<kw-definitions>:          (k :kw) -> (v :bool) = @{ @v = (@k == LXKW_DEFINITIONS);          @};
-	<kw-description>:          (k :kw) -> (v :bool) = @{ @v = (@k == LXKW_DESCRIPTION);          @};
-	<kw-default>:              (k :kw) -> (v :bool) = @{ @v = (@k == LXKW_DEFAULT);              @};
-	<kw-examples>:             (k :kw) -> (v :bool) = @{ @v = (@k == LXKW_EXAMPLES);             @};
+	<kw-definitions>:          (k :kw) -> (v :bool) = @{ @v = (@k == KW_DEFINITIONS);           @};
+	<kw-description>:          (k :kw) -> (v :bool) = @{ @v = (@k == KW_DESCRIPTION);           @};
+	<kw-default>:              (k :kw) -> (v :bool) = @{ @v = (@k == KW_DEFAULT);               @};
+	<kw-examples>:             (k :kw) -> (v :bool) = @{ @v = (@k == KW_EXAMPLES);              @};
 
 	<set-schema>: (s :string) -> () = @{
 		assert(@s.s != NULL);
