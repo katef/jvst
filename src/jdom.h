@@ -7,6 +7,8 @@
 #ifndef JVST_JDOM_H
 #define JVST_JDOM_H
 
+#include <stdbool.h>
+
 enum json_valuetype {
 	JSON_VALUE_OBJECT   = 1 << 0,
 	JSON_VALUE_ARRAY    = 1 << 1,
@@ -47,6 +49,9 @@ struct json_element {
 	struct json_value value;
 	struct json_property *next;
 };
+
+enum json_valuetype
+type_lookup(const struct json_string *str);
 
 #endif
 

@@ -19,14 +19,12 @@
 
 	string -> string;
 	number -> number;
-	bool   -> int;
+	bool   -> bool;
 
 	kw     -> kw;
 	type   -> type;
 
 %header% @{
-
-	#define _POSIX_C_SOURCE 200809L
 
 	#include <assert.h>
 	#include <stdlib.h>
@@ -37,6 +35,7 @@
 	#include "jdom.h"
 	#include "ast.h"
 	#include "kw.h"
+	#include "xalloc.h"
 
 	struct act_state {
 		enum json_type t;
@@ -48,9 +47,6 @@
 	typedef enum kw kw;
 	typedef enum json_valuetype type;
 
-	#define true  1
-	#define false 0
-
 	#define JSON_ARRAY__END  JSON_ARRAY_END
 	#define JSON_OBJECT__END JSON_OBJECT_END
 
@@ -59,126 +55,6 @@
 	#define ADVANCE_LEXER    act_state->t = json_next(lex_state)
 	#define SAVE_LEXER(t)    act_state->save = (t)
 	#define RESTORE_LEXER    act_state->t = act_state->save
-
-	/* TODO: move to kw.c */
-	static enum kw
-	kw_lookup(const struct json_string *str)
-	{
-		size_t i;
-
-		struct {
-			const char *s;
-			enum kw k;
-		} a[] = {
-			{ "$schema",              KW_SCHEMA                },
-			{ "$ref",                 KW_REF                   },
-			{ "$id",                  KW_ID                    },
-
-			{ "multipleOf",           KW_MULTIPLE_OF           },
-			{ "maximum",              KW_MAXIMUM               },
-			{ "exclusiveMaximum",     KW_EXCLUSIVE_MAXIMUM     },
-			{ "minimum",              KW_MINIMUM               },
-			{ "exclusiveMinimum",     KW_EXCLUSIVE_MINIMUM     },
-			{ "maxLength",            KW_MAX_LENGTH            },
-			{ "minLength",            KW_MIN_LENGTH            },
-			{ "pattern",              KW_PATTERN               },
-			{ "items",                KW_ITEMS                 },
-			{ "additionalItems",      KW_ADDITIONAL_ITEMS      },
-			{ "maxItems",             KW_MAX_ITEMS             },
-			{ "minItems",             KW_MIN_ITEMS             },
-			{ "uniqueItems",          KW_UNIQUE_ITEMS          },
-			{ "contains",             KW_CONTAINS              },
-			{ "maxProperties",        KW_MAX_PROPERTIES        },
-			{ "minProperties",        KW_MIN_PROPERTIES        },
-			{ "required",             KW_REQUIRED              },
-			{ "properties",           KW_PROPERTIES            },
-			{ "patternProperties",    KW_PATTERN_PROPERTIES    },
-			{ "additionalProperties", KW_ADDITIONAL_PROPERTIES },
-			{ "dependencies",         KW_DEPENDENCIES          },
-			{ "propertyNames",        KW_PROPERTY_NAMES        },
-
-			{ "enum",                 KW_ENUM                  },
-			{ "const",                KW_CONST                 },
-			{ "type",                 KW_TYPE                  },
-			{ "allOf",                KW_ALL_OF                },
-			{ "anyOf",                KW_ANY_OF                },
-			{ "oneOf",                KW_ONE_OF                },
-			{ "not",                  KW_NOT                   },
-
-			/* metadata */
-			{ "definitions",          KW_DEFINITIONS           },
-			{ "description",          KW_DESCRIPTION           },
-			{ "default",              KW_DEFAULT               },
-			{ "examples",             KW_EXAMPLES              }
-		};
-
-		assert(str != NULL);
-		assert(str->s != NULL);
-
-		for (i = 0; i < sizeof a / sizeof *a; i++) {
-			/* TODO: json_strcmp() */
-			if (str->len != strlen(a[i].s) + 1) {
-				continue;
-			}
-
-			if (0 == strcmp(str->s, a[i].s)) {
-				return a[i].k;
-			}
-		}
-
-		return 0;
-	}
-
-	/* TODO: move to jdom.c */
-	enum json_valuetype
-	type_lookup(const struct json_string *str)
-	{
-		size_t i;
-
-		struct {
-			const char *s;
-			enum json_valuetype t;
-		} a[] = {
-			{ "object",  JSON_VALUE_OBJECT  },
-			{ "array",   JSON_VALUE_ARRAY   },
-			{ "string",  JSON_VALUE_STRING  },
-			{ "number",  JSON_VALUE_NUMBER  },
-			{ "integer", JSON_VALUE_INTEGER },
-			{ "boolean", JSON_VALUE_BOOL    },
-			{ "null",    JSON_VAlUE_NULL    },
-			{ "any",     ~0U                }
-		};
-
-		assert(str != NULL);
-		assert(str->s != NULL);
-
-		for (i = 0; i < sizeof a / sizeof *a; i++) {
-			/* TODO: json_strcmp() */
-			if (str->len != strlen(a[i].s) + 1) {
-				continue;
-			}
-
-			if (0 == strcmp(str->s, a[i].s)) {
-				return a[i].t;
-			}
-		}
-
-		return 0;
-	}
-
-	char *
-	xstrndup(const char *s, size_t n)
-	{
-		char *new;
-
-		new = strndup(s, n);
-		if (new == NULL) {
-			perror("xstrndup");
-			abort();
-		}
-
-		return new;
-	}
 
 @}, @{
 

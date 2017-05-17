@@ -1,8 +1,11 @@
 .include "../share/mk/top.mk"
 
 SRC += src/json.c
-SRC += src/parser.c
+SRC += src/jdom.c
+SRC += src/kw.c
 SRC += src/main.c
+SRC += src/parser.c
+SRC += src/xalloc.c
 
 PARSER += src/parser.sid
 

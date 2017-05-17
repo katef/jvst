@@ -7,6 +7,8 @@
 #ifndef JVST_KW_H
 #define JVST_KW_H
 
+struct json_string;
+
 enum kw {
 	KW_SCHEMA = 1,
 	KW_REF,
@@ -48,6 +50,9 @@ enum kw {
 	KW_DEFAULT,
 	KW_EXAMPLES
 };
+
+enum kw
+kw_lookup(const struct json_string *str);
 
 #endif
 
