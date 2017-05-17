@@ -1,0 +1,47 @@
+#
+# Copyright 2017 Katherine Flavel
+#
+# See LICENCE for the full copyright terms.
+#
+
+'$schema' -> $schema;
+'$ref'    -> $ref;
+'$id'     -> $id;
+
+'multipleOf'           -> $multipleOf;
+'maximum'              -> $maximum;
+'exclusiveMaximum'     -> $exclusiveMaximum;
+'minimum'              -> $minimum;
+'exclusiveMinimum'     -> $exclusiveMinimum;
+'maxLength'            -> $maxLength;
+'minLength'            -> $minLength;
+'pattern'              -> $pattern;
+'items'                -> $items;
+'additionalItems'      -> $additionalItems;
+'maxItems'             -> $maxItems;
+'minItems'             -> $minItems;
+'uniqueItems'          -> $uniqueItems;
+'contains'             -> $contains;
+'maxProperties'        -> $maxProperties;
+'minProperties'        -> $minProperties;
+'required'             -> $required;
+'properties'           -> $properties;
+'patternProperties'    -> $patternProperties;
+'additionalProperties' -> $additionalProperties;
+'dependencies'         -> $dependencies;
+'propertyNames'        -> $propertyNames;
+
+'enum'  -> $enum;
+'const' -> $const;
+'type'  -> $type;
+'allOf' -> $allOf;
+'anyOf' -> $anyOf;
+'oneOf' -> $oneOf;
+'not'   -> $not;
+
+# metadata
+'definitions' -> $definitions;
+'description' -> $description;
+'default'     -> $default;
+'examples'    -> $examples;
+

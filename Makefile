@@ -20,6 +20,7 @@ SUBDIR += src
 
 .include <subdir.mk>
 .include <sid.mk>
+.include <lx.mk>
 .include <pkgconf.mk>
 .include <obj.mk>
 .include <dep.mk>
