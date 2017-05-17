@@ -10,6 +10,8 @@
 	bool;
 	number;
 
+	kw;
+
 %terminals%
 
 	!ERROR;
@@ -24,11 +26,177 @@
 
 %productions%
 
-	object = {
-		OBJECT;
-		! = STRING;
-		/* TODO: ... */
-		OBJECT_END;
+	<kw-lookup>: (:string) -> (:kw);
+
+	<kw-schema>:               (:kw) -> (:bool);
+	<kw-ref>:                  (:kw) -> (:bool);
+	<kw-id>:                   (:kw) -> (:bool);
+
+	<kw-multipleof>:           (:kw) -> (:bool);
+	<kw-maximum>:              (:kw) -> (:bool);
+	<kw-exclusivemaximum>:     (:kw) -> (:bool);
+	<kw-minimum>:              (:kw) -> (:bool);
+	<kw-exclusiveminimum>:     (:kw) -> (:bool);
+	<kw-maxlength>:            (:kw) -> (:bool);
+	<kw-minlength>:            (:kw) -> (:bool);
+	<kw-pattern>:              (:kw) -> (:bool);
+	<kw-items>:                (:kw) -> (:bool);
+	<kw-additionalitems>:      (:kw) -> (:bool);
+	<kw-maxitems>:             (:kw) -> (:bool);
+	<kw-minitems>:             (:kw) -> (:bool);
+	<kw-uniqueitems>:          (:kw) -> (:bool);
+	<kw-contains>:             (:kw) -> (:bool);
+	<kw-maxproperties>:        (:kw) -> (:bool);
+	<kw-minproperties>:        (:kw) -> (:bool);
+	<kw-required>:             (:kw) -> (:bool);
+	<kw-properties>:           (:kw) -> (:bool);
+	<kw-patternproperties>:    (:kw) -> (:bool);
+	<kw-additionalproperties>: (:kw) -> (:bool);
+	<kw-dependencies>:         (:kw) -> (:bool);
+	<kw-propertynames>:        (:kw) -> (:bool);
+
+	<kw-enum>:                 (:kw) -> (:bool);
+	<kw-const>:                (:kw) -> (:bool);
+	<kw-type>:                 (:kw) -> (:bool);
+	<kw-allof>:                (:kw) -> (:bool);
+	<kw-anyof>:                (:kw) -> (:bool);
+	<kw-oneof>:                (:kw) -> (:bool);
+	<kw-not>:                  (:kw) -> (:bool);
+
+	<kw-definitions>:          (:kw) -> (:bool);
+	<kw-description>:          (:kw) -> (:bool);
+	<kw-default>:              (:kw) -> (:bool);
+	<kw-examples>:             (:kw) -> (:bool);
+
+	<set-schema>: (:string) -> ();
+	<set-id>:     (:string) -> ();
+
+	placeholder = {
+		NULL;
+	};
+
+	directive: (k: kw) -> () = {
+		? = <kw-schema>(k);
+		s = STRING;
+		<set-schema>(s);
+	||
+		? = <kw-ref>(k);
+		placeholder;
+	||
+		? = <kw-id>(k);
+		s = STRING;
+		<set-id>(s);
+
+	||
+		? = <kw-multipleof>(k);
+		placeholder;
+	||
+		? = <kw-maximum>(k);
+		placeholder;
+	||
+		? = <kw-exclusivemaximum>(k);
+		placeholder;
+	||
+		? = <kw-minimum>(k);
+		placeholder;
+	||
+		? = <kw-exclusiveminimum>(k);
+		placeholder;
+	||
+		? = <kw-maxlength>(k);
+		placeholder;
+	||
+		? = <kw-minlength>(k);
+		placeholder;
+	||
+		? = <kw-pattern>(k);
+		placeholder;
+	||
+		? = <kw-items>(k);
+		placeholder;
+	||
+		? = <kw-additionalitems>(k);
+		placeholder;
+	||
+		? = <kw-maxitems>(k);
+		placeholder;
+	||
+		? = <kw-minitems>(k);
+		placeholder;
+	||
+		? = <kw-uniqueitems>(k);
+		placeholder;
+	||
+		? = <kw-contains>(k);
+		placeholder;
+	||
+		? = <kw-maxproperties>(k);
+		placeholder;
+	||
+		? = <kw-minproperties>(k);
+		placeholder;
+	||
+		? = <kw-required>(k);
+		placeholder;
+	||
+		? = <kw-properties>(k);
+		placeholder;
+	||
+		? = <kw-patternproperties>(k);
+		placeholder;
+	||
+		? = <kw-additionalproperties>(k);
+		placeholder;
+	||
+		? = <kw-dependencies>(k);
+		placeholder;
+	||
+		? = <kw-propertynames>(k);
+		placeholder;
+
+	||
+		? = <kw-enum>(k);
+		placeholder;
+	||
+		? = <kw-const>(k);
+		placeholder;
+	||
+		? = <kw-type>(k);
+		placeholder;
+	||
+		? = <kw-allof>(k);
+		placeholder;
+	||
+		? = <kw-anyof>(k);
+		placeholder;
+	||
+		? = <kw-oneof>(k);
+		placeholder;
+	||
+		? = <kw-not>(k);
+		placeholder;
+
+	||
+		? = <kw-definitions>(k);
+		placeholder;
+	||
+		? = <kw-description>(k);
+		placeholder;
+	||
+		? = <kw-default>(k);
+		placeholder;
+	||
+		? = <kw-examples>(k);
+		placeholder;
+	};
+
+	list-of-directives = {
+		s = STRING;
+		k = <kw-lookup>(s);
+		directive(k);
+		list-of-directives;
+	||
+		$;
 	};
 
 	array = {
@@ -38,7 +206,9 @@
 	};
 
 	schema = {
-		object;
+		OBJECT;
+		list-of-directives;
+		OBJECT_END;
 	||
 		array;
 	||

@@ -38,3 +38,5 @@ PROG += jvst
 ${BUILD}/bin/jvst: ${BUILD}/${src:R}.o
 .endfor
 
+src/parser.c: src/kw.h
+

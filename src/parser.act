@@ -13,12 +13,16 @@
 
 	lex_state :lex_state;
 	act_state :act_state;
+	ast       :ast;
 
 %maps%
 
 	string -> string;
-	number -> double;
+	number -> number;
 	bool   -> int;
+
+	kw     -> kw;
+	ast    -> ast;
 
 %header% @{
 
@@ -32,17 +36,16 @@
 	#include "parser.h"
 	#include "jdom.h"
 	#include "ast.h"
+	#include "kw.h"
 
 	struct act_state {
 		enum json_type t;
 		enum json_type save;
-		union {
-			struct json_string str;
-			json_number n;
-		} u;
 	};
 
 	typedef struct json_string string;
+	typedef json_number number;
+	typedef enum lxkw_token kw;
 
 	#define true  1
 	#define false 0
@@ -55,6 +58,45 @@
 	#define ADVANCE_LEXER    act_state->t = json_next(lex_state)
 	#define SAVE_LEXER(t)    act_state->save = (t)
 	#define RESTORE_LEXER    act_state->t = act_state->save
+
+	static enum lxkw_token
+	kw_lookup(const struct json_string *str)
+	{
+		struct lxkw_lx lx = { 0 };
+		struct lx_arr a;
+		enum lxkw_token k, e;
+
+		assert(str != NULL);
+		assert(str->s != NULL);
+		assert(str->len >= 1);
+
+/* XXX: lx_arr.p ought to be const */
+		a.p   = str->s;
+		a.len = str->len - 1;
+
+		lxkw_init(&lx);
+
+		lx.lgetc  = lxkw_agetc;
+		lx.opaque = &a;
+
+		k = lxkw_next(&lx);
+		switch (k) {
+		case LXKW_ERROR:
+		case LXKW_EOF:
+		case LXKW_UNKNOWN:
+			return k;
+
+		default:
+			break;
+		}
+
+		e = lxkw_next(&lx);
+		if (e != LXKW_EOF) {
+			return e;
+		}
+
+		return k;
+	}
 
 	char *
 	xstrndup(const char *s, size_t n)
@@ -76,11 +118,9 @@
 
 	#include "json.h"
 
+	typedef struct ast_schema * ast;
 	typedef struct act_state * act_state;
 	typedef json_stream * lex_state;
-
-	void
-	parse(json_stream *json);
 
 @};
 
@@ -114,21 +154,89 @@
 
 %actions%
 
+	<kw-lookup>: (s :string) -> (k :kw) = @{
+		@k = kw_lookup(&@s);
+		if (@k == LXKW_ERROR) {
+			/* TODO: perror? */
+			exit(EXIT_FAILURE);
+		}
+
+		if (@k == LXKW_UNKNOWN) {
+			@!;
+		}
+	@};
+
+	<kw-schema>:               (k :kw) -> (v :bool) = @{ @v = (@k == LXKW_SCHEMA);               @};
+	<kw-ref>:                  (k :kw) -> (v :bool) = @{ @v = (@k == LXKW_REF);                  @};
+	<kw-id>:                   (k :kw) -> (v :bool) = @{ @v = (@k == LXKW_ID);                   @};
+
+	<kw-multipleof>:           (k :kw) -> (v :bool) = @{ @v = (@k == LXKW_MULTIPLEOF);           @};
+	<kw-maximum>:              (k :kw) -> (v :bool) = @{ @v = (@k == LXKW_MAXIMUM);              @};
+	<kw-exclusivemaximum>:     (k :kw) -> (v :bool) = @{ @v = (@k == LXKW_EXCLUSIVEMAXIMUM);     @};
+	<kw-minimum>:              (k :kw) -> (v :bool) = @{ @v = (@k == LXKW_MINIMUM);              @};
+	<kw-exclusiveminimum>:     (k :kw) -> (v :bool) = @{ @v = (@k == LXKW_EXCLUSIVEMINIMUM);     @};
+	<kw-maxlength>:            (k :kw) -> (v :bool) = @{ @v = (@k == LXKW_MAXLENGTH);            @};
+	<kw-minlength>:            (k :kw) -> (v :bool) = @{ @v = (@k == LXKW_MINLENGTH);            @};
+	<kw-pattern>:              (k :kw) -> (v :bool) = @{ @v = (@k == LXKW_PATTERN);              @};
+	<kw-items>:                (k :kw) -> (v :bool) = @{ @v = (@k == LXKW_ITEMS);                @};
+	<kw-additionalitems>:      (k :kw) -> (v :bool) = @{ @v = (@k == LXKW_ADDITIONALITEMS);      @};
+	<kw-maxitems>:             (k :kw) -> (v :bool) = @{ @v = (@k == LXKW_MAXITEMS);             @};
+	<kw-minitems>:             (k :kw) -> (v :bool) = @{ @v = (@k == LXKW_MINITEMS);             @};
+	<kw-uniqueitems>:          (k :kw) -> (v :bool) = @{ @v = (@k == LXKW_UNIQUEITEMS);          @};
+	<kw-contains>:             (k :kw) -> (v :bool) = @{ @v = (@k == LXKW_CONTAINS);             @};
+	<kw-maxproperties>:        (k :kw) -> (v :bool) = @{ @v = (@k == LXKW_MAXPROPERTIES);        @};
+	<kw-minproperties>:        (k :kw) -> (v :bool) = @{ @v = (@k == LXKW_MINPROPERTIES);        @};
+	<kw-required>:             (k :kw) -> (v :bool) = @{ @v = (@k == LXKW_REQUIRED);             @};
+	<kw-properties>:           (k :kw) -> (v :bool) = @{ @v = (@k == LXKW_PROPERTIES);           @};
+	<kw-patternproperties>:    (k :kw) -> (v :bool) = @{ @v = (@k == LXKW_PATTERNPROPERTIES);    @};
+	<kw-additionalproperties>: (k :kw) -> (v :bool) = @{ @v = (@k == LXKW_ADDITIONALPROPERTIES); @};
+	<kw-dependencies>:         (k :kw) -> (v :bool) = @{ @v = (@k == LXKW_DEPENDENCIES);         @};
+	<kw-propertynames>:        (k :kw) -> (v :bool) = @{ @v = (@k == LXKW_PROPERTYNAMES);        @};
+
+	<kw-enum>:                 (k :kw) -> (v :bool) = @{ @v = (@k == LXKW_ENUM);                 @};
+	<kw-const>:                (k :kw) -> (v :bool) = @{ @v = (@k == LXKW_CONST);                @};
+	<kw-type>:                 (k :kw) -> (v :bool) = @{ @v = (@k == LXKW_TYPE);                 @};
+	<kw-allof>:                (k :kw) -> (v :bool) = @{ @v = (@k == LXKW_ALLOF);                @};
+	<kw-anyof>:                (k :kw) -> (v :bool) = @{ @v = (@k == LXKW_ANYOF);                @};
+	<kw-oneof>:                (k :kw) -> (v :bool) = @{ @v = (@k == LXKW_ONEOF);                @};
+	<kw-not>:                  (k :kw) -> (v :bool) = @{ @v = (@k == LXKW_NOT);                  @};
+
+	<kw-definitions>:          (k :kw) -> (v :bool) = @{ @v = (@k == LXKW_DEFINITIONS);          @};
+	<kw-description>:          (k :kw) -> (v :bool) = @{ @v = (@k == LXKW_DESCRIPTION);          @};
+	<kw-default>:              (k :kw) -> (v :bool) = @{ @v = (@k == LXKW_DEFAULT);              @};
+	<kw-examples>:             (k :kw) -> (v :bool) = @{ @v = (@k == LXKW_EXAMPLES);             @};
+
+	<set-schema>: (s :string) -> () = @{
+		assert(@s.s != NULL);
+
+		ast->schema = @s;
+	@};
+
+	<set-id>: (s :string) -> () = @{
+		assert(@s.s != NULL);
+
+		ast->id = @s;
+	@};
+
 %trailer% @{
 
 	void
-	parse(json_stream *lex_state)
+	parse(json_stream *lex_state, struct ast_schema *ast)
 	{
 		struct act_state a, *act_state = &a;
 
 		assert(lex_state != NULL);
+		assert(ast != NULL);
 
 		ADVANCE_LEXER;
 
-		p_file(lex_state, act_state);
+		p_file(lex_state, act_state, ast);
 	}
 
 @}, @{
+
+	void
+	parse(json_stream *json, struct ast_schema *ast);
 
 @};
 

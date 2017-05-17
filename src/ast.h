@@ -194,6 +194,7 @@ struct ast_schema {
 
 	struct ast_schema *not;
 
+	struct json_string schema;
 	struct json_string id;
 	struct json_string title;
 	struct json_string desc;
