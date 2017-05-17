@@ -11,6 +11,7 @@
 	number;
 
 	kw;
+	type;
 
 %terminals%
 
@@ -26,7 +27,8 @@
 
 %productions%
 
-	<kw-lookup>: (:string) -> (:kw);
+	<kw-lookup>:   (:string) -> (:kw);
+	<type-lookup>: (:string) -> (:type);
 
 	<kw-schema>:               (:kw) -> (:bool);
 	<kw-ref>:                  (:kw) -> (:bool);
@@ -68,31 +70,89 @@
 	<kw-default>:              (:kw) -> (:bool);
 	<kw-examples>:             (:kw) -> (:bool);
 
-	<set-schema>: (:string) -> ();
-	<set-id>:     (:string) -> ();
+	<set-schema>:     (:string) -> ();
+	<set-id>:         (:string) -> ();
+	<set-multipleof>: (:number) -> ();
+	<set-maximum>:    (:number) -> ();
+	<set-type>:       (:type)   -> ();
+
+	<clear-types>;
 
 	placeholder = {
 		NULL;
 	};
 
-	directive: (k: kw) -> () = {
-		? = <kw-schema>(k);
+	directive-schema = {
 		s = STRING;
 		<set-schema>(s);
-	||
-		? = <kw-ref>(k);
+	};
+
+	directive-ref = {
 		placeholder;
-	||
-		? = <kw-id>(k);
+	};
+
+	directive-id = {
 		s = STRING;
 		<set-id>(s);
+	};
 
+	directive-multiple-of = {
+		n = NUMBER;
+		<set-multipleof>(n);
+	};
+
+	directive-maximum = {
+		n = NUMBER;
+		<set-maximum>(n);
+	};
+
+	directive-type [
+
+		type = {
+			s = STRING;
+			t = <type-lookup>(s);
+			<set-type>(t);
+		};
+
+		list-of-types = {
+			type;
+			list-of-types;
+		||
+			$;
+		};
+
+	] = {
+		/*
+		 * Since multiple instances of a keyword override the previous
+		 * instance, we clear the set of previous types here so as to
+		 * allow uniqueness checking within one instance's array.
+		 */
+		<clear-types>;
+
+		{
+			type;
+		||
+			ARRAY;
+			list-of-types;
+			ARRAY_END;
+		};
+	};
+
+	directive: (k: kw) -> () = {
+		? = <kw-schema>(k);
+		directive-schema;
+	||
+		? = <kw-ref>(k);
+		directive-ref;
+	||
+		? = <kw-id>(k);
+		directive-id;
 	||
 		? = <kw-multipleof>(k);
-		placeholder;
+		directive-multiple-of;
 	||
 		? = <kw-maximum>(k);
-		placeholder;
+		directive-maximum;
 	||
 		? = <kw-exclusivemaximum>(k);
 		placeholder;
@@ -153,7 +213,6 @@
 	||
 		? = <kw-propertynames>(k);
 		placeholder;
-
 	||
 		? = <kw-enum>(k);
 		placeholder;
@@ -162,7 +221,7 @@
 		placeholder;
 	||
 		? = <kw-type>(k);
-		placeholder;
+		directive-type;
 	||
 		? = <kw-allof>(k);
 		placeholder;
@@ -175,7 +234,6 @@
 	||
 		? = <kw-not>(k);
 		placeholder;
-
 	||
 		? = <kw-definitions>(k);
 		placeholder;

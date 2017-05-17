@@ -22,7 +22,7 @@
 	bool   -> int;
 
 	kw     -> kw;
-	ast    -> ast;
+	type   -> type;
 
 %header% @{
 
@@ -46,6 +46,7 @@
 	typedef struct json_string string;
 	typedef json_number number;
 	typedef enum lxkw_token kw;
+	typedef enum json_valuetype type;
 
 	#define true  1
 	#define false 0
@@ -59,6 +60,7 @@
 	#define SAVE_LEXER(t)    act_state->save = (t)
 	#define RESTORE_LEXER    act_state->t = act_state->save
 
+	/* TODO: move to kw.c */
 	static enum lxkw_token
 	kw_lookup(const struct json_string *str)
 	{
@@ -96,6 +98,43 @@
 		}
 
 		return k;
+	}
+
+	/* TODO: move to jdom.c */
+	enum json_valuetype
+	type_lookup(const struct json_string *str)
+	{
+		size_t i;
+
+		struct {
+			enum json_valuetype t;
+			const char *s;
+		} a[] = {
+			{ JSON_VALUE_OBJECT,  "object"  },
+			{ JSON_VALUE_ARRAY,   "array"   },
+			{ JSON_VALUE_STRING,  "string"  },
+			{ JSON_VALUE_NUMBER,  "number"  },
+			{ JSON_VALUE_INTEGER, "integer" },
+			{ JSON_VALUE_BOOL,    "boolean" },
+			{ JSON_VAlUE_NULL,    "null"    },
+			{ ~0U,                "any"     }
+		};
+
+		assert(str != NULL);
+		assert(str->s != NULL);
+
+		for (i = 0; i < sizeof a / sizeof *a; i++) {
+			/* TODO: json_strcmp() */
+			if (str->len != strlen(a[i].s) + 1) {
+				continue;
+			}
+
+			if (0 == strcmp(str->s, a[i].s)) {
+				return a[i].t;
+			}
+		}
+
+		return 0;
 	}
 
 	char *
@@ -166,6 +205,14 @@
 		}
 	@};
 
+	<type-lookup>: (s :string) -> (t :type) = @{
+		@t = type_lookup(&@s);
+		if (@t == 0) {
+			fprintf(stderr, "Unknown type name: \"%s\"\n", @s.s);
+			@!;
+		}
+	@};
+
 	<kw-schema>:               (k :kw) -> (v :bool) = @{ @v = (@k == LXKW_SCHEMA);               @};
 	<kw-ref>:                  (k :kw) -> (v :bool) = @{ @v = (@k == LXKW_REF);                  @};
 	<kw-id>:                   (k :kw) -> (v :bool) = @{ @v = (@k == LXKW_ID);                   @};
@@ -216,6 +263,51 @@
 		assert(@s.s != NULL);
 
 		ast->id = @s;
+	@};
+
+	<set-multipleof>: (n :number) -> () = @{
+		if (!(@n > 0)) {
+			fprintf(stderr, "multipleOf: expected > 0, got %f\n", @n);
+			@!;
+		}
+
+		ast->kw |= KW_MULTIPLE_OF;
+		ast->multiple_of = @n;
+	@};
+
+	<set-maximum>: (n :number) -> () = @{
+		ast->kw |= KW_MAXIMUM;
+		ast->maximum = @n;
+	@};
+
+	<clear-types> = @{
+		ast->types = 0;
+	@};
+
+	<set-type>: (t :type) -> () = @{
+		switch (@t) {
+		case JSON_VALUE_OBJECT:
+		case JSON_VALUE_ARRAY:
+		case JSON_VALUE_STRING:
+		case JSON_VALUE_NUMBER:
+		case JSON_VALUE_INTEGER:
+		case JSON_VALUE_BOOL:
+		case JSON_VAlUE_NULL:
+			break;
+
+		default:
+			fprintf(stderr, "Type must be one of: "
+				"\"null\", \"boolean\", \"object\", \"array\", \"number\", \"string\" or \"integer\"\n");
+			@!;
+		}
+
+		if ((ast->types & @t)) {
+			/* TODO: quote C&V for errors */
+			fprintf(stderr, "Duplicate type; type names must be unique\n");
+			@!;
+		}
+
+		ast->types |= @t;
 	@};
 
 %trailer% @{
