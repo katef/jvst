@@ -13,7 +13,7 @@
 static struct {
 	const char *s;
 	enum kw k;
-} kw[] = {
+} a[] = {
 	{ "$schema",              KW_SCHEMA                },
 	{ "$ref",                 KW_REF                   },
 	{ "$id",                  KW_ID                    },
@@ -64,14 +64,14 @@ kw_lookup(const struct json_string *str)
 	assert(str != NULL);
 	assert(str->s != NULL);
 
-	for (i = 0; i < sizeof kw / sizeof *kw; i++) {
+	for (i = 0; i < sizeof a / sizeof *a; i++) {
 		/* TODO: json_strcmp() */
-		if (str->len != strlen(kw[i].s) + 1) {
+		if (str->len != strlen(a[i].s) + 1) {
 			continue;
 		}
 
-		if (0 == strcmp(str->s, kw[i].s)) {
-			return kw[i].k;
+		if (0 == strcmp(str->s, a[i].s)) {
+			return a[i].k;
 		}
 	}
 
@@ -83,9 +83,9 @@ kw_name(enum kw k)
 {
 	size_t i;
 
-	for (i = 0; i < sizeof kw / sizeof *kw; i++) {
-		if (kw[i].k == k) {
-			return kw[i].s;
+	for (i = 0; i < sizeof a / sizeof *a; i++) {
+		if (a[i].k == k) {
+			return a[i].s;
 		}
 	}
 
