@@ -53,5 +53,8 @@ struct json_element {
 enum json_valuetype
 type_lookup(const struct json_string *str);
 
+const char *
+type_name(enum json_valuetype t);
+
 #endif
 
