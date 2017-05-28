@@ -659,4 +659,6 @@ int main(void)
   test_required();
 
   printf("%d tests, %d failures\n", ntest, nfail);
+
+  return (nfail == 0 && ntest > 0) ? 0 : 1;
 }
