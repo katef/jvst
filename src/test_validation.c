@@ -229,7 +229,7 @@ void test_empty_schema(void)
   RUNTESTS(tests);
 }
 
-void test_type_constraint_number(void)
+void test_type_number(void)
 {
   struct ast_schema schema = {
     .types = JSON_VALUE_NUMBER,
@@ -266,7 +266,7 @@ void test_type_constraint_number(void)
   RUNTESTS(tests);
 }
 
-void test_type_constraint_object(void)
+void test_type_object(void)
 {
   struct ast_schema schema = {
     .types = JSON_VALUE_OBJECT,
@@ -300,7 +300,7 @@ void test_type_constraint_object(void)
   RUNTESTS(tests);
 }
 
-void test_type_constraint_properties(void)
+void test_properties(void)
 {
   struct arena_info A = {0};
 
@@ -335,7 +335,7 @@ void test_type_constraint_properties(void)
   RUNTESTS(tests);
 }
 
-void test_type_constraint_minproperties_1(void)
+void test_minproperties_1(void)
 {
   struct arena_info A = {0};
   struct ast_schema *schema = newschema_p(&A, 0,
@@ -361,7 +361,7 @@ void test_type_constraint_minproperties_1(void)
   RUNTESTS(tests);
 }
 
-void test_type_constraint_minproperties_2(void)
+void test_minproperties_2(void)
 {
   struct arena_info A = {0};
   struct ast_schema *schema = newschema_p(&A, 0,
@@ -400,7 +400,7 @@ void test_type_constraint_minproperties_2(void)
   RUNTESTS(tests);
 }
 
-void test_type_constraint_minproperties_3(void)
+void test_minproperties_3(void)
 {
   struct arena_info A = {0};
   struct ast_schema *schema = newschema_p(&A, 0,
@@ -444,7 +444,7 @@ void test_type_constraint_minproperties_3(void)
   RUNTESTS(tests);
 }
 
-void test_type_constraint_maxproperties_1(void)
+void test_maxproperties_1(void)
 {
   struct arena_info A = {0};
   struct ast_schema *schema = newschema_p(&A, 0,
@@ -470,7 +470,7 @@ void test_type_constraint_maxproperties_1(void)
   RUNTESTS(tests);
 }
 
-void test_type_constraint_maxproperties_2(void)
+void test_maxproperties_2(void)
 {
   struct arena_info A = {0};
   struct ast_schema *schema = newschema_p(&A, 0,
@@ -520,7 +520,7 @@ void test_type_constraint_maxproperties_2(void)
   RUNTESTS(tests);
 }
 
-void test_type_constraint_minmaxproperties_1(void)
+void test_minmaxproperties_1(void)
 {
   struct arena_info A = {0};
   struct ast_schema *schema = newschema_p(&A, 0,
@@ -578,19 +578,18 @@ void test_type_constraint_minmaxproperties_1(void)
 int main(void)
 {
   test_empty_schema();
-  test_type_constraint_number();
-  test_type_constraint_object();
 
-  test_type_constraint_properties();
+  test_type_number();
+  test_type_object();
 
-  test_type_constraint_minproperties_1();
-  test_type_constraint_minproperties_2();
-  test_type_constraint_minproperties_3();
+  test_properties();
 
-  test_type_constraint_maxproperties_1();
-  test_type_constraint_maxproperties_2();
-
-  test_type_constraint_minmaxproperties_1();
+  test_minproperties_1();
+  test_minproperties_2();
+  test_minproperties_3();
+  test_maxproperties_1();
+  test_maxproperties_2();
+  test_minmaxproperties_1();
 
   printf("%d tests, %d failures\n", ntest, nfail);
 }
