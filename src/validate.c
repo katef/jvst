@@ -534,6 +534,7 @@ static int validate_value(struct jvst_validator *v)
 
 enum OBJ_VALIDATION {
   OBJ_PROPERTIES   = 1<<0,
+  OBJ_REQUIRED     = 1<<1,
 
   // constraints that don't require checking individual properties
   OBJ_MINMAX_PROPERTIES = 1<<8,
@@ -566,6 +567,22 @@ static const struct ast_schema *match_property(
   return NULL;
 }
 
+static size_t bit_from_set(const struct ast_string_set *ss, const char *k, size_t nk)
+{
+  size_t b = 1;
+  for (; ss != NULL; b = b << 1, ss = ss->next) {
+    if (ss->str.len != nk) {
+      continue;
+    }
+
+    if (memcmp(ss->str.s, k, nk) == 0) {
+      return b;
+    }
+  }
+
+  return 0;
+}
+
 static int validate_object(struct jvst_validator *v)
 {
   struct jvst_state *sp;
@@ -574,6 +591,8 @@ static int validate_object(struct jvst_validator *v)
   int ret, venum;
   const char *key;
   size_t nkey;
+  size_t nreq;
+  size_t reqmask;
 
   if (sp = getstate(v), sp == NULL) {
     return JVST_INVALID;
@@ -586,6 +605,28 @@ static int validate_object(struct jvst_validator *v)
   venum = 0;
   if (schema->properties.set != NULL) {
     venum |= OBJ_PROPERTIES;
+  }
+
+  nreq = 0;
+  reqmask = 0;
+  if (schema->required.set != NULL) {
+    struct ast_string_set *ss;
+    size_t full_mask = ~(size_t)0;
+
+    venum |= OBJ_REQUIRED;
+    for (ss=schema->required.set; ss != NULL; ss = ss->next) {
+      nreq++;
+      reqmask = (reqmask << 1) | 1;
+      if (reqmask == full_mask) {
+        // warn that we currently only support nreq-1 different required
+        // fields
+        //
+        // XXX - need a better way to do this
+        // XXX - need to relax the bit-width limitation
+        fprintf(stderr, "warning: only %zu different required properties are supported\n",
+            nreq-1);
+      }
+    }
   }
 
   if (schema->kws & KWS_MINMAX_PROPERTIES) {
@@ -692,6 +733,12 @@ fetch_prop:
     pschema = match_property(schema->properties.set, key, nkey);
   }
 
+  if (schema->required.set != NULL) {
+    size_t bit;
+    bit = bit_from_set(schema->required.set, key, nkey);
+    sp->counters[1] |= bit;
+  }
+
   if (pschema == NULL) {
     // value is okay...
     pschema = &empty_schema;
@@ -707,7 +754,7 @@ fetch_prop:
   return JVST_VALID;
 
 check_obj:
-  /* checks like 'required' are not yet implemented */
+  /* NB: not all checks are implemented */
   if (venum & OBJ_MINMAX_PROPERTIES) {
     if (sp->nitems < schema->min_properties) {
       // XXX - give reason why
@@ -718,6 +765,12 @@ check_obj:
       // XXX - give reason why
       return JVST_INVALID;
     }
+  }
+
+  /* check for required properties */
+  if (venum & OBJ_REQUIRED && sp->counters[1] != reqmask) {
+    // XXX - give reason why
+    return JVST_INVALID;
   }
 
   popstate(v);

@@ -21,10 +21,12 @@ struct validation_test {
 // arena allocators to make it easy to programmatically set up a schema
 static struct ast_schema ar_schema[1024];
 static struct ast_property_schema ar_props[1024];
+static struct ast_string_set ar_stringsets[1024];
 
 struct arena_info {
   size_t nschema;
   size_t nprop;
+  size_t nstr;
 };
 
 // Returns a constant empty schema
@@ -38,6 +40,40 @@ static struct json_string newstr(const char *s)
 {
   struct json_string str = { .s = s, .len = strlen(s) };
   return str;
+}
+
+static struct ast_string_set *stringset(struct arena_info *A, ...)
+{
+  size_t max;
+  struct ast_string_set *ss = NULL, **ssp = &ss;
+  va_list args;
+
+  max = sizeof ar_stringsets / sizeof ar_stringsets[0];
+  va_start(args, A);
+  for(;;) {
+    struct ast_string_set *elt;
+    struct json_string str;
+    const char *s;
+    size_t i;
+
+    if (s = va_arg(args, const char *), s == NULL) {
+      break;
+    }
+
+    i = A->nstr++;
+    if (A->nstr >= max) {
+      fprintf(stderr, "too many string sets: %zu max\n", max);
+      abort();
+    }
+
+    elt = &ar_stringsets[i];
+    elt->str = newstr(s);
+    *ssp = elt;
+    ssp = &elt->next;
+  }
+  va_end(args);
+
+  return ss;
 }
 
 static struct ast_schema *newschema(struct arena_info *A, int types)
@@ -92,6 +128,8 @@ static struct ast_schema *newschema_p(struct arena_info *A, int types, ...)
       s->max_properties = va_arg(args, ast_count);
     } else if (strcmp(pname, "properties") == 0) {
       s->properties.set = va_arg(args, struct ast_property_schema *);
+    } else if (strcmp(pname, "required") == 0) {
+      s->required.set = va_arg(args, struct ast_string_set *);
     } else {
       // okay to abort() a test if the test writer forgot to add a
       // property to the big dumb if-else chain
@@ -575,6 +613,33 @@ void test_minmaxproperties_1(void)
   RUNTESTS(tests);
 }
 
+void test_required(void)
+{
+  struct arena_info A = {0};
+  struct ast_schema *schema = newschema_p(&A, 0,
+      "properties", newprops(&A,
+        "foo", empty_schema(),
+        "bar", empty_schema(),
+        NULL),
+      "required", stringset(&A, "foo", NULL),
+      NULL);
+
+  const struct validation_test tests[] = {
+    // "description": "present required property is valid",
+    { true, "{\"foo\": 1}", schema },
+
+    // "description": "non-present required property is invalid",
+    { false, "{\"bar\": 1}", schema },
+
+    // "description": "ignores non-objects",
+    { true, "12", schema },
+
+    { false, NULL, NULL },
+  };
+
+  RUNTESTS(tests);
+}
+
 int main(void)
 {
   test_empty_schema();
@@ -590,6 +655,8 @@ int main(void)
   test_maxproperties_1();
   test_maxproperties_2();
   test_minmaxproperties_1();
+
+  test_required();
 
   printf("%d tests, %d failures\n", ntest, nfail);
 }
