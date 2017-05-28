@@ -27,6 +27,13 @@ struct arena_info {
   size_t nprop;
 };
 
+// Returns a constant empty schema
+static struct ast_schema *empty_schema(void)
+{
+  static struct ast_schema empty = { 0 };
+  return &empty;
+}
+
 static struct json_string newstr(const char *s)
 {
   struct json_string str = { .s = s, .len = strlen(s) };
@@ -48,6 +55,52 @@ static struct ast_schema *newschema(struct arena_info *A, int types)
   s = &ar_schema[i];
   memset(s, 0, sizeof *s);
   s->types = types;
+  return s;
+}
+
+static struct ast_schema *newschema_p(struct arena_info *A, int types, ...)
+{
+  size_t i,max;
+  struct ast_schema *s;
+  const char *pname;
+  va_list args;
+
+  i = A->nschema++;
+  max = sizeof ar_schema / sizeof ar_schema[0];
+  if (A->nschema >= max) {
+    fprintf(stderr, "too many schema: %zu max\n", max);
+    abort();
+  }
+
+  s = &ar_schema[i];
+  memset(s, 0, sizeof *s);
+  s->types = types;
+
+  va_start(args, types);
+  for(;;) {
+    pname = va_arg(args, const char *);
+    if (pname == NULL) {
+      break;
+    }
+
+    // big dumb if-else chain gets the job done...
+    if (strcmp(pname, "minProperties") == 0) {
+      s->kws |= KWS_MINMAX_PROPERTIES;
+      s->min_properties = va_arg(args, ast_count);
+    } else if (strcmp(pname, "maxProperties") == 0) {
+      s->kws |= KWS_MINMAX_PROPERTIES;
+      s->max_properties = va_arg(args, ast_count);
+    } else if (strcmp(pname, "properties") == 0) {
+      s->properties.set = va_arg(args, struct ast_property_schema *);
+    } else {
+      // okay to abort() a test if the test writer forgot to add a
+      // property to the big dumb if-else chain
+      fprintf(stderr, "unsupported schema properties '%s'\n", pname);
+      abort();
+    }
+  }
+  va_end(args);
+
   return s;
 }
 
@@ -90,12 +143,6 @@ static struct ast_property_schema *newprops(struct arena_info *A, ...)
   va_end(args);
 
   return props;
-}
-
-static struct ast_schema *empty_schema(void)
-{
-  static struct ast_schema empty = { 0 };
-  return &empty;
 }
 
 static const char *jvst_ret2name(int ret)
@@ -288,6 +335,246 @@ void test_type_constraint_properties(void)
   RUNTESTS(tests);
 }
 
+void test_type_constraint_minproperties_1(void)
+{
+  struct arena_info A = {0};
+  struct ast_schema *schema = newschema_p(&A, 0,
+      "minProperties", 1,
+      NULL);
+
+  const struct validation_test tests[] = {
+    // "description": "longer is valid",
+    { true, "{\"foo\": 1, \"bar\": 2}", schema },
+
+    // "description": "exact length is valid",
+    { true, "{\"foo\": 1}", schema },
+
+    // "description": "too short is invalid",
+    { false, "{}", schema },
+
+    // "description": "ignores non-objects",
+    { true, "\"\"", schema },
+
+    { false, NULL, NULL },
+  };
+
+  RUNTESTS(tests);
+}
+
+void test_type_constraint_minproperties_2(void)
+{
+  struct arena_info A = {0};
+  struct ast_schema *schema = newschema_p(&A, 0,
+      "minProperties", 1,
+      "properties", newprops(&A,
+        "foo", newschema(&A, JSON_VALUE_NUMBER), // XXX - JSON_VALUE_INTEGER
+        "bar", newschema(&A, JSON_VALUE_STRING),
+        NULL),
+      NULL);
+
+  const struct validation_test tests[] = {
+    // "description": "longer is valid",
+    { true, "{\"foo\": 1, \"bar\": \"baz\"}", schema },
+
+    // "description": "satisfies minProperties but not properties"
+    { false, "{\"foo\": 1, \"bar\": 2}", schema },
+
+    // "description": "exact length is valid",
+    { true, "{\"foo\": 1}", schema },
+
+    // "description": "satisfies minProperties but not properties"
+    { false, "{\"bar\": 1}", schema },
+
+    // "description": "satisfies minProperties and properties"
+    { true, "{\"bar\": \"baz\"}", schema },
+
+    // "description": "too short is invalid",
+    { false, "{}", schema },
+
+    // "description": "ignores non-objects",
+    { true, "\"\"", schema },
+
+    { false, NULL, NULL },
+  };
+
+  RUNTESTS(tests);
+}
+
+void test_type_constraint_minproperties_3(void)
+{
+  struct arena_info A = {0};
+  struct ast_schema *schema = newschema_p(&A, 0,
+      "minProperties", 1,
+      "properties", newprops(&A,
+        "foo", newschema_p(&A, JSON_VALUE_OBJECT,
+          "minProperties", 1,
+          NULL), // XXX - JSON_VALUE_INTEGER
+        "bar", newschema(&A, JSON_VALUE_STRING),
+        NULL),
+      NULL);
+
+  const struct validation_test tests[] = {
+    // "description": "longer is valid",
+    { true, "{\"baz\": 1, \"bar\": \"baz\"}", schema },
+
+    // "description": "root satisfies minProperties but foo is the wrong type"
+    { false, "{\"foo\": 1, \"bar\": \"baz\"}", schema },
+
+    // "description": "root satisfies minProperties but foo does not"
+    { false, "{\"foo\": {}, \"bar\": \"baz\"}", schema },
+
+    // "description": "root and foo have valid lengths",
+    { true, "{\"foo\": {\"bar\": 3}}", schema },
+
+    // "description": "satisfies minProperties but not properties"
+    { false, "{\"bar\": 1}", schema },
+
+    // "description": "satisfies minProperties and properties"
+    { true, "{\"bar\": \"baz\"}", schema },
+
+    // "description": "too short is invalid",
+    { false, "{}", schema },
+
+    // "description": "ignores non-objects",
+    { true, "\"\"", schema },
+
+    { false, NULL, NULL },
+  };
+
+  RUNTESTS(tests);
+}
+
+void test_type_constraint_maxproperties_1(void)
+{
+  struct arena_info A = {0};
+  struct ast_schema *schema = newschema_p(&A, 0,
+      "maxProperties", 2,
+      NULL);
+
+  const struct validation_test tests[] = {
+    // "description": "shorter is valid",
+    { true, "{\"foo\": 1}", schema },
+
+    // "description": "exact length is valid",
+    { true, "{\"foo\": 1, \"bar\": 2}", schema },
+
+    // "description": "too long is invalid",
+    { false, "{\"foo\": 1, \"bar\": 2, \"baz\": 3}", schema },
+
+    // "description": "ignores non-objects",
+    { true, "\"foobar\"", schema },
+
+    { false, NULL, NULL },
+  };
+
+  RUNTESTS(tests);
+}
+
+void test_type_constraint_maxproperties_2(void)
+{
+  struct arena_info A = {0};
+  struct ast_schema *schema = newschema_p(&A, 0,
+      "maxProperties", 1,
+      "properties", newprops(&A,
+        "foo", newschema_p(&A, JSON_VALUE_OBJECT,
+          "maxProperties", 1,
+          NULL), // XXX - JSON_VALUE_INTEGER
+        "bar", newschema(&A, JSON_VALUE_STRING),
+        NULL),
+      NULL);
+
+  const struct validation_test tests[] = {
+    // "description": "shorter is valid",
+    { true, "{}", schema },
+
+    // "description": "root and foo satisfy maxProperties"
+    { true, "{\"foo\": {} }", schema },
+
+    // "description": "root exact length is valid"
+    { true, "{\"bar\": \"baz\"}", schema },
+
+    // "description": "root exact length is valid, but bar is wrong type"
+    { false, "{\"bar\": 1}", schema },
+
+    // "description": "root has too many properties",
+    { false, "{\"baz\": 1, \"bar\": \"baz\"}", schema },
+
+    // "description": "root exact length is valid, shorter foo is valid"
+    { true, "{\"foo\": {}}", schema },
+
+    // "description": "root exact length is valid, foo exact length is valid"
+    { true, "{\"foo\": { \"bar\" :  1 }}", schema },
+
+    // "description": "root exact length is valid, foo is too long"
+    { false, "{\"foo\": { \"bar\" :  1, \"baz\" : \"quux\" }}", schema },
+
+    // "description": "ignores non-objects",
+    { true, "\"\"", schema },
+
+    // "description": "ignores non-objects",
+    { true, "[]", schema },
+
+    { false, NULL, NULL },
+  };
+
+  RUNTESTS(tests);
+}
+
+void test_type_constraint_minmaxproperties_1(void)
+{
+  struct arena_info A = {0};
+  struct ast_schema *schema = newschema_p(&A, 0,
+      "minProperties", 1,
+      "maxProperties", 1,
+      "properties", newprops(&A,
+        "foo", newschema_p(&A, JSON_VALUE_OBJECT,
+          "minProperties", 1,
+          "maxProperties", 2,
+          NULL), // XXX - JSON_VALUE_INTEGER
+        "bar", newschema(&A, JSON_VALUE_STRING),
+        NULL),
+      NULL);
+
+  const struct validation_test tests[] = {
+    // "description": "root and foo satisfy min/maxProperties"
+    { true, "{\"foo\": { \"bar\" : 17 } }", schema },
+
+    // "description": "root exact length is valid"
+    { true, "{\"bar\": \"baz\"}", schema },
+
+    // "description": "root has too few properties",
+    { false, "{}", schema },
+
+    // "description": "root exact length is valid, but bar is wrong type"
+    { false, "{\"bar\": 1}", schema },
+
+    // "description": "root has too many properties",
+    { false, "{\"baz\": 1, \"bar\": \"baz\"}", schema },
+
+    // "description": "root exact length is valid, shorter foo is invalid"
+    { false, "{\"foo\": {}}", schema },
+
+    // "description": "root exact length is valid, foo satisfies min/max length"
+    { true, "{\"foo\": { \"bar\" :  1 }}", schema },
+
+    // "description": "root exact length is valid, foo satisfies min/max length"
+    { true, "{\"foo\": { \"bar\" :  1, \"baz\" : \"quux\" }}", schema },
+
+    // "description": "root exact length is valid, foo is too long"
+    { false, "{\"foo\": { \"bar\" :  1, \"baz\" : \"quux\", \"quux\" : 7 }}", schema },
+
+    // "description": "ignores non-objects",
+    { true, "\"\"", schema },
+
+    // "description": "ignores non-objects",
+    { true, "[]", schema },
+
+    { false, NULL, NULL },
+  };
+
+  RUNTESTS(tests);
+}
+
 int main(void)
 {
   test_empty_schema();
@@ -295,6 +582,15 @@ int main(void)
   test_type_constraint_object();
 
   test_type_constraint_properties();
+
+  test_type_constraint_minproperties_1();
+  test_type_constraint_minproperties_2();
+  test_type_constraint_minproperties_3();
+
+  test_type_constraint_maxproperties_1();
+  test_type_constraint_maxproperties_2();
+
+  test_type_constraint_minmaxproperties_1();
 
   printf("%d tests, %d failures\n", ntest, nfail);
 }

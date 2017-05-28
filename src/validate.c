@@ -29,6 +29,8 @@ enum JVST_STATE {
   JVST_ST_OBJECT,
   
   JVST_ST_FETCH_PROP,
+  JVST_ST_CHECKOBJ,
+  JVST_ST_CHECKOBJ1,
 
   // consumes until the current value is finished
   JVST_ST_EAT_VALUE,
@@ -77,6 +79,26 @@ static void dump_stack(struct jvst_validator *v)
         sp->nitems, sp->counters[0], sp->counters[1]);
   }
   fprintf(stderr, "---\n");
+}
+
+static void copycounters(struct jvst_state *dst, const struct jvst_state *src)
+{
+  size_t i,n;
+  dst->nitems = src->nitems;
+  n = sizeof dst->counters / sizeof dst->counters[0];
+  for (i=0; i < n; i++) {
+    dst->counters[i] = src->counters[i];
+  }
+}
+
+static void zerocounters(struct jvst_state *sp)
+{
+  size_t i,n;
+  sp->nitems = 0;
+  n = sizeof sp->counters / sizeof sp->counters[0];
+  for (i=0; i < n; i++) {
+    sp->counters[i] = 0;
+  }
 }
 
 void jvst_validate_init_defaults(struct jvst_validator *v, const struct ast_schema *schema)
@@ -165,7 +187,7 @@ static inline struct jvst_state *pushstate(struct jvst_validator *v, int st,
 
   sp = &v->sstack[v->stop];
   sp->state = st;
-  sp->nitems = 0;
+  zerocounters(sp);
   if (v->stop > 0 && schema == NULL) {
     sp->schema = v->sstack[v->stop-1].schema;
   } else {
@@ -290,8 +312,7 @@ static int eat_array(struct jvst_validator *v)
 
   if (sp->state != JVST_ST_EAT_ARRAY) {
     sp->state = JVST_ST_EAT_ARRAY;
-    sp->nitems = 0;
-    sp->counters[0] = sp->counters[1] = 0;
+    zerocounters(sp);
   }
 
   for(;;) {
@@ -375,8 +396,7 @@ static int eat_object(struct jvst_validator *v)
 
   if (sp->state != JVST_ST_EAT_OBJECT) {
     sp->state = JVST_ST_EAT_OBJECT;
-    sp->nitems = 0;
-    sp->counters[0] = sp->counters[1] = 0;
+    zerocounters(sp);
   }
 
   for(;;) {
@@ -513,8 +533,13 @@ static int validate_value(struct jvst_validator *v)
 }
 
 enum OBJ_VALIDATION {
-  OBJ_PROPERTIES = 1<<1,
+  OBJ_PROPERTIES   = 1<<0,
+
+  // constraints that don't require checking individual properties
+  OBJ_MINMAX_PROPERTIES = 1<<8,
 };
+
+#define CHECK_PROP_MASK 0xff
 
 static const struct ast_schema *match_property(
     struct ast_property_schema *set,
@@ -563,14 +588,8 @@ static int validate_object(struct jvst_validator *v)
     venum |= OBJ_PROPERTIES;
   }
 
-  /* fast path if we don't have to validate per-property */
-  if (venum == 0) {
-    // XXX - validate the object
-    getstate(v)->state = JVST_ST_VALID;
-    if (newframe(v) == NULL) {
-      return JVST_INVALID;
-    }
-    return eat_object(v);
+  if (schema->kws & KWS_MINMAX_PROPERTIES) {
+    venum |= OBJ_MINMAX_PROPERTIES;
   }
 
   switch (sp->state) {
@@ -580,10 +599,33 @@ static int validate_object(struct jvst_validator *v)
     case JVST_ST_FETCH_PROP:
       goto fetch_prop;
 
+    case JVST_ST_CHECKOBJ1:
+      // retrieve eat_object counters from returnframe
+      {
+        struct jvst_state *rf;
+        if (rf  = returnframe(v), rf == NULL) {
+          SHOULD_NOT_REACH(v);
+        }
+        copycounters(sp, rf);
+      }
+      sp->state = JVST_ST_CHECKOBJ; // necessary?
+      /* fallthrough */
+
+    case JVST_ST_CHECKOBJ:
+      goto check_obj;
+
     default:
+      /* fast path if we don't have to validate per-property */
+      if ((venum & CHECK_PROP_MASK) == 0) {
+        getstate(v)->state = (venum == 0) ? JVST_ST_VALID : JVST_ST_CHECKOBJ1;
+        if (newframe(v) == NULL) {
+          return JVST_INVALID;
+        }
+        return eat_object(v);
+      }
+
       sp->state = JVST_ST_OBJECT;
-      sp->nitems = 0;
-      sp->counters[0] = sp->counters[1] = 0;
+      zerocounters(sp);
   }
 
   // FIXME: currently we limit keys to fit into the kbuf buffer.  This
@@ -666,6 +708,17 @@ fetch_prop:
 
 check_obj:
   /* checks like 'required' are not yet implemented */
+  if (venum & OBJ_MINMAX_PROPERTIES) {
+    if (sp->nitems < schema->min_properties) {
+      // XXX - give reason why
+      return JVST_INVALID;
+    }
+
+    if (schema->max_properties > 0 && sp->nitems > schema->max_properties) {
+      // XXX - give reason why
+      return JVST_INVALID;
+    }
+  }
 
   popstate(v);
   return JVST_VALID;
@@ -704,6 +757,8 @@ int jvst_validate_more(struct jvst_validator *v, char *data, size_t n)
 
       case JVST_ST_OBJECT:
       case JVST_ST_FETCH_PROP:
+      case JVST_ST_CHECKOBJ:
+      case JVST_ST_CHECKOBJ1:
         ret = validate_object(v);
         break;
 
