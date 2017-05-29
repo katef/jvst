@@ -6,15 +6,36 @@
 
 #define _POSIX_C_SOURCE 200809L
 
+#include <assert.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 #include "xalloc.h"
 
+void *
+xrealloc(void *p, size_t sz)
+{
+	void *q;
+
+	/* This is legal and frees p, but confusing; use free() instead */
+	assert(sz != 0);
+
+	q = realloc(p, sz);
+	if (q == NULL) {
+		perror("xrealloc");
+		abort();
+	}
+
+	return q;
+}
+
 char *
 xstrndup(const char *s, size_t n)
 {
 	char *new;
+
+	assert(s != NULL);
 
 	new = strndup(s, n);
 	if (new == NULL) {
