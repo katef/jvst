@@ -777,7 +777,7 @@ check_obj:
   return JVST_VALID;
 }
 
-int jvst_validate_more(struct jvst_validator *v, char *data, size_t n)
+enum JVST_RESULT jvst_validate_more(struct jvst_validator *v, char *data, size_t n)
 {
   struct jvst_state *top;
 
@@ -842,7 +842,7 @@ int jvst_validate_more(struct jvst_validator *v, char *data, size_t n)
   }
 }
 
-int jvst_validate_close(struct jvst_validator *v)
+enum JVST_RESULT jvst_validate_close(struct jvst_validator *v)
 {
   int ret, st;
   struct jvst_state *top;

@@ -35,8 +35,8 @@ struct jvst_validator {
 };
 
 void jvst_validate_init_defaults(struct jvst_validator *v, const struct ast_schema *schema);
-int jvst_validate_more(struct jvst_validator *v, char *data, size_t n);
-int jvst_validate_close(struct jvst_validator *v);
+enum JVST_RESULT jvst_validate_more(struct jvst_validator *v, char *data, size_t n);
+enum JVST_RESULT jvst_validate_close(struct jvst_validator *v);
 
 #endif /* JVST_VALIDATE_H */
 
