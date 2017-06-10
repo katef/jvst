@@ -2,6 +2,7 @@
 
 #include <stdio.h>
 #include <string.h>
+#include <math.h>
 
 #include <assert.h>
 
@@ -27,7 +28,7 @@ enum JVST_STATE {
 
   JVST_ST_VALUE = 0,
   JVST_ST_OBJECT,
-  
+
   JVST_ST_FETCH_PROP,
   JVST_ST_CHECKOBJ,
   JVST_ST_CHECKOBJ1,
@@ -461,6 +462,43 @@ static int eat_object(struct jvst_validator *v)
 
 static int validate_object(struct jvst_validator *v);
 
+static inline bool is_valid_type(struct jvst_validator *v, enum json_valuetype mask, enum json_valuetype bits)
+{
+  (void)v;  // XXX - use to set up a useful error message
+  if (mask == 0 || (mask & bits) != 0) {
+    return true;
+  }
+
+  // XXX - set error message
+  // something like: validate_set_error(v, "expected type mask %s but found type %s", mask, bits);
+  return false;
+}
+
+static int validate_number(struct jvst_validator *v, struct sjp_event *evt)
+{
+  assert(evt->type == SJP_NUMBER);
+
+  return (popstate(v) != NULL) ? JVST_VALID : JVST_INVALID;
+}
+
+static int validate_integer(struct jvst_validator *v, struct sjp_event *evt)
+{
+  double x,cx;
+
+  assert(evt->type == SJP_NUMBER);
+
+  x = evt->d;
+  if (x != ceil(x)) {
+    // XXX - error: not an integer
+    return JVST_INVALID;
+  }
+
+  return validate_number(v,evt);
+}
+
+#define CHECK_TYPE(v,mask,type) do{ \
+  if (!is_valid_type((v),(mask),(type))) { return invalid(v); } \
+} while(0)
 static int validate_value(struct jvst_validator *v)
 {
   int ret;
@@ -474,6 +512,7 @@ static int validate_value(struct jvst_validator *v)
     return invalid(v);
   }
 
+  // XXX - if condition effectively repeated inside... this seems wrong
   if (evt.type == SJP_NONE && ret != SJP_OK) {
     // XXX - double check when a SJP_NONE event should correspond to
     // SJP_OK
@@ -485,9 +524,11 @@ static int validate_value(struct jvst_validator *v)
   }
 
   assert(sp->schema != NULL);
+  /*
   if (check_type(v, sp->schema->types, &evt) == JVST_INVALID) {
     return invalid(v);
   }
+  */
 
   switch (evt.type) {
     case SJP_NONE:
@@ -495,14 +536,18 @@ static int validate_value(struct jvst_validator *v)
       SHOULD_NOT_REACH(v);
 
     case SJP_NULL:
+      CHECK_TYPE(v, sp->schema->types, JSON_VALUE_NULL);
+      // XXX - validate the values
+      break;
+
     case SJP_TRUE:
     case SJP_FALSE:
+      CHECK_TYPE(v, sp->schema->types, JSON_VALUE_BOOL);
       // XXX - validate the values
       break;
 
     case SJP_STRING:
-    case SJP_NUMBER:
-      // XXX - validate the values
+      CHECK_TYPE(v, sp->schema->types, JSON_VALUE_STRING);
       if (ret != SJP_OK) {
         getstate(v)->state = JVST_ST_VALID;
         if (newframe(v) == NULL) {
@@ -512,7 +557,28 @@ static int validate_value(struct jvst_validator *v)
       }
       break;
 
+    case SJP_NUMBER:
+      // XXX - validate the values
+      CHECK_TYPE(v, sp->schema->types, JSON_VALUE_NUMBER | JSON_VALUE_INTEGER);
+      if (ret != SJP_OK) {
+        return ret;
+        /*
+        getstate(v)->state = JVST_ST_VALID;
+        if (newframe(v) == NULL) {
+          return JVST_INVALID;
+        }
+        return eat_value(v, &evt);
+        */
+      }
+
+      if ((sp->schema->types & (JSON_VALUE_NUMBER | JSON_VALUE_INTEGER)) == JSON_VALUE_INTEGER) {
+        return validate_integer(v, &evt);
+      }
+      return validate_number(v, &evt);
+      break;
+
     case SJP_ARRAY_BEG:
+      CHECK_TYPE(v, sp->schema->types, JSON_VALUE_ARRAY);
       // XXX - validate the array
       getstate(v)->state = JVST_ST_VALID;
       if (newframe(v) == NULL) {
@@ -521,6 +587,7 @@ static int validate_value(struct jvst_validator *v)
       return eat_array(v);
 
     case SJP_OBJECT_BEG:
+      CHECK_TYPE(v, sp->schema->types, JSON_VALUE_OBJECT);
       return validate_object(v);
 
     case SJP_OBJECT_END:
@@ -531,6 +598,7 @@ static int validate_value(struct jvst_validator *v)
   popstate(v);
   return JVST_VALID;
 }
+#undef CHECK_TYPE
 
 enum OBJ_VALIDATION {
   OBJ_PROPERTIES   = 1<<0,

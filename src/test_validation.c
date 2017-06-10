@@ -267,6 +267,55 @@ void test_empty_schema(void)
   RUNTESTS(tests);
 }
 
+void test_type_integer(void)
+{
+  struct ast_schema schema = {
+    .types = JSON_VALUE_INTEGER,
+  };
+
+  const struct validation_test tests[] = {
+    // "description": "an integer is an integer",
+    { true, "1", &schema },
+    { true, "0", &schema },
+    { true, "10", &schema },
+    { true, "-5", &schema },
+
+    // after shifting decimal places, these are still integers
+    { true, "1.1e2", &schema },
+    { true, "200e-2", &schema },
+
+    // "description": "a float is not an integer",
+    { false, "1.1", &schema },
+    { false, "1e-1", &schema },
+    { false, "210e-2", &schema },
+    { false, "-0.1", &schema },
+    { false, "0.1", &schema },
+    { false, "-5.7", &schema },
+
+    // "description": "a string is not an integer",
+    { false, "\"foo\"", &schema },
+
+    // "description": "a string is still not an integer, even if it looks like one",
+    { false, "\"1\"", &schema },
+
+    // "description": "an object is not an integer",
+    { false, "{}", &schema },
+
+    // "description": "an array is not an integer",
+    { false, "[]", &schema },
+
+    // "description": "a boolean is not an integer",
+    { false, "true", &schema },
+
+    // "description": "null is not an integer",
+    { false, "null", &schema },
+
+    { false, NULL, NULL },
+  };
+
+  RUNTESTS(tests);
+}
+
 void test_type_number(void)
 {
   struct ast_schema schema = {
@@ -640,10 +689,68 @@ void test_required(void)
   RUNTESTS(tests);
 }
 
+#if 0
+void test_anyof(void)
+{
+  struct arena_info A = {0};
+  struct ast_schema *schema = newschema_p(&A, 0,
+      "properties", newprops(&A,
+        "foo", empty_schema(),
+        "bar", empty_schema(),
+        NULL),
+      "required", stringset(&A, "foo", NULL),
+      NULL);
+
+  const struct validation_test tests[] = {
+
+    {
+        "description": "anyOf",
+        "schema": {
+            "anyOf": [
+                {
+                    "type": "integer"
+                },
+                {
+                    "minimum": 2
+                }
+            ]
+        },
+        "tests": [
+            {
+                "description": "first anyOf valid",
+                "data": 1,
+                "valid": true
+            },
+            {
+                "description": "second anyOf valid",
+                "data": 2.5,
+                "valid": true
+            },
+            {
+                "description": "both anyOf valid",
+                "data": 3,
+                "valid": true
+            },
+            {
+                "description": "neither anyOf valid",
+                "data": 1.5,
+                "valid": false
+            }
+        ]
+    },
+
+    { false, NULL, NULL },
+  };
+
+  RUNTESTS(tests);
+}
+#endif /* 0 */
+
 int main(void)
 {
   test_empty_schema();
 
+  test_type_integer();
   test_type_number();
   test_type_object();
 
@@ -657,6 +764,8 @@ int main(void)
   test_minmaxproperties_1();
 
   test_required();
+  /*
+  */
 
   printf("%d tests, %d failures\n", ntest, nfail);
 
