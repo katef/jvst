@@ -130,6 +130,9 @@ static struct ast_schema *newschema_p(struct arena_info *A, int types, ...)
       s->properties.set = va_arg(args, struct ast_property_schema *);
     } else if (strcmp(pname, "required") == 0) {
       s->required.set = va_arg(args, struct ast_string_set *);
+    } else if (strcmp(pname, "minimum") == 0) {
+      s->kws |= KWS_MINIMUM;
+      s->minimum = va_arg(args, double);
     } else {
       // okay to abort() a test if the test writer forgot to add a
       // property to the big dumb if-else chain
@@ -689,6 +692,32 @@ void test_required(void)
   RUNTESTS(tests);
 }
 
+void test_minimum(void)
+{
+  struct arena_info A = {0};
+  struct ast_schema *schema = newschema_p(&A, 0,
+      "minimum", 1.1,
+      NULL);
+
+  const struct validation_test tests[] = {
+    // "description": "above the minimum is valid",
+    { true, "2.6", schema },
+
+    // "description": "boundary point is valid",
+    { true, "1.1", schema },
+
+    // "description": "below the minimum is invalid",
+    { false, "0.6", schema },
+
+    // "description": "ignores non-numbers",
+    { true, "\"x\"", schema },
+
+    { false, NULL, NULL },
+  };
+
+  RUNTESTS(tests);
+}
+
 #if 0
 void test_anyof(void)
 {
@@ -754,6 +783,8 @@ int main(void)
   test_type_number();
   test_type_object();
 
+  test_minimum();
+
   test_properties();
 
   test_minproperties_1();
@@ -764,8 +795,8 @@ int main(void)
   test_minmaxproperties_1();
 
   test_required();
-  /*
-  */
+
+  // test_anyof();
 
   printf("%d tests, %d failures\n", ntest, nfail);
 

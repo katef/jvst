@@ -120,54 +120,6 @@ void jvst_validate_init_defaults(struct jvst_validator *v, const struct ast_sche
       &v->pbuf[0], sizeof v->pbuf / sizeof v->pbuf[0]);
 }
 
-static int check_type(struct jvst_validator *v, int types, struct sjp_event *ev)
-{
-  int mask;
-
-  (void)v; // may be unused
-
-  if (types == 0) {
-    return JVST_VALID;
-  }
-
-  switch (ev->type) {
-    case SJP_NONE:
-    default:
-      SHOULD_NOT_REACH(v);
-
-    case SJP_NULL:
-      mask = JSON_VALUE_NULL;
-      break;
-    case SJP_TRUE:
-    case SJP_FALSE:
-      mask = JSON_VALUE_BOOL;
-      break;
-
-    case SJP_STRING:
-      mask = JSON_VALUE_STRING;
-      break;
-
-    case SJP_NUMBER:
-      // FIXME: handle "integer" constraint correctly
-      mask = JSON_VALUE_NUMBER | JSON_VALUE_INTEGER;
-      break;
-
-    case SJP_OBJECT_BEG:
-      mask = JSON_VALUE_OBJECT;
-      break;
-
-    case SJP_ARRAY_BEG:
-      mask = JSON_VALUE_ARRAY;
-      break;
-
-    case SJP_OBJECT_END:
-    case SJP_ARRAY_END:
-      return JVST_VALID;
-  }
-
-  return (mask & types) ? JVST_VALID : JVST_INVALID;
-}
-
 static inline struct jvst_state *getstate(struct jvst_validator *v)
 {
   if (v->stop == 0 || v->stop > v->smax) {
@@ -476,7 +428,28 @@ static inline bool is_valid_type(struct jvst_validator *v, enum json_valuetype m
 
 static int validate_number(struct jvst_validator *v, struct sjp_event *evt)
 {
+  struct jvst_state *sp;
+  const struct ast_schema *schema;
+
   assert(evt->type == SJP_NUMBER);
+
+  if (sp = getstate(v), sp == NULL) {
+    return JVST_INVALID;
+  }
+  schema = sp->schema;
+  assert(schema != NULL);
+
+  if (schema->kws & KWS_MINIMUM) {
+    if (schema->exclusive_minimum) {
+      if (evt->d <= schema->minimum) {
+        return JVST_INVALID;
+      }
+    } else { // not exclusiveMinimum
+      if (evt->d < schema->minimum) {
+        return JVST_INVALID;
+      }
+    }
+  }
 
   return (popstate(v) != NULL) ? JVST_VALID : JVST_INVALID;
 }
@@ -505,6 +478,19 @@ static int validate_value(struct jvst_validator *v)
   struct sjp_event evt = {0};
   struct jvst_state *sp;
 
+  if (sp = getstate(v), sp == NULL) {
+    return JVST_INVALID;
+  }
+
+  assert(sp->schema != NULL);
+
+  /*
+  if (sp->schema.some_of.set != NULL) {
+    // XXX - todo: constraints aside from allOf/anyOf/oneOf
+    validate_some_of(v);
+  }
+  */
+
   ret = sjp_parser_next(&v->p, &evt);
 
   fprintf(stderr, "[%8s] %s\n", ret2name(ret), evt2name(evt.type));
@@ -518,17 +504,6 @@ static int validate_value(struct jvst_validator *v)
     // SJP_OK
     return (ret != SJP_OK) ? JVST_MORE : JVST_INVALID;
   }
-
-  if (sp = getstate(v), sp == NULL) {
-    return JVST_INVALID;
-  }
-
-  assert(sp->schema != NULL);
-  /*
-  if (check_type(v, sp->schema->types, &evt) == JVST_INVALID) {
-    return invalid(v);
-  }
-  */
 
   switch (evt.type) {
     case SJP_NONE:
