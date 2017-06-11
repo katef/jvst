@@ -156,7 +156,7 @@ struct ast_schema {
 	struct {
 		struct ast_property_schema *set;
 		struct fsm *fsm; /* union to one dfa */
-	} addtional_properties;
+	} additional_properties;
 
 	/* "dependencies": array form */
 	struct {
