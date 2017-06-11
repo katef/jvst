@@ -211,6 +211,8 @@ struct ast_schema {
 		int dummy;
 		/* TODO: heterogenous array of no restrictions */
 	} examples;
+
+	struct ast_schema *next;
 };
 
 #endif
