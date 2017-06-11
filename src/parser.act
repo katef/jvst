@@ -107,7 +107,7 @@
 %terminals%
 
 	STRING: () -> (s :string) = @{
-		assert(act_state->t == JSON_STRING);
+		assert(act_state->t == @$STRING);
 
 		@s.s = json_get_string(lex_state, &@s.len);
 		if (@s.s == NULL) {
@@ -119,7 +119,7 @@
 	@};
 
 	NUMBER: () -> (n :number) = @{
-		assert(act_state->t == JSON_NUMBER);
+		assert(act_state->t == @$NUMBER);
 
 		@n = json_get_number(lex_state);
 	@};
