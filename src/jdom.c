@@ -19,7 +19,7 @@ static struct {
 	{ "number",  JSON_VALUE_NUMBER  },
 	{ "integer", JSON_VALUE_INTEGER },
 	{ "boolean", JSON_VALUE_BOOL    },
-	{ "null",    JSON_VAlUE_NULL    },
+	{ "null",    JSON_VALUE_NULL    },
 	{ "any",     ~0U                }
 };
 

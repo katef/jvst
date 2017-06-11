@@ -227,7 +227,7 @@
 		case JSON_VALUE_NUMBER:
 		case JSON_VALUE_INTEGER:
 		case JSON_VALUE_BOOL:
-		case JSON_VAlUE_NULL:
+		case JSON_VALUE_NULL:
 			break;
 
 		default:

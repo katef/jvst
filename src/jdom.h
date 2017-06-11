@@ -8,6 +8,7 @@
 #define JVST_JDOM_H
 
 #include <stdbool.h>
+#include <stdlib.h>
 
 enum json_valuetype {
 	JSON_VALUE_OBJECT   = 1 << 0,
@@ -16,7 +17,7 @@ enum json_valuetype {
 	JSON_VALUE_NUMBER   = 1 << 3,
 	JSON_VALUE_INTEGER  = 1 << 4,
 	JSON_VALUE_BOOL     = 1 << 5,
-	JSON_VAlUE_NULL     = 1 << 6
+	JSON_VALUE_NULL     = 1 << 6
 };
 
 typedef double json_number;
