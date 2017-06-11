@@ -114,6 +114,7 @@ struct ast_schema {
 
 	ast_number multiple_of; /* > 0 */
 
+	/* TODO: confirm that "exclusiveMaximum" overrides "maximum" rather than both applying */
 	bool exclusive_maximum; /* .maximum is "exclusiveMaximum" rather than "maximum" */
 	bool exclusive_minimum; /* .minimum is "exclusiveMinimum" rather than "minimum" */
 	ast_number maximum;
