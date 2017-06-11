@@ -182,7 +182,7 @@ struct ast_schema {
 	 */
 	struct ast_value_set *xenum;
 
-	int types; /* bitmap (see enum json_valuetype); 0 for unset */
+	enum json_valuetype types; /* bitmap; 0 for unset */
 
 	/*
 	 * "allOf": min = n, max = n
