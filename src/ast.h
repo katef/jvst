@@ -7,6 +7,9 @@
 #ifndef JVST_AST_H
 #define JVST_AST_H
 
+#include "jdom.h"
+#include "json.h"
+
 struct fsm;
 
 typedef json_number ast_number;
@@ -46,7 +49,7 @@ struct ast_schema_array {
 struct ast_property_schema {
 	struct ast_regexp pattern;
 	struct ast_schema *schema;
-	struct ast_pattern_properties *next;
+	struct ast_property_schema *next;
 };
 
 /* unordered k/v set */
@@ -179,7 +182,7 @@ struct ast_schema {
 	 */
 	struct ast_value_set *xenum;
 
-	enum json_type types; /* bitmap; 0 for unset */
+	int types; /* bitmap (see enum json_valuetype); 0 for unset */
 
 	/*
 	 * "allOf": min = n, max = n
