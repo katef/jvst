@@ -22,11 +22,13 @@ struct validation_test {
 static struct ast_schema ar_schema[1024];
 static struct ast_property_schema ar_props[1024];
 static struct ast_string_set ar_stringsets[1024];
+static struct ast_schema_set ar_schemasets[1024];
 
 struct arena_info {
   size_t nschema;
   size_t nprop;
   size_t nstr;
+  size_t nset;
 };
 
 // Returns a constant empty schema
@@ -74,6 +76,49 @@ static struct ast_string_set *stringset(struct arena_info *A, ...)
   va_end(args);
 
   return ss;
+}
+
+static struct ast_schema_set *schema_set(struct arena_info *A, ...)
+{
+  struct ast_schema_set *sset, **sp;
+  struct ast_schema *s;
+  size_t max;
+  va_list args;
+
+  va_start(args, A);
+
+  sset = NULL;
+  sp = &sset;
+  max = sizeof ar_schemasets / sizeof ar_schemasets[0];
+  while (s = va_arg(args, struct ast_schema *), s != NULL) {
+    struct ast_schema_set *elt;
+    size_t i;
+
+    i = A->nset++;
+    if (A->nset >= max) {
+      fprintf(stderr, "too many schema sets: %zu max\n", max);
+      abort();
+    }
+
+    elt = &ar_schemasets[i];
+    elt->schema = s;
+    *sp = elt;
+    sp = &elt->next;
+  }
+
+  va_end(args);
+
+  return sset;
+}
+
+static size_t schema_set_count(struct ast_schema_set *s)
+{
+  size_t n;
+  for(n=0; s != NULL; s = s->next, n++) {
+    continue;
+  }
+
+  return n;
 }
 
 static struct ast_schema *newschema(struct arena_info *A, int types)
@@ -133,6 +178,12 @@ static struct ast_schema *newschema_p(struct arena_info *A, int types, ...)
     } else if (strcmp(pname, "minimum") == 0) {
       s->kws |= KWS_MINIMUM;
       s->minimum = va_arg(args, double);
+    } else if (strcmp(pname, "anyOf") == 0) {
+      struct ast_schema_set *sset;
+      sset = va_arg(args, struct ast_schema_set *);
+      s->some_of.set = sset;
+      s->some_of.min = 1;
+      s->some_of.min = schema_set_count(sset);
     } else {
       // okay to abort() a test if the test writer forgot to add a
       // property to the big dumb if-else chain
@@ -723,50 +774,21 @@ void test_anyof(void)
 {
   struct arena_info A = {0};
   struct ast_schema *schema = newschema_p(&A, 0,
-      "properties", newprops(&A,
-        "foo", empty_schema(),
-        "bar", empty_schema(),
+      "anyOf", schema_set(&A, 
+        newschema_p(&A, JSON_VALUE_INTEGER, NULL),
+        newschema_p(&A, 0, "minimum", 2.0, NULL),
         NULL),
-      "required", stringset(&A, "foo", NULL),
       NULL);
 
   const struct validation_test tests[] = {
-
-    {
-        "description": "anyOf",
-        "schema": {
-            "anyOf": [
-                {
-                    "type": "integer"
-                },
-                {
-                    "minimum": 2
-                }
-            ]
-        },
-        "tests": [
-            {
-                "description": "first anyOf valid",
-                "data": 1,
-                "valid": true
-            },
-            {
-                "description": "second anyOf valid",
-                "data": 2.5,
-                "valid": true
-            },
-            {
-                "description": "both anyOf valid",
-                "data": 3,
-                "valid": true
-            },
-            {
-                "description": "neither anyOf valid",
-                "data": 1.5,
-                "valid": false
-            }
-        ]
-    },
+    // "description": "first anyOf valid",
+    { true, "1", schema, },
+    // "description": "second anyOf valid",
+    { true, "2.5", schema, },
+    // "description": "both anyOf valid",
+    { true, "3", schema, },
+    // "description": "neither anyOf valid",
+    { false, "1.5", schema, },
 
     { false, NULL, NULL },
   };
