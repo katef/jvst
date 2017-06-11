@@ -8,7 +8,6 @@
 #define JVST_AST_H
 
 #include "jdom.h"
-#include "json.h"
 
 struct fsm;
 

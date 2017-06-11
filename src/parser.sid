@@ -16,9 +16,9 @@
 %terminals%
 
 	!ERROR;
-	DONE;
-	OBJECT; OBJECT_END;
-	ARRAY;  ARRAY_END;
+	EOS;
+	OCURLY;   CCURLY;
+	OBRACKET; CBRACKET;
 	STRING: () -> (:string);
 	NUMBER: () -> (:number);
 	TRUE:   () -> (:bool);
@@ -138,9 +138,9 @@
 		{
 			type;
 		||
-			ARRAY;
+			OBRACKET;
 			list-of-types;
-			ARRAY_END;
+			CBRACKET;
 		};
 	};
 
@@ -268,15 +268,15 @@
 	};
 
 	array = {
-		ARRAY;
+		OBRACKET;
 		/* TODO: ... */
-		ARRAY_END;
+		CBRACKET;
 	};
 
 	schema = {
-		OBJECT;
+		OCURLY;
 		list-of-directives;
-		OBJECT_END;
+		CCURLY;
 	||
 		array;
 	||
@@ -295,7 +295,7 @@
 
 	file = {
 		schema;
-		DONE;
+		EOS;
 	##
 		<err-syntax>;
 	};

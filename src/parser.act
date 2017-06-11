@@ -6,7 +6,7 @@
 
 %prefixes%
 
-	terminal = JSON_;
+	terminal = SJP_TOK_;
 	function = p_;
 
 %persistents%
@@ -31,7 +31,7 @@
 	#include <stdlib.h>
 	#include <string.h>
 
-	#include "json.h"
+	#include "sjp_lexer.h"
 	#include "parser.h"
 	#include "jdom.h"
 	#include "ast.h"
@@ -39,8 +39,8 @@
 	#include "xalloc.h"
 
 	struct act_state {
-		enum json_type t;
-		enum json_type save;
+		struct sjp_token t;
+		enum SJP_TOKEN save;
 	};
 
 	typedef struct json_string string;
@@ -48,24 +48,21 @@
 	typedef enum kw kw;
 	typedef enum json_valuetype type;
 
-	#define JSON_ARRAY__END  JSON_ARRAY_END
-	#define JSON_OBJECT__END JSON_OBJECT_END
-
-	#define CURRENT_TERMINAL act_state->t
-	#define ERROR_TERMINAL   JSON_ERROR
-	#define ADVANCE_LEXER    act_state->t = json_next(lex_state)
-	#define SAVE_LEXER(t)    act_state->save = (t)
-	#define RESTORE_LEXER    act_state->t = act_state->save
+	#define CURRENT_TERMINAL act_state->t.type
+	#define ERROR_TERMINAL   SJP_TOK_NONE /* XXX: NONE is not an error */
+	#define ADVANCE_LEXER    next(lex_state, &act_state->t)
+	#define SAVE_LEXER(type) act_state->save = (type)
+	#define RESTORE_LEXER    act_state->t.type = act_state->save
 
 	static void
-	xerr(json_stream *json, enum kw k, const char *fmt, ...)
+	xerr(struct sjp_lexer *lex_state, enum kw k, const char *fmt, ...)
 	{
 		va_list ap;
 
-		assert(json != NULL);
+		assert(lex_state != NULL);
 
 		/* XXX: one token ahead */
-		fprintf(stderr, "%zu: ", json_get_lineno(json));
+		fprintf(stderr, "%zu: ", lex_state->line);
 
 		if (k != 0) {
 			fprintf(stderr, "\"%s\": ", kw_name(k));
@@ -81,14 +78,29 @@
 	}
 
 	static void
-	xerr_syntax(json_stream *json, const char *name)
+	xerr_syntax(struct sjp_lexer *lex_state, const char *name)
 	{
-		assert(json != NULL);
+		assert(lex_state != NULL);
 
 		if (name == NULL) {
-			xerr(json, 0, "Syntax error");
+			xerr(lex_state, 0, "Syntax error");
 		} else {
-			xerr(json, 0, "Syntax error: expected %s", name);
+			xerr(lex_state, 0, "Syntax error: expected %s", name);
+		}
+	}
+
+	static void
+	next(struct sjp_lexer *lex_state, struct sjp_token *t)
+	{
+		int r;
+
+		assert(lex_state != NULL);
+		assert(t != NULL);
+
+		r = sjp_lexer_token(lex_state, t);
+		if (SJP_ERROR(r)) {
+			xerr(lex_state, 0, "sjp error: %d, n=%zu", r, t->n);
+			exit(EXIT_FAILURE);
 		}
 	}
 
@@ -96,32 +108,27 @@
 
 	#include <stdio.h>
 
-	#include "json.h"
+	#include "sjp_lexer.h"
 
 	typedef struct ast_schema * ast;
 	typedef struct act_state * act_state;
-	typedef json_stream * lex_state;
+	typedef struct sjp_lexer * lex_state;
 
 @};
 
 %terminals%
 
 	STRING: () -> (s :string) = @{
-		assert(act_state->t == @$STRING);
+		assert(act_state->t.type == @$STRING);
 
-		@s.s = json_get_string(lex_state, &@s.len);
-		if (@s.s == NULL) {
-			perror("json_get_string");
-			exit(1);
-		}
-
-		@s.s = xstrndup(@s.s, @s.len);
+		@s.s   = xstrndup(act_state->t.value, act_state->t.n);
+		@s.len = act_state->t.n;
 	@};
 
 	NUMBER: () -> (n :number) = @{
-		assert(act_state->t == @$NUMBER);
+		assert(act_state->t.type == @$NUMBER);
 
-		@n = json_get_number(lex_state);
+		@n = act_state->t.dbl;
 	@};
 
 	TRUE: () -> (v :bool) = @{
@@ -262,7 +269,7 @@
 %trailer% @{
 
 	void
-	parse(json_stream *lex_state, struct ast_schema *ast)
+	parse(struct sjp_lexer *lex_state, struct ast_schema *ast)
 	{
 		struct act_state a, *act_state = &a;
 
@@ -277,7 +284,7 @@
 @}, @{
 
 	void
-	parse(json_stream *json, struct ast_schema *ast);
+	parse(struct sjp_lexer *lex_state, struct ast_schema *ast);
 
 @};
 
