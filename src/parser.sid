@@ -17,8 +17,8 @@
 
 	!ERROR;
 	EOS;
-	OCURLY;   CCURLY;
-	OBRACKET; CBRACKET;
+	OCURLY;    CCURLY;
+	OBRACKET;  CBRACKET;
 	STRING: () -> (:string);
 	NUMBER: () -> (:number);
 	TRUE:   () -> (:bool);
@@ -30,51 +30,51 @@
 	<kw-lookup>:   (:string) -> (:kw);
 	<type-lookup>: (:string) -> (:type);
 
-	<kw-schema>:               (:kw) -> (:bool);
-	<kw-ref>:                  (:kw) -> (:bool);
-	<kw-id>:                   (:kw) -> (:bool);
+	<kw-schema>:                (:kw) -> (:bool);
+	<kw-ref>:                   (:kw) -> (:bool);
+	<kw-id>:                    (:kw) -> (:bool);
 
-	<kw-multipleof>:           (:kw) -> (:bool);
-	<kw-maximum>:              (:kw) -> (:bool);
-	<kw-exclusivemaximum>:     (:kw) -> (:bool);
-	<kw-minimum>:              (:kw) -> (:bool);
-	<kw-exclusiveminimum>:     (:kw) -> (:bool);
-	<kw-maxlength>:            (:kw) -> (:bool);
-	<kw-minlength>:            (:kw) -> (:bool);
-	<kw-pattern>:              (:kw) -> (:bool);
-	<kw-items>:                (:kw) -> (:bool);
-	<kw-additionalitems>:      (:kw) -> (:bool);
-	<kw-maxitems>:             (:kw) -> (:bool);
-	<kw-minitems>:             (:kw) -> (:bool);
-	<kw-uniqueitems>:          (:kw) -> (:bool);
-	<kw-contains>:             (:kw) -> (:bool);
-	<kw-maxproperties>:        (:kw) -> (:bool);
-	<kw-minproperties>:        (:kw) -> (:bool);
-	<kw-required>:             (:kw) -> (:bool);
-	<kw-properties>:           (:kw) -> (:bool);
-	<kw-patternproperties>:    (:kw) -> (:bool);
-	<kw-additionalproperties>: (:kw) -> (:bool);
-	<kw-dependencies>:         (:kw) -> (:bool);
-	<kw-propertynames>:        (:kw) -> (:bool);
+	<kw-multiple-of>:           (:kw) -> (:bool);
+	<kw-maximum>:               (:kw) -> (:bool);
+	<kw-exclusive-maximum>:     (:kw) -> (:bool);
+	<kw-minimum>:               (:kw) -> (:bool);
+	<kw-exclusive-minimum>:     (:kw) -> (:bool);
+	<kw-max-length>:            (:kw) -> (:bool);
+	<kw-min-length>:            (:kw) -> (:bool);
+	<kw-pattern>:               (:kw) -> (:bool);
+	<kw-items>:                 (:kw) -> (:bool);
+	<kw-additional-items>:      (:kw) -> (:bool);
+	<kw-max-items>:             (:kw) -> (:bool);
+	<kw-min-items>:             (:kw) -> (:bool);
+	<kw-unique-items>:          (:kw) -> (:bool);
+	<kw-contains>:              (:kw) -> (:bool);
+	<kw-max-properties>:        (:kw) -> (:bool);
+	<kw-min-properties>:        (:kw) -> (:bool);
+	<kw-required>:              (:kw) -> (:bool);
+	<kw-properties>:            (:kw) -> (:bool);
+	<kw-pattern-properties>:    (:kw) -> (:bool);
+	<kw-additional-properties>: (:kw) -> (:bool);
+	<kw-dependencies>:          (:kw) -> (:bool);
+	<kw-property-names>:        (:kw) -> (:bool);
 
-	<kw-enum>:                 (:kw) -> (:bool);
-	<kw-const>:                (:kw) -> (:bool);
-	<kw-type>:                 (:kw) -> (:bool);
-	<kw-allof>:                (:kw) -> (:bool);
-	<kw-anyof>:                (:kw) -> (:bool);
-	<kw-oneof>:                (:kw) -> (:bool);
-	<kw-not>:                  (:kw) -> (:bool);
+	<kw-enum>:                  (:kw) -> (:bool);
+	<kw-const>:                 (:kw) -> (:bool);
+	<kw-type>:                  (:kw) -> (:bool);
+	<kw-all-of>:                (:kw) -> (:bool);
+	<kw-any-of>:                (:kw) -> (:bool);
+	<kw-one-of>:                (:kw) -> (:bool);
+	<kw-not>:                   (:kw) -> (:bool);
 
-	<kw-definitions>:          (:kw) -> (:bool);
-	<kw-description>:          (:kw) -> (:bool);
-	<kw-default>:              (:kw) -> (:bool);
-	<kw-examples>:             (:kw) -> (:bool);
+	<kw-definitions>:           (:kw) -> (:bool);
+	<kw-description>:           (:kw) -> (:bool);
+	<kw-default>:               (:kw) -> (:bool);
+	<kw-examples>:              (:kw) -> (:bool);
 
-	<set-schema>:     (:string) -> ();
-	<set-id>:         (:string) -> ();
-	<set-multipleof>: (:number) -> ();
-	<set-maximum>:    (:number) -> ();
-	<set-type>:       (:type)   -> ();
+	<set-schema>:               (:string) -> ();
+	<set-id>:                   (:string) -> ();
+	<set-multiple-of>:          (:number) -> ();
+	<set-maximum>:              (:number) -> ();
+	<set-type>:                 (:type)   -> ();
 
 	<clear-types>;
 
@@ -104,7 +104,7 @@
 
 	directive-multiple-of = {
 		n = NUMBER;
-		<set-multipleof>(n);
+		<set-multiple-of>(n);
 	};
 
 	directive-maximum = {
@@ -154,25 +154,25 @@
 		? = <kw-id>(k);
 		directive-id;
 	||
-		? = <kw-multipleof>(k);
+		? = <kw-multiple-of>(k);
 		directive-multiple-of;
 	||
 		? = <kw-maximum>(k);
 		directive-maximum;
 	||
-		? = <kw-exclusivemaximum>(k);
+		? = <kw-exclusive-maximum>(k);
 		placeholder;
 	||
 		? = <kw-minimum>(k);
 		placeholder;
 	||
-		? = <kw-exclusiveminimum>(k);
+		? = <kw-exclusive-minimum>(k);
 		placeholder;
 	||
-		? = <kw-maxlength>(k);
+		? = <kw-max-length>(k);
 		placeholder;
 	||
-		? = <kw-minlength>(k);
+		? = <kw-min-length>(k);
 		placeholder;
 	||
 		? = <kw-pattern>(k);
@@ -181,25 +181,25 @@
 		? = <kw-items>(k);
 		placeholder;
 	||
-		? = <kw-additionalitems>(k);
+		? = <kw-additional-items>(k);
 		placeholder;
 	||
-		? = <kw-maxitems>(k);
+		? = <kw-max-items>(k);
 		placeholder;
 	||
-		? = <kw-minitems>(k);
+		? = <kw-min-items>(k);
 		placeholder;
 	||
-		? = <kw-uniqueitems>(k);
+		? = <kw-unique-items>(k);
 		placeholder;
 	||
 		? = <kw-contains>(k);
 		placeholder;
 	||
-		? = <kw-maxproperties>(k);
+		? = <kw-max-properties>(k);
 		placeholder;
 	||
-		? = <kw-minproperties>(k);
+		? = <kw-min-properties>(k);
 		placeholder;
 	||
 		? = <kw-required>(k);
@@ -208,16 +208,16 @@
 		? = <kw-properties>(k);
 		placeholder;
 	||
-		? = <kw-patternproperties>(k);
+		? = <kw-pattern-properties>(k);
 		placeholder;
 	||
-		? = <kw-additionalproperties>(k);
+		? = <kw-additional-properties>(k);
 		placeholder;
 	||
 		? = <kw-dependencies>(k);
 		placeholder;
 	||
-		? = <kw-propertynames>(k);
+		? = <kw-property-names>(k);
 		placeholder;
 	||
 		? = <kw-enum>(k);
@@ -229,13 +229,13 @@
 		? = <kw-type>(k);
 		directive-type;
 	||
-		? = <kw-allof>(k);
+		? = <kw-all-of>(k);
 		placeholder;
 	||
-		? = <kw-anyof>(k);
+		? = <kw-any-of>(k);
 		placeholder;
 	||
-		? = <kw-oneof>(k);
+		? = <kw-one-of>(k);
 		placeholder;
 	||
 		? = <kw-not>(k);

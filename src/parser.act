@@ -32,6 +32,7 @@
 	#include <string.h>
 
 	#include "sjp_lexer.h"
+
 	#include "parser.h"
 	#include "jdom.h"
 	#include "ast.h"
@@ -156,45 +157,45 @@
 		}
 	@};
 
-	<kw-schema>:               (k :kw) -> (v :bool) = @{ @v = (@k == KW_SCHEMA);                @};
-	<kw-ref>:                  (k :kw) -> (v :bool) = @{ @v = (@k == KW_REF);                   @};
-	<kw-id>:                   (k :kw) -> (v :bool) = @{ @v = (@k == KW_ID);                    @};
+	<kw-schema>:                (k :kw) -> (v :bool) = @{ @v = (@k == KW_SCHEMA);                @};
+	<kw-ref>:                   (k :kw) -> (v :bool) = @{ @v = (@k == KW_REF);                   @};
+	<kw-id>:                    (k :kw) -> (v :bool) = @{ @v = (@k == KW_ID);                    @};
 
-	<kw-multipleof>:           (k :kw) -> (v :bool) = @{ @v = (@k == KW_MULTIPLE_OF);           @};
-	<kw-maximum>:              (k :kw) -> (v :bool) = @{ @v = (@k == KW_MAXIMUM);               @};
-	<kw-exclusivemaximum>:     (k :kw) -> (v :bool) = @{ @v = (@k == KW_EXCLUSIVE_MAXIMUM);     @};
-	<kw-minimum>:              (k :kw) -> (v :bool) = @{ @v = (@k == KW_MINIMUM);               @};
-	<kw-exclusiveminimum>:     (k :kw) -> (v :bool) = @{ @v = (@k == KW_EXCLUSIVE_MINIMUM);     @};
-	<kw-maxlength>:            (k :kw) -> (v :bool) = @{ @v = (@k == KW_MAX_LENGTH);            @};
-	<kw-minlength>:            (k :kw) -> (v :bool) = @{ @v = (@k == KW_MIN_LENGTH);            @};
-	<kw-pattern>:              (k :kw) -> (v :bool) = @{ @v = (@k == KW_PATTERN);               @};
-	<kw-items>:                (k :kw) -> (v :bool) = @{ @v = (@k == KW_ITEMS);                 @};
-	<kw-additionalitems>:      (k :kw) -> (v :bool) = @{ @v = (@k == KW_ADDITIONAL_ITEMS);      @};
-	<kw-maxitems>:             (k :kw) -> (v :bool) = @{ @v = (@k == KW_MAX_ITEMS);             @};
-	<kw-minitems>:             (k :kw) -> (v :bool) = @{ @v = (@k == KW_MIN_ITEMS);             @};
-	<kw-uniqueitems>:          (k :kw) -> (v :bool) = @{ @v = (@k == KW_UNIQUE_ITEMS);          @};
-	<kw-contains>:             (k :kw) -> (v :bool) = @{ @v = (@k == KW_CONTAINS);              @};
-	<kw-maxproperties>:        (k :kw) -> (v :bool) = @{ @v = (@k == KW_MAX_PROPERTIES);        @};
-	<kw-minproperties>:        (k :kw) -> (v :bool) = @{ @v = (@k == KW_MIN_PROPERTIES);        @};
-	<kw-required>:             (k :kw) -> (v :bool) = @{ @v = (@k == KW_REQUIRED);              @};
-	<kw-properties>:           (k :kw) -> (v :bool) = @{ @v = (@k == KW_PROPERTIES);            @};
-	<kw-patternproperties>:    (k :kw) -> (v :bool) = @{ @v = (@k == KW_PATTERN_PROPERTIES);    @};
-	<kw-additionalproperties>: (k :kw) -> (v :bool) = @{ @v = (@k == KW_ADDITIONAL_PROPERTIES); @};
-	<kw-dependencies>:         (k :kw) -> (v :bool) = @{ @v = (@k == KW_DEPENDENCIES);          @};
-	<kw-propertynames>:        (k :kw) -> (v :bool) = @{ @v = (@k == KW_PROPERTY_NAMES);        @};
+	<kw-multiple-of>:           (k :kw) -> (v :bool) = @{ @v = (@k == KW_MULTIPLE_OF);           @};
+	<kw-maximum>:               (k :kw) -> (v :bool) = @{ @v = (@k == KW_MAXIMUM);               @};
+	<kw-exclusive-maximum>:     (k :kw) -> (v :bool) = @{ @v = (@k == KW_EXCLUSIVE_MAXIMUM);     @};
+	<kw-minimum>:               (k :kw) -> (v :bool) = @{ @v = (@k == KW_MINIMUM);               @};
+	<kw-exclusive-minimum>:     (k :kw) -> (v :bool) = @{ @v = (@k == KW_EXCLUSIVE_MINIMUM);     @};
+	<kw-max-length>:            (k :kw) -> (v :bool) = @{ @v = (@k == KW_MAX_LENGTH);            @};
+	<kw-min-length>:            (k :kw) -> (v :bool) = @{ @v = (@k == KW_MIN_LENGTH);            @};
+	<kw-pattern>:               (k :kw) -> (v :bool) = @{ @v = (@k == KW_PATTERN);               @};
+	<kw-items>:                 (k :kw) -> (v :bool) = @{ @v = (@k == KW_ITEMS);                 @};
+	<kw-additional-items>:      (k :kw) -> (v :bool) = @{ @v = (@k == KW_ADDITIONAL_ITEMS);      @};
+	<kw-max-items>:             (k :kw) -> (v :bool) = @{ @v = (@k == KW_MAX_ITEMS);             @};
+	<kw-min-items>:             (k :kw) -> (v :bool) = @{ @v = (@k == KW_MIN_ITEMS);             @};
+	<kw-unique-items>:          (k :kw) -> (v :bool) = @{ @v = (@k == KW_UNIQUE_ITEMS);          @};
+	<kw-contains>:              (k :kw) -> (v :bool) = @{ @v = (@k == KW_CONTAINS);              @};
+	<kw-max-properties>:        (k :kw) -> (v :bool) = @{ @v = (@k == KW_MAX_PROPERTIES);        @};
+	<kw-min-properties>:        (k :kw) -> (v :bool) = @{ @v = (@k == KW_MIN_PROPERTIES);        @};
+	<kw-required>:              (k :kw) -> (v :bool) = @{ @v = (@k == KW_REQUIRED);              @};
+	<kw-properties>:            (k :kw) -> (v :bool) = @{ @v = (@k == KW_PROPERTIES);            @};
+	<kw-pattern-properties>:    (k :kw) -> (v :bool) = @{ @v = (@k == KW_PATTERN_PROPERTIES);    @};
+	<kw-additional-properties>: (k :kw) -> (v :bool) = @{ @v = (@k == KW_ADDITIONAL_PROPERTIES); @};
+	<kw-dependencies>:          (k :kw) -> (v :bool) = @{ @v = (@k == KW_DEPENDENCIES);          @};
+	<kw-property-names>:        (k :kw) -> (v :bool) = @{ @v = (@k == KW_PROPERTY_NAMES);        @};
 
-	<kw-enum>:                 (k :kw) -> (v :bool) = @{ @v = (@k == KW_ENUM);                  @};
-	<kw-const>:                (k :kw) -> (v :bool) = @{ @v = (@k == KW_CONST);                 @};
-	<kw-type>:                 (k :kw) -> (v :bool) = @{ @v = (@k == KW_TYPE);                  @};
-	<kw-allof>:                (k :kw) -> (v :bool) = @{ @v = (@k == KW_ALL_OF);                @};
-	<kw-anyof>:                (k :kw) -> (v :bool) = @{ @v = (@k == KW_ANY_OF);                @};
-	<kw-oneof>:                (k :kw) -> (v :bool) = @{ @v = (@k == KW_ONE_OF);                @};
-	<kw-not>:                  (k :kw) -> (v :bool) = @{ @v = (@k == KW_NOT);                   @};
+	<kw-enum>:                  (k :kw) -> (v :bool) = @{ @v = (@k == KW_ENUM);                  @};
+	<kw-const>:                 (k :kw) -> (v :bool) = @{ @v = (@k == KW_CONST);                 @};
+	<kw-type>:                  (k :kw) -> (v :bool) = @{ @v = (@k == KW_TYPE);                  @};
+	<kw-all-of>:                (k :kw) -> (v :bool) = @{ @v = (@k == KW_ALL_OF);                @};
+	<kw-any-of>:                (k :kw) -> (v :bool) = @{ @v = (@k == KW_ANY_OF);                @};
+	<kw-one-of>:                (k :kw) -> (v :bool) = @{ @v = (@k == KW_ONE_OF);                @};
+	<kw-not>:                   (k :kw) -> (v :bool) = @{ @v = (@k == KW_NOT);                   @};
 
-	<kw-definitions>:          (k :kw) -> (v :bool) = @{ @v = (@k == KW_DEFINITIONS);           @};
-	<kw-description>:          (k :kw) -> (v :bool) = @{ @v = (@k == KW_DESCRIPTION);           @};
-	<kw-default>:              (k :kw) -> (v :bool) = @{ @v = (@k == KW_DEFAULT);               @};
-	<kw-examples>:             (k :kw) -> (v :bool) = @{ @v = (@k == KW_EXAMPLES);              @};
+	<kw-definitions>:           (k :kw) -> (v :bool) = @{ @v = (@k == KW_DEFINITIONS);           @};
+	<kw-description>:           (k :kw) -> (v :bool) = @{ @v = (@k == KW_DESCRIPTION);           @};
+	<kw-default>:               (k :kw) -> (v :bool) = @{ @v = (@k == KW_DEFAULT);               @};
+	<kw-examples>:              (k :kw) -> (v :bool) = @{ @v = (@k == KW_EXAMPLES);              @};
 
 	<set-schema>: (s :string) -> () = @{
 		assert(@s.s != NULL);
@@ -208,7 +209,7 @@
 		ast->id = @s;
 	@};
 
-	<set-multipleof>: (n :number) -> () = @{
+	<set-multiple-of>: (n :number) -> () = @{
 		if (!(@n > 0)) {
 			xerr(lex_state, KW_MULTIPLE_OF, "expected > 0, got %f", @n);
 		}
