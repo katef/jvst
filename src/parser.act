@@ -221,6 +221,25 @@
 	<set-maximum>: (n :number) -> () = @{
 		ast->kws |= KWS_MAXIMUM;
 		ast->maximum = @n;
+		ast->exclusive_maximum = false;
+	@};
+
+	<set-exclusive-maximum>: (n :number) -> () = @{
+		ast->kws |= KWS_MAXIMUM;
+		ast->maximum = @n;
+		ast->exclusive_maximum = true;
+	@};
+
+	<set-minimum>: (n :number) -> () = @{
+		ast->kws |= KWS_MINIMUM;
+		ast->minimum = @n;
+		ast->exclusive_minimum = false;
+	@};
+
+	<set-exclusive-minimum>: (n :number) -> () = @{
+		ast->kws |= KWS_MINIMUM;
+		ast->minimum = @n;
+		ast->exclusive_minimum = true;
 	@};
 
 	<clear-types> = @{

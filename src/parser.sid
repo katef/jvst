@@ -74,6 +74,9 @@
 	<set-id>:                   (:string) -> ();
 	<set-multiple-of>:          (:number) -> ();
 	<set-maximum>:              (:number) -> ();
+	<set-exclusive-maximum>:    (:number) -> ();
+	<set-minimum>:              (:number) -> ();
+	<set-exclusive-minimum>:    (:number) -> ();
 	<set-type>:                 (:type)   -> ();
 
 	<clear-types>;
@@ -110,6 +113,21 @@
 	directive-maximum = {
 		n = NUMBER;
 		<set-maximum>(n);
+	};
+
+	directive-exclusive-maximum = {
+		n = NUMBER;
+		<set-exclusive-maximum>(n);
+	};
+
+	directive-minimum = {
+		n = NUMBER;
+		<set-minimum>(n);
+	};
+
+	directive-exclusive-minimum = {
+		n = NUMBER;
+		<set-exclusive-minimum>(n);
 	};
 
 	directive-type [
@@ -161,13 +179,13 @@
 		directive-maximum;
 	||
 		? = <kw-exclusive-maximum>(k);
-		placeholder;
+		directive-exclusive-maximum;
 	||
 		? = <kw-minimum>(k);
-		placeholder;
+		directive-minimum;
 	||
 		? = <kw-exclusive-minimum>(k);
-		placeholder;
+		directive-exclusive-minimum;
 	||
 		? = <kw-max-length>(k);
 		placeholder;
