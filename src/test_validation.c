@@ -183,7 +183,7 @@ static struct ast_schema *newschema_p(struct arena_info *A, int types, ...)
       sset = va_arg(args, struct ast_schema_set *);
       s->some_of.set = sset;
       s->some_of.min = 1;
-      s->some_of.min = schema_set_count(sset);
+      s->some_of.max = schema_set_count(sset);
     } else {
       // okay to abort() a test if the test writer forgot to add a
       // property to the big dumb if-else chain
@@ -790,7 +790,6 @@ void test_minimum(void)
   RUNTESTS(tests);
 }
 
-#if 0
 void test_anyof(void)
 {
   struct arena_info A = {0};
@@ -816,7 +815,6 @@ void test_anyof(void)
 
   RUNTESTS(tests);
 }
-#endif /* 0 */
 
 int main(void)
 {
@@ -839,7 +837,7 @@ int main(void)
 
   test_required();
 
-  //I test_anyof();
+  test_anyof();
 
   printf("%d tests, %d failures\n", ntest, nfail);
 

@@ -2,6 +2,7 @@
 
 #include <stdio.h>
 #include <stdarg.h>
+#include <stdlib.h>
 #include <string.h>
 #include <math.h>
 #include <inttypes.h>
@@ -63,24 +64,31 @@ enum JVST_STATE {
   JVST_ST_EAT_OBJECT,   // eat an object
   JVST_ST_EAT_ARRAY,    // eat an array
 
+  JVST_ST_SOMEOF_INIT,  // initialize someof handling
+  JVST_ST_SOMEOF_NEXT,  // next token for someof
+  JVST_ST_SOMEOF_FINAL, // teardown someof handling
+
   JVST_ST_VALID,        // valid, consume current token
 };
 
 static const char *vst2name(int st)
 {
   switch (st) {
-    case JVST_ST_ERR:         return "ST_ERR";
-    case JVST_ST_VALUE:       return "ST_VALUE";
-    case JVST_ST_OBJECT:      return "ST_OBJECT";
-    case JVST_ST_FETCH_PROP:  return "ST_FETCH_PROP";
-    case JVST_ST_AFTER_VALUE: return "ST_AFTER_VALUE";
-    case JVST_ST_CHECKOBJ:    return "ST_CHECKOBJ";
-    case JVST_ST_CHECKOBJ1:   return "ST_CHECKOBJ1";
-    case JVST_ST_EAT_VALUE:   return "ST_EAT_VALUE";
-    case JVST_ST_EAT_OBJECT:  return "ST_EAT_OBJECT";
-    case JVST_ST_EAT_ARRAY:   return "ST_EAT_ARRAY";
-    case JVST_ST_VALID:       return "ST_VALID";
-    default:                  return "UNKNOWN";
+    case JVST_ST_ERR:          return "ST_ERR";
+    case JVST_ST_VALUE:        return "ST_VALUE";
+    case JVST_ST_OBJECT:       return "ST_OBJECT";
+    case JVST_ST_FETCH_PROP:   return "ST_FETCH_PROP";
+    case JVST_ST_AFTER_VALUE:  return "ST_AFTER_VALUE";
+    case JVST_ST_CHECKOBJ:     return "ST_CHECKOBJ";
+    case JVST_ST_CHECKOBJ1:    return "ST_CHECKOBJ1";
+    case JVST_ST_EAT_VALUE:    return "ST_EAT_VALUE";
+    case JVST_ST_EAT_OBJECT:   return "ST_EAT_OBJECT";
+    case JVST_ST_EAT_ARRAY:    return "ST_EAT_ARRAY";
+    case JVST_ST_SOMEOF_INIT:  return "ST_SOMEOF_INIT";
+    case JVST_ST_SOMEOF_NEXT:  return "ST_SOMEOF_NEXT";
+    case JVST_ST_SOMEOF_FINAL: return "ST_SOMEOF_FINAL";
+    case JVST_ST_VALID:        return "ST_VALID";
+    default:                   return "UNKNOWN";
   }
 }
 
@@ -97,11 +105,19 @@ static const char *jvst_ret2name(int ret)
 
 static const struct ast_schema empty_schema = {0};
 
+struct validator_split {
+  size_t nv;
+  struct jvst_validator *vv;
+};
+
 struct jvst_state {
   const struct ast_schema *schema;
   size_t nitems;
   size_t counters[NCOUNTERS];
-  uint64_t work[2];
+  union {
+    uint64_t work[2];
+    struct validator_split split;
+  } u;
   enum JVST_STATE state;
 };
 
@@ -146,9 +162,9 @@ static void dump_stack(struct jvst_validator *v)
 
     if (nc > 0) {
       fprintf(stderr," W");
-      nc=sizeof sp->work / sizeof sp->work[0];
+      nc=ARRAYLEN(sp->u.work);
       for (ci=0; ci < nc; ci++) {
-        fprintf(stderr, " %8" PRIu64, sp->work[ci]);
+        fprintf(stderr, " %8" PRIu64, sp->u.work[ci]);
       }
     }
     fprintf(stderr, "\n");
@@ -170,14 +186,14 @@ static void zerocounters(struct jvst_state *sp)
 {
   size_t i,nc,nw;
   sp->nitems = 0;
-  nc = sizeof sp->counters / sizeof sp->counters[0];
+  nc = ARRAYLEN(sp->counters);
   for (i=0; i < nc; i++) {
     sp->counters[i] = 0;
   }
 
-  nw = sizeof sp->work / sizeof sp->work[0];
+  nw = ARRAYLEN(sp->u.work);
   for (i=0; i < nw; i++) {
-    sp->work[i] = 0;
+    sp->u.work[i] = 0;
   }
 }
 
@@ -323,7 +339,7 @@ static enum JVST_RESULT eat_value(struct jvst_validator *v, enum SJP_RESULT pret
   sp->nitems += evt->n;
   switch (pret) {
     case SJP_OK:
-      return (popstate(v) != NULL) ? JVST_VALID : JVST_INVALID;
+      return (popstate(v) != NULL) ? JVST_VALID : ERR_UNDERFLOW();
 
     case SJP_PARTIAL:
     case SJP_MORE:
@@ -399,7 +415,7 @@ static enum JVST_RESULT eat_array(struct jvst_validator *v, enum SJP_RESULT pret
     case SJP_ARRAY_END:
       sp->counters[CI_A_NUM_ARRS]--;
       if (sp->counters[CI_A_NUM_ARRS] == 0) {
-        return (popstate(v) != NULL) ? JVST_VALID : JVST_INVALID;
+        return (popstate(v) != NULL) ? JVST_VALID : ERR_UNDERFLOW();
       }
       break;
 
@@ -460,7 +476,7 @@ static enum JVST_RESULT eat_object(struct jvst_validator *v, enum SJP_RESULT pre
     case SJP_OBJECT_END:
       sp->counters[CI_O_NUM_OBJS]--;
       if (sp->counters[CI_O_NUM_OBJS] == 0) {
-        return (popstate(v) != NULL) ? JVST_VALID : JVST_INVALID;
+        return (popstate(v) != NULL) ? JVST_VALID : ERR_UNDERFLOW();
       }
       break;
 
@@ -484,13 +500,7 @@ static enum JVST_RESULT eat_object(struct jvst_validator *v, enum SJP_RESULT pre
     default:
       /* nop */
       break;
-  /*
   }
-    // XXX - todo: constraints aside from allOf/anyOf/oneOf
-    validate_some_of(v);
-  }
-  */
-
 
   return JVST_NEXT;
 }
@@ -564,6 +574,142 @@ static inline enum JVST_RESULT check_type_priv(struct jvst_validator *v,
   return invalid(v, file, line, "expected type %d but found %d", mask, bits);
 }
 
+static enum JVST_RESULT validate_next_event(struct jvst_validator *v, enum SJP_RESULT pret, struct sjp_event *evt);
+
+static enum JVST_RESULT validate_some_of(struct jvst_validator *v, enum SJP_RESULT pret, struct sjp_event *evt)
+{
+  struct jvst_state *sp;
+  const struct ast_schema *schema;
+  struct ast_schema_set *sset;
+  struct jvst_validator *vv;
+  size_t i,count;
+
+  if (sp = getstate(v), sp == NULL) {
+    return ERR_UNDERFLOW();
+  }
+
+  schema = sp->schema;
+  assert(schema != NULL);
+
+  switch (sp->state) {
+    case JVST_ST_SOMEOF_INIT:
+      goto init;
+
+    case JVST_ST_SOMEOF_NEXT:
+      goto next;
+
+    case JVST_ST_SOMEOF_FINAL:
+      goto final;
+
+    default:
+      SHOULD_NOT_REACH();
+  }
+
+init:
+  count = 0;
+  for (sset = schema->some_of.set; sset != NULL; sset = sset->next) {
+    count++;
+  }
+
+  zerocounters(sp);
+
+  // allocate split validators
+  vv = malloc(count * sizeof sp->u.split.vv[0]);
+  if (vv == NULL) {
+    return INVALID(v, "cannot allocate %zu split validators for some_of evaluation", count);
+  }
+  sp->u.split.vv = vv;
+  sp->u.split.nv = count;
+
+  // TODO: bound allocation and split the current stack to keep resource
+  // use fixed/minimized
+  for (i=0,sset = schema->some_of.set; sset != NULL; sset = sset->next,i++) {
+    assert(i < count);
+    jvst_validate_init_defaults(&vv[i], sset->schema);
+  }
+  assert(i == count);
+
+  sp->state = JVST_ST_SOMEOF_NEXT;
+
+  /* fallthrough */
+
+next:
+  {
+    unsigned num_valid = 0, num_invalid = 0;
+    int valid = 0,more = 0;
+
+    vv = sp->u.split.vv;
+    count = sp->u.split.nv;
+
+    // feed token to each validator
+    for (i=0; i < count; i++) {
+      enum JVST_RESULT ret;
+      ret = validate_next_event(&vv[i], pret, evt);
+      switch (ret) {
+        case JVST_INVALID:
+          num_invalid++;
+          break;
+
+        case JVST_NEXT:
+          break;
+
+        case JVST_MORE:
+          more = 1;
+          break;
+
+        case JVST_VALID:
+          valid = 1;
+          num_valid++;
+          break;
+
+        default:
+          SHOULD_NOT_REACH();
+      }
+    }
+
+    sp->counters[0] = num_valid;
+    sp->counters[1] = num_invalid;
+
+    if (valid && more) {
+      return INVALID(v, "internal error: split return of both JVST_MORE and JVST_VALID");
+    }
+
+    // FIXME: check for overflow!
+    if (valid || (num_invalid + schema->some_of.min > count)) {
+      sp->state = JVST_ST_SOMEOF_FINAL;
+      goto final;
+    }
+  }
+  return JVST_NEXT;
+
+final:
+  {
+    unsigned num_valid = 0, num_invalid = 0;
+    enum JVST_RESULT ret;
+
+    vv = sp->u.split.vv;
+    count = sp->u.split.nv;
+
+    // free split validators
+    for (i=0; i < count; i++) {
+      ret = jvst_validate_close(&vv[i]);
+      if (ret == JVST_INVALID) {
+        num_invalid++;
+      }
+    }
+
+    num_valid = count - num_invalid;
+    if (num_valid < schema->some_of.min || num_valid > schema->some_of.max) {
+      return INVALID(v, "some_of proposition has %zu valid clauses, requires %zu - %zu",
+          num_valid, schema->some_of.min, schema->some_of.max);
+    }
+
+    return (popstate(v) != NULL) ? JVST_VALID : ERR_UNDERFLOW();
+  }
+
+  return JVST_INVALID;
+}
+
 #define CHECK_TYPE(v,mask,type) do{ \
   if (check_type_priv((v),(mask),(type), __FILE__, __LINE__) != JVST_VALID) { \
     return JVST_INVALID;            \
@@ -579,9 +725,10 @@ static enum JVST_RESULT validate_value(struct jvst_validator *v, enum SJP_RESULT
 
   assert(sp->schema != NULL);
 
-  if (sp->schema.some_of.set != NULL) {
+  if (sp->schema->some_of.set != NULL) {
     // XXX - TODO: constraints aside from allOf/anyOf/oneOf
-    validate_some_of(v, pret, evt);
+    sp->state = JVST_ST_SOMEOF_INIT;
+    return validate_some_of(v, pret, evt);
   }
 
   // XXX - if condition effectively repeated inside... this seems wrong
@@ -662,7 +809,7 @@ static enum JVST_RESULT validate_value(struct jvst_validator *v, enum SJP_RESULT
       SHOULD_NOT_REACH(v);
   }
 
-  return (popstate(v) != NULL) ? JVST_VALID : JVST_INVALID;
+  return (popstate(v) != NULL) ? JVST_VALID : ERR_UNDERFLOW();
 }
 #undef CHECK_TYPE
 
@@ -818,7 +965,7 @@ initialize:
 new_prop:
   sp->state = JVST_ST_FETCH_PROP;
   memset(v->kbuf,0,sizeof v->kbuf);
-  sp->work[WI_O_KEYSIZE] = 0; // <-- ? XXX FIXME
+  sp->u.work[WI_O_KEYSIZE] = 0; // <-- ? XXX FIXME
 
   /* fallthrough */
 
@@ -829,12 +976,12 @@ fetch_prop:
       return JVST_MORE;
 
     case SJP_PARTIAL:
-      if (sp->work[WI_O_KEYSIZE] + evt->n > sizeof v->kbuf) {
+      if (sp->u.work[WI_O_KEYSIZE] + evt->n > sizeof v->kbuf) {
         // FIXME: need better errors!
         return INVALID(v, "key split across buffers is too long");
       }
-      memcpy(&v->kbuf[sp->work[WI_O_KEYSIZE]], evt->text, evt->n);
-      sp->work[WI_O_KEYSIZE] += evt->n;
+      memcpy(&v->kbuf[sp->u.work[WI_O_KEYSIZE]], evt->text, evt->n);
+      sp->u.work[WI_O_KEYSIZE] += evt->n;
       return JVST_MORE; // XXX - should this be JVST_NEXT ?
 
     case SJP_OK:
@@ -843,18 +990,18 @@ fetch_prop:
         goto check_obj;
       }
 
-      if (sp->work[WI_O_KEYSIZE] == 0) {
+      if (sp->u.work[WI_O_KEYSIZE] == 0) {
         key = evt->text;
         nkey = evt->n;
       } else {
-        size_t ksz = sp->work[WI_O_KEYSIZE] + evt->n;
+        size_t ksz = sp->u.work[WI_O_KEYSIZE] + evt->n;
         if (ksz > sizeof v->kbuf) {
           // FIXME: need better errors!
           return INVALID(v, "key split across buffers is too long");
         }
 
-        memcpy(&v->kbuf[sp->work[WI_O_KEYSIZE]], evt->text, evt->n);
-        sp->work[WI_O_KEYSIZE] = ksz; // record this for debugging purposes
+        memcpy(&v->kbuf[sp->u.work[WI_O_KEYSIZE]], evt->text, evt->n);
+        sp->u.work[WI_O_KEYSIZE] = ksz; // record this for debugging purposes
 
         key = v->kbuf;
         nkey = ksz;
@@ -875,7 +1022,7 @@ fetch_prop:
   if (schema->required.set != NULL) {
     size_t bit;
     bit = bit_from_set(schema->required.set, key, nkey);
-    sp->work[WI_O_REQBITS] |= bit;
+    sp->u.work[WI_O_REQBITS] |= bit;
   }
 
   // check property
@@ -914,13 +1061,13 @@ check_obj:
   }
 
   /* check for required properties */
-  if (venum & OBJ_REQUIRED && sp->work[WI_O_REQBITS] != reqmask) {
+  if (venum & OBJ_REQUIRED && sp->u.work[WI_O_REQBITS] != reqmask) {
     // XXX - give a more specific reason (eg: first required property that
     // is missing)
     return INVALID(v, "object is missing required properties");
   }
 
-  return (popstate(v) != NULL) ? JVST_VALID : JVST_INVALID;
+  return (popstate(v) != NULL) ? JVST_VALID : ERR_UNDERFLOW();
 }
 
 static enum JVST_RESULT validate_next_event(struct jvst_validator *v, enum SJP_RESULT pret, struct sjp_event *evt)
@@ -950,7 +1097,7 @@ static enum JVST_RESULT validate_next_event(struct jvst_validator *v, enum SJP_R
         (void *)top->schema,
         top->nitems,
         top->counters[0], top->counters[1],
-        top->work[0], top->work[1]);
+        top->u.work[0], top->u.work[1]);
 
     switch (top->state) {
       case JVST_ST_ERR:
@@ -980,9 +1127,14 @@ static enum JVST_RESULT validate_next_event(struct jvst_validator *v, enum SJP_R
         ret = eat_array(v, pret, evt);
         break;
 
+      case JVST_ST_SOMEOF_INIT:
+      case JVST_ST_SOMEOF_NEXT:
+      case JVST_ST_SOMEOF_FINAL:
+        ret = validate_some_of(v, pret, evt);
+        break;
+
       case JVST_ST_VALID:
-        popstate(v);
-        ret = JVST_VALID; // JVST_NEXT;
+        ret = (popstate(v) != NULL) ? JVST_VALID : ERR_UNDERFLOW();
         break;
 
       default:
