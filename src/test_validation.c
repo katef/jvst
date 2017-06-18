@@ -251,6 +251,19 @@ static const char *jvst_ret2name(int ret)
   }
 }
 
+static void dump_err_stack(struct jvst_validator *v)
+{
+  int i;
+  fprintf(stderr, "ERROR in validator:\n");
+  for (i=0; i < v->etop; i++) {
+    fprintf(stderr, "[%2d] %16s:%4d %s\n",
+        i,
+        v->errstack[i].file,
+        v->errstack[i].line,
+        v->errstack[i].msg);
+  }
+}
+
 static int run_test(const struct validation_test *t)
 {
   struct jvst_validator v;
@@ -274,11 +287,19 @@ static int run_test(const struct validation_test *t)
       */
   failed = JVST_IS_INVALID(ret);
 
+  if (failed && t->succeeds) {
+    dump_err_stack(&v);
+  }
+
   ret = jvst_validate_close(&v);
   /*
   fprintf(stderr, "jvst_validate_close() : %s\n",
       jvst_ret2name(ret));
       */
+  if (!failed && JVST_IS_INVALID(ret) && t->succeeds) {
+    dump_err_stack(&v);
+  }
+
   failed = failed || JVST_IS_INVALID(ret);
 
   return !failed;
@@ -818,7 +839,7 @@ int main(void)
 
   test_required();
 
-  // test_anyof();
+  //I test_anyof();
 
   printf("%d tests, %d failures\n", ntest, nfail);
 

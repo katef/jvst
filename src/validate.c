@@ -1,8 +1,11 @@
 #include "validate.h"
 
 #include <stdio.h>
+#include <stdarg.h>
 #include <string.h>
 #include <math.h>
+#include <inttypes.h>
+#include <limits.h>
 
 #include <assert.h>
 
@@ -18,42 +21,77 @@
      abort(); \
    } while(0)
 #else
-#  define SHOULD_NOT_REACH(v) return invalid(v);
+#  define SHOULD_NOT_REACH(v) return INVALID(v, "internal error: SHOULD_NOT_REACH()");
 #endif
 
 #define NCOUNTERS 2
 
+#define ARRAYLEN(x) (sizeof (x) / sizeof (x)[0])
+#define STRINGIFY0(x) # x
+#define STRINGIFY(x) STRINGIFY0(x)
+#define SYMCAT0(x,y) x ## y
+#define SYMCAT(x,y) SYMCAT0(x,y)
+#define SYMCAT3(x,y,z) SYMCAT(SYMCAT(x,y),z)
+
+#ifdef static_assert
+#  define STATIC_ASSERT(x,name) static_assert((x),STRINGIFY(name))
+#else
+#  define STATIC_ASSERT(x,name) struct { char tmp[2*(x)-1]; } SYMCAT3(static_assert_, name, __LINE__)
+#endif
+
+#define INVALID(v, ...) invalid((v), __FILE__, __LINE__, __VA_ARGS__)
+
+#define ERR_OVERFLOW() INVALID(v, "too much nesting: stack is exhausted")
+#define ERR_UNDERFLOW() INVALID(v, "internal error: stack underflow")
+#define ERR_JSON(r) INVALID(v, "error parsing json: %d", r)
+#define ERR_ALREADY_ERR() INVALID(v, "validator already encountered an error")
+
 enum JVST_STATE {
   JVST_ST_ERR = -1,
 
-  JVST_ST_VALUE = 0,
-  JVST_ST_OBJECT,
+  JVST_ST_VALUE = 0,    // validate a value
 
-  JVST_ST_FETCH_PROP,
-  JVST_ST_CHECKOBJ,
-  JVST_ST_CHECKOBJ1,
+  JVST_ST_OBJECT_INIT,  // validate object: initialize validation
+  JVST_ST_OBJECT,       // validate object: next property
+  JVST_ST_FETCH_PROP,   // validate object: continue fetching property
+  JVST_ST_AFTER_VALUE,  // validate object: after previous value
+  JVST_ST_CHECKOBJ,     // validate object: check object for consistency
+  JVST_ST_CHECKOBJ1,    // validate object: fetch counters from last frame, check for consistency
 
   // consumes until the current value is finished
-  JVST_ST_EAT_VALUE,
-  JVST_ST_EAT_OBJECT,
-  JVST_ST_EAT_ARRAY,
+  JVST_ST_EAT_VALUE,    // eat a value
+  JVST_ST_EAT_OBJECT,   // eat an object
+  JVST_ST_EAT_ARRAY,    // eat an array
 
-  // Used when consuming: valid if no error while consuming
-  JVST_ST_VALID,
+  JVST_ST_VALID,        // valid, consume current token
 };
 
 static const char *vst2name(int st)
 {
   switch (st) {
-    case JVST_ST_ERR:        return "ST_ERR";
-    case JVST_ST_VALUE:      return "ST_VALUE";
-    case JVST_ST_OBJECT:     return "ST_OBJECT";
-    case JVST_ST_FETCH_PROP: return "ST_FETCH_PROP";
-    case JVST_ST_EAT_VALUE:  return "ST_EAT_VALUE";
-    case JVST_ST_EAT_OBJECT: return "ST_EAT_OBJECT";
-    case JVST_ST_EAT_ARRAY:  return "ST_EAT_ARRAY";
-    case JVST_ST_VALID:      return "ST_VALID";
-    default:                 return "UNKNOWN";
+    case JVST_ST_ERR:         return "ST_ERR";
+    case JVST_ST_VALUE:       return "ST_VALUE";
+    case JVST_ST_OBJECT:      return "ST_OBJECT";
+    case JVST_ST_FETCH_PROP:  return "ST_FETCH_PROP";
+    case JVST_ST_AFTER_VALUE: return "ST_AFTER_VALUE";
+    case JVST_ST_CHECKOBJ:    return "ST_CHECKOBJ";
+    case JVST_ST_CHECKOBJ1:   return "ST_CHECKOBJ1";
+    case JVST_ST_EAT_VALUE:   return "ST_EAT_VALUE";
+    case JVST_ST_EAT_OBJECT:  return "ST_EAT_OBJECT";
+    case JVST_ST_EAT_ARRAY:   return "ST_EAT_ARRAY";
+    case JVST_ST_VALID:       return "ST_VALID";
+    default:                  return "UNKNOWN";
+  }
+}
+
+static const char *jvst_ret2name(int ret)
+{
+  switch (ret) {
+    case JVST_INVALID:  return "JVST_INVALID";
+    case JVST_VALID:    return "JVST_VALID";
+    case JVST_MORE:     return "JVST_MORE";
+    case JVST_NEXT:     return "JVST_NEXT";
+    default:            return "UNKNOWN";
   }
 }
 
@@ -63,7 +101,25 @@ struct jvst_state {
   const struct ast_schema *schema;
   size_t nitems;
   size_t counters[NCOUNTERS];
+  uint64_t work[2];
   enum JVST_STATE state;
+};
+
+/* counter indices for various sub-machines */
+enum CI_OBJ_MACHINES {
+  CI_O_NUM_OBJS = 0,
+  CI_O_NUM_ARRS = 1,
+};
+
+enum CI_ARR_MACHINES {
+  CI_A_NUM_OBJS = 0,
+  CI_A_NUM_ARRS = 1,
+};
+
+/* work indices for various sub-machines */
+enum WI_OBJ_MACHINES {
+  WI_O_KEYSIZE = 0,
+  WI_O_REQBITS = 1,
 };
 
 static void dump_stack(struct jvst_validator *v)
@@ -73,11 +129,29 @@ static void dump_stack(struct jvst_validator *v)
   if (n > v->smax) { n = v->smax; }
   fprintf(stderr, "\ntop: %zu, max: %zu\n", v->stop,v->smax);
   for (i=0; i < n; i++) {
+    size_t ci,nc;
     struct jvst_state *sp = &v->sstack[i];
 
-    fprintf(stderr, "[%zu] %-16s %8p %zu %zu %zu\n",
+    fprintf(stderr, "[%zu] %-16s %8p %8zu",
         i, vst2name(sp->state), (void *)sp->schema,
-        sp->nitems, sp->counters[0], sp->counters[1]);
+        sp->nitems);
+
+    nc=sizeof sp->counters / sizeof sp->counters[0];
+    if (nc > 0) {
+      fprintf(stderr," C");
+      for (ci=0; ci < nc; ci++) {
+        fprintf(stderr, " %8zu", sp->counters[ci]);
+      }
+    }
+
+    if (nc > 0) {
+      fprintf(stderr," W");
+      nc=sizeof sp->work / sizeof sp->work[0];
+      for (ci=0; ci < nc; ci++) {
+        fprintf(stderr, " %8" PRIu64, sp->work[ci]);
+      }
+    }
+    fprintf(stderr, "\n");
   }
   fprintf(stderr, "---\n");
 }
@@ -94,17 +168,24 @@ static void copycounters(struct jvst_state *dst, const struct jvst_state *src)
 
 static void zerocounters(struct jvst_state *sp)
 {
-  size_t i,n;
+  size_t i,nc,nw;
   sp->nitems = 0;
-  n = sizeof sp->counters / sizeof sp->counters[0];
-  for (i=0; i < n; i++) {
+  nc = sizeof sp->counters / sizeof sp->counters[0];
+  for (i=0; i < nc; i++) {
     sp->counters[i] = 0;
+  }
+
+  nw = sizeof sp->work / sizeof sp->work[0];
+  for (i=0; i < nw; i++) {
+    sp->work[i] = 0;
   }
 }
 
 void jvst_validate_init_defaults(struct jvst_validator *v, const struct ast_schema *schema)
 {
   struct jvst_state zero = { 0 };
+  STATIC_ASSERT(ARRAYLEN(v->errstack) <= INT_MAX, err_stack_fits_in_etop);
+
   v->schema = schema;
 
   v->smax = JVST_DEFAULT_STACK_SIZE;
@@ -115,9 +196,11 @@ void jvst_validate_init_defaults(struct jvst_validator *v, const struct ast_sche
   v->sstack[0].schema = v->schema;
   v->stop = 1;
 
+  v->etop = 0;
+
   (void)sjp_parser_init(&v->p,
-      &v->pstack[0], sizeof v->pstack / sizeof v->pstack[0], 
-      &v->pbuf[0], sizeof v->pbuf / sizeof v->pbuf[0]);
+      &v->pstack[0], ARRAYLEN(v->pstack),
+      &v->pbuf[0], ARRAYLEN(v->pbuf));
 }
 
 static inline struct jvst_state *getstate(struct jvst_validator *v)
@@ -175,7 +258,7 @@ static inline struct jvst_state *popstate(struct jvst_validator *v)
   return &v->sstack[--v->stop];
 }
 
-static int invalid(struct jvst_validator *v)
+static int invalid(struct jvst_validator *v, const char *file, int line, const char *fmt, ...)
 {
   if (v->stop < v->smax) {
     v->sstack[v->stop].state  = JVST_ST_ERR;
@@ -183,6 +266,22 @@ static int invalid(struct jvst_validator *v)
   }
 
   v->stop++; // always increment if v->stop == v->smax to mark as invalid
+
+  STATIC_ASSERT(ARRAYLEN(v->errstack) <= INT_MAX, err_stack_fits_in_etop);
+  assert(v->etop >= 0);
+  if (v->etop < (int)ARRAYLEN(v->errstack)) {
+    va_list args;
+
+    v->errstack[v->etop].file = file;
+    v->errstack[v->etop].line = line;
+
+    va_start(args,fmt);
+    vsnprintf(v->errstack[v->etop].msg, sizeof v->errstack[v->etop].msg, fmt, args);
+    va_end(args);
+
+    v->etop++;
+  }
+
   return JVST_INVALID;
 }
 
@@ -205,37 +304,28 @@ static int invalid(struct jvst_validator *v)
 //
 // For numbers, counts the number of bytes and returns them in the
 // nitems field of the top stack frame.
-static int eat_value(struct jvst_validator *v, struct sjp_event *ev)
+static enum JVST_RESULT eat_value(struct jvst_validator *v, enum SJP_RESULT pret, struct sjp_event *evt)
 {
   struct jvst_state *sp;
-  struct sjp_event evt;
-  int ret;
 
   sp = getstate(v);
-  if (ev != NULL) {
-    sp->state = JVST_ST_EAT_VALUE;
-    sp->nitems = ev->n;
-    sp->counters[0] = sp->counters[1] = 0;
-  }
-
   if (sp == NULL) {
     // XXX - this is an internal error and should be reported as such
-    return invalid(v);
+    return ERR_UNDERFLOW();
   }
 
-restart:
-  if (ret = sjp_parser_next(&v->p, &evt), SJP_ERROR(ret)) {
-    return invalid(v);
+  assert(sp->state == JVST_ST_EAT_VALUE);
+
+  if (SJP_ERROR(pret)) {
+    return ERR_JSON(pret);
   }
 
-  sp->nitems += evt.n;
-  switch (ret) {
+  sp->nitems += evt->n;
+  switch (pret) {
     case SJP_OK:
       return (popstate(v) != NULL) ? JVST_VALID : JVST_INVALID;
 
     case SJP_PARTIAL:
-      goto restart;
-
     case SJP_MORE:
       return JVST_MORE;
 
@@ -253,14 +343,12 @@ restart:
 //
 // Counts the number of values encountered in the array and returns them
 // in the nitems field of the return stack frame.
-static int eat_array(struct jvst_validator *v)
+static enum JVST_RESULT eat_array(struct jvst_validator *v, enum SJP_RESULT pret, struct sjp_event *evt)
 {
   struct jvst_state *sp;
-  struct sjp_event evt;
-  int ret;
 
   if (sp = getstate(v), sp == NULL) {
-    return JVST_INVALID;
+    return ERR_UNDERFLOW();
   }
 
   if (sp->state != JVST_ST_EAT_ARRAY) {
@@ -268,64 +356,59 @@ static int eat_array(struct jvst_validator *v)
     zerocounters(sp);
   }
 
-  for(;;) {
-    ret = sjp_parser_next(&v->p, &evt);
-    switch (ret) {
-      case SJP_MORE:
-        return JVST_MORE;
+  switch (pret) {
+    case SJP_MORE:
+    case SJP_PARTIAL:
+      return JVST_MORE;
 
-      case SJP_PARTIAL:
-        continue;
+    case SJP_OK:
+      /* nop */
+      break;
 
-      case SJP_OK:
-        /* nop */
-        break;
-
-      default:
-        // should be an error
-        if (!SJP_ERROR(ret)) {
-          SHOULD_NOT_REACH();
-        }
-        return JVST_INVALID;
-    }
-
-    // SJP_OK -- completed token available
-
-    // If we just read an item and we're not in a nested
-    // array/object, increment the item count
-    if (sp->counters[0] == 0 &&
-        sp->counters[1] == 0 &&
-        sjp_parser_state(&v->p) == SJP_PARSER_ARR_ITEM) {
-      sp->nitems++;
-    }
-
-    switch (evt.type) {
-      case SJP_OBJECT_BEG:
-        sp->counters[0]++;
-        break;
-
-      case SJP_OBJECT_END:
-        sp->counters[0]--;
-        break;
-
-      case SJP_ARRAY_BEG:
-        sp->counters[1]++;
-        break;
-
-      case SJP_ARRAY_END:
-        if (sp->counters[1] == 0) {
-          return (popstate(v) != NULL) ? JVST_VALID : JVST_INVALID;
-        }
-        sp->counters[1]--;
-        break;
-
-      default:
-        /* nop */
-        break;
-    }
+    default:
+      if (SJP_ERROR(pret)) {
+        return ERR_JSON(pret);
+      }
+      // should be a parser error
+      SHOULD_NOT_REACH();
   }
 
-  SHOULD_NOT_REACH(v);
+  // SJP_OK -- completed token available
+
+  // If we just read an item and we're not in a nested
+  // array/object, increment the item count
+  if (sp->counters[CI_A_NUM_OBJS] == 0 &&
+      sp->counters[CI_A_NUM_ARRS] == 0 &&
+      sjp_parser_state(&v->p) == SJP_PARSER_ARR_ITEM) {
+    sp->nitems++;
+  }
+
+  switch (evt->type) {
+    case SJP_OBJECT_BEG:
+      sp->counters[CI_A_NUM_OBJS]++;
+      break;
+
+    case SJP_OBJECT_END:
+      sp->counters[CI_A_NUM_OBJS]--;
+      break;
+
+    case SJP_ARRAY_BEG:
+      sp->counters[CI_A_NUM_ARRS]++;
+      break;
+
+    case SJP_ARRAY_END:
+      sp->counters[CI_A_NUM_ARRS]--;
+      if (sp->counters[CI_A_NUM_ARRS] == 0) {
+        return (popstate(v) != NULL) ? JVST_VALID : JVST_INVALID;
+      }
+      break;
+
+    default:
+      /* nop */
+      break;
+  }
+
+  return JVST_NEXT;
 }
 
 // Eats an object: consumes all tokens until the object ends.  Call should
@@ -337,14 +420,12 @@ static int eat_array(struct jvst_validator *v)
 //
 // Counts the number of values encountered in the array and returns them
 // in the nitems field of the return stack frame.
-static int eat_object(struct jvst_validator *v)
+static enum JVST_RESULT eat_object(struct jvst_validator *v, enum SJP_RESULT pret, struct sjp_event *evt)
 {
   struct jvst_state *sp;
-  struct sjp_event evt;
-  int ret;
 
   if (sp = getstate(v), sp == NULL) {
-    return JVST_INVALID;
+    return ERR_UNDERFLOW();
   }
 
   if (sp->state != JVST_ST_EAT_OBJECT) {
@@ -352,67 +433,69 @@ static int eat_object(struct jvst_validator *v)
     zerocounters(sp);
   }
 
-  for(;;) {
-    ret = sjp_parser_next(&v->p, &evt);
-    switch (ret) {
-      case SJP_MORE:
-        return JVST_MORE;
+  switch (pret) {
+    case SJP_MORE:
+    case SJP_PARTIAL:
+      return JVST_MORE;
 
-      case SJP_PARTIAL:
-        continue;
+    case SJP_OK:
+      /* nop */
+      break;
 
-      case SJP_OK:
-        /* nop */
-        break;
-
-      default:
-        // should be an error
-        if (!SJP_ERROR(ret)) {
-          SHOULD_NOT_REACH();
-        }
-        return JVST_INVALID;
-    }
-
-    // SJP_OK -- completed token available
-
-    switch (evt.type) {
-      case SJP_OBJECT_BEG:
-        sp->counters[0]++;
-        break;
-
-      case SJP_OBJECT_END:
-        if (sp->counters[0] == 0) {
-          return (popstate(v) != NULL) ? JVST_VALID : JVST_INVALID;
-        }
-        sp->counters[0]--;
-
-      case SJP_ARRAY_BEG:
-        sp->counters[1]++;
-        break;
-
-      case SJP_ARRAY_END:
-        sp->counters[1]--;
-        break;
-
-      case SJP_STRING:
-        // If we just read a key and we're not in a nested object,
-        // increment the number of kv pairs
-        if (sp->counters[0] == 0 &&
-            sp->counters[1] == 0 &&
-            sjp_parser_state(&v->p) == SJP_PARSER_OBJ_KEY) {
-          sp->nitems++;
-        }
-
-      default:
-        /* nop */
-        break;
-    }
+    default:
+      // should be an error
+      if (SJP_ERROR(pret)) {
+        return ERR_JSON(pret);
+      }
+      SHOULD_NOT_REACH();
   }
 
-  SHOULD_NOT_REACH(v);
+  // SJP_OK -- completed token available
+
+  switch (evt->type) {
+    case SJP_OBJECT_BEG:
+      sp->counters[CI_O_NUM_OBJS]++;
+      break;
+
+    case SJP_OBJECT_END:
+      sp->counters[CI_O_NUM_OBJS]--;
+      if (sp->counters[CI_O_NUM_OBJS] == 0) {
+        return (popstate(v) != NULL) ? JVST_VALID : JVST_INVALID;
+      }
+      break;
+
+    case SJP_ARRAY_BEG:
+      sp->counters[CI_O_NUM_ARRS]++;
+      break;
+
+    case SJP_ARRAY_END:
+      sp->counters[CI_O_NUM_ARRS]--;
+      break;
+
+    case SJP_STRING:
+      // If we just read a key and we're not in a nested object,
+      // increment the number of kv pairs
+      if (sp->counters[CI_O_NUM_OBJS] == 1 && // XXX FIXME
+          sp->counters[CI_O_NUM_ARRS] == 0 &&
+          sjp_parser_state(&v->p) == SJP_PARSER_OBJ_KEY) {
+        sp->nitems++;
+      }
+
+    default:
+      /* nop */
+      break;
+  /*
+  }
+    // XXX - todo: constraints aside from allOf/anyOf/oneOf
+    validate_some_of(v);
+  }
+  */
+
+
+  return JVST_NEXT;
 }
 
-static int validate_object(struct jvst_validator *v);
+static enum JVST_RESULT validate_object(struct jvst_validator *v, enum SJP_RESULT pret, struct sjp_event *evt);
 
 static inline bool is_valid_type(struct jvst_validator *v, enum json_valuetype mask, enum json_valuetype bits)
 {
@@ -426,15 +509,17 @@ static inline bool is_valid_type(struct jvst_validator *v, enum json_valuetype m
   return false;
 }
 
-static int validate_number(struct jvst_validator *v, struct sjp_event *evt)
+static enum JVST_RESULT validate_number(struct jvst_validator *v, enum SJP_RESULT pret, struct sjp_event *evt)
 {
   struct jvst_state *sp;
   const struct ast_schema *schema;
 
+  (void)pret;
+
   assert(evt->type == SJP_NUMBER);
 
   if (sp = getstate(v), sp == NULL) {
-    return JVST_INVALID;
+    return ERR_UNDERFLOW();
   }
   schema = sp->schema;
   assert(schema != NULL);
@@ -442,19 +527,19 @@ static int validate_number(struct jvst_validator *v, struct sjp_event *evt)
   if (schema->kws & KWS_MINIMUM) {
     if (schema->exclusive_minimum) {
       if (evt->d <= schema->minimum) {
-        return JVST_INVALID;
+        return INVALID(v, "invalid number: %f <= %f", evt->d, schema->minimum);
       }
     } else { // not exclusiveMinimum
       if (evt->d < schema->minimum) {
-        return JVST_INVALID;
+        return INVALID(v, "invalid number: %f < %f", evt->d, schema->minimum);
       }
     }
   }
 
-  return (popstate(v) != NULL) ? JVST_VALID : JVST_INVALID;
+  return (popstate(v) != NULL) ? JVST_VALID : ERR_UNDERFLOW();
 }
 
-static int validate_integer(struct jvst_validator *v, struct sjp_event *evt)
+static enum JVST_RESULT validate_integer(struct jvst_validator *v, enum SJP_RESULT pret, struct sjp_event *evt)
 {
   double x,cx;
 
@@ -463,49 +548,50 @@ static int validate_integer(struct jvst_validator *v, struct sjp_event *evt)
   x = evt->d;
   if (x != ceil(x)) {
     // XXX - error: not an integer
-    return JVST_INVALID;
+    return INVALID(v, "number %f is not an integer", x);
   }
 
-  return validate_number(v,evt);
+  return validate_number(v,pret,evt);
+}
+
+static inline enum JVST_RESULT check_type_priv(struct jvst_validator *v, 
+    enum json_valuetype mask, enum json_valuetype bits, const char *file, int line)
+{
+  if (is_valid_type(v,mask,bits)) {
+      return JVST_VALID;
+  }
+
+  return invalid(v, file, line, "expected type %d but found %d", mask, bits);
 }
 
 #define CHECK_TYPE(v,mask,type) do{ \
-  if (!is_valid_type((v),(mask),(type))) { return invalid(v); } \
-} while(0)
-static int validate_value(struct jvst_validator *v)
+  if (check_type_priv((v),(mask),(type), __FILE__, __LINE__) != JVST_VALID) { \
+    return JVST_INVALID;            \
+  } } while(0)
+
+static enum JVST_RESULT validate_value(struct jvst_validator *v, enum SJP_RESULT pret, struct sjp_event *evt)
 {
-  int ret;
-  struct sjp_event evt = {0};
   struct jvst_state *sp;
 
   if (sp = getstate(v), sp == NULL) {
-    return JVST_INVALID;
+    return ERR_UNDERFLOW();
   }
 
   assert(sp->schema != NULL);
 
-  /*
   if (sp->schema.some_of.set != NULL) {
-    // XXX - todo: constraints aside from allOf/anyOf/oneOf
-    validate_some_of(v);
-  }
-  */
-
-  ret = sjp_parser_next(&v->p, &evt);
-
-  fprintf(stderr, "[%8s] %s\n", ret2name(ret), evt2name(evt.type));
-  if (SJP_ERROR(ret)) {
-    return invalid(v);
+    // XXX - TODO: constraints aside from allOf/anyOf/oneOf
+    validate_some_of(v, pret, evt);
   }
 
   // XXX - if condition effectively repeated inside... this seems wrong
-  if (evt.type == SJP_NONE && ret != SJP_OK) {
+  if (evt->type == SJP_NONE && pret != SJP_OK) {
     // XXX - double check when a SJP_NONE event should correspond to
     // SJP_OK
-    return (ret != SJP_OK) ? JVST_MORE : JVST_INVALID;
+    return (pret != SJP_OK) ? JVST_MORE : JVST_INVALID;
   }
 
-  switch (evt.type) {
+  switch (evt->type) {
     case SJP_NONE:
     default:
       SHOULD_NOT_REACH(v);
@@ -523,20 +609,25 @@ static int validate_value(struct jvst_validator *v)
 
     case SJP_STRING:
       CHECK_TYPE(v, sp->schema->types, JSON_VALUE_STRING);
-      if (ret != SJP_OK) {
+      // XXX - validate the values
+      if (pret != SJP_OK) {
         getstate(v)->state = JVST_ST_VALID;
         if (newframe(v) == NULL) {
-          return JVST_INVALID;
+          return ERR_OVERFLOW();
         }
-        return eat_value(v, &evt);
+
+        sp->state = JVST_ST_OBJECT;
+        sp->nitems = 0;
+        zerocounters(sp);
+        return eat_value(v, pret, evt);
       }
       break;
 
     case SJP_NUMBER:
       // XXX - validate the values
       CHECK_TYPE(v, sp->schema->types, JSON_VALUE_NUMBER | JSON_VALUE_INTEGER);
-      if (ret != SJP_OK) {
-        return ret;
+      if (pret != SJP_OK) {
+        return JVST_MORE;
         /*
         getstate(v)->state = JVST_ST_VALID;
         if (newframe(v) == NULL) {
@@ -547,31 +638,31 @@ static int validate_value(struct jvst_validator *v)
       }
 
       if ((sp->schema->types & (JSON_VALUE_NUMBER | JSON_VALUE_INTEGER)) == JSON_VALUE_INTEGER) {
-        return validate_integer(v, &evt);
+        return validate_integer(v, pret, evt);
       }
-      return validate_number(v, &evt);
-      break;
+      return validate_number(v, pret, evt);
 
     case SJP_ARRAY_BEG:
       CHECK_TYPE(v, sp->schema->types, JSON_VALUE_ARRAY);
       // XXX - validate the array
       getstate(v)->state = JVST_ST_VALID;
       if (newframe(v) == NULL) {
-        return JVST_INVALID;
+        return ERR_OVERFLOW();
       }
-      return eat_array(v);
+      return eat_array(v, pret, evt);
 
     case SJP_OBJECT_BEG:
       CHECK_TYPE(v, sp->schema->types, JSON_VALUE_OBJECT);
-      return validate_object(v);
+      getstate(v)->state = JVST_ST_OBJECT_INIT;
+      zerocounters(sp);
+      return validate_object(v, pret, evt);
 
     case SJP_OBJECT_END:
     case SJP_ARRAY_END:
       SHOULD_NOT_REACH(v);
   }
 
-  popstate(v);
-  return JVST_VALID;
+  return (popstate(v) != NULL) ? JVST_VALID : JVST_INVALID;
 }
 #undef CHECK_TYPE
 
@@ -626,19 +717,16 @@ static size_t bit_from_set(const struct ast_string_set *ss, const char *k, size_
   return 0;
 }
 
-static int validate_object(struct jvst_validator *v)
+static enum JVST_RESULT validate_object(struct jvst_validator *v, enum SJP_RESULT pret, struct sjp_event *evt)
 {
   struct jvst_state *sp;
   const struct ast_schema *schema, *pschema;
-  struct sjp_event evt;
-  int ret, venum;
+  int venum;
   const char *key;
-  size_t nkey;
-  size_t nreq;
-  size_t reqmask;
+  size_t nkey, nreq, reqmask;
 
   if (sp = getstate(v), sp == NULL) {
-    return JVST_INVALID;
+    return ERR_UNDERFLOW();
   }
 
   schema = sp->schema;
@@ -677,11 +765,17 @@ static int validate_object(struct jvst_validator *v)
   }
 
   switch (sp->state) {
+    case JVST_ST_OBJECT_INIT:
+      goto initialize;
+
     case JVST_ST_OBJECT:
       goto new_prop;
 
     case JVST_ST_FETCH_PROP:
       goto fetch_prop;
+
+    case JVST_ST_AFTER_VALUE:
+      goto after_value;
 
     case JVST_ST_CHECKOBJ1:
       // retrieve eat_object counters from returnframe
@@ -699,18 +793,22 @@ static int validate_object(struct jvst_validator *v)
       goto check_obj;
 
     default:
-      /* fast path if we don't have to validate per-property */
-      if ((venum & CHECK_PROP_MASK) == 0) {
-        getstate(v)->state = (venum == 0) ? JVST_ST_VALID : JVST_ST_CHECKOBJ1;
-        if (newframe(v) == NULL) {
-          return JVST_INVALID;
-        }
-        return eat_object(v);
-      }
-
-      sp->state = JVST_ST_OBJECT;
-      zerocounters(sp);
+      SHOULD_NOT_REACH();
   }
+
+initialize:
+  /* fast path if we don't have to validate per-property */
+  if ((venum & CHECK_PROP_MASK) == 0) {
+    getstate(v)->state = (venum == 0) ? JVST_ST_VALID : JVST_ST_CHECKOBJ1;
+    if (newframe(v) == NULL) {
+      return ERR_OVERFLOW();
+    }
+    return eat_object(v,pret,evt);
+  }
+
+  sp->state = JVST_ST_OBJECT;
+  zerocounters(sp);
+  return JVST_NEXT;
 
   // FIXME: currently we limit keys to fit into the kbuf buffer.  This
   // is a limitation of the current dumb approach and hopefully
@@ -720,66 +818,70 @@ static int validate_object(struct jvst_validator *v)
 new_prop:
   sp->state = JVST_ST_FETCH_PROP;
   memset(v->kbuf,0,sizeof v->kbuf);
-  sp->counters[0] = 0;
+  sp->work[WI_O_KEYSIZE] = 0; // <-- ? XXX FIXME
+
+  /* fallthrough */
 
 fetch_prop:
-  ret = sjp_parser_next(&v->p, &evt);
-  switch (ret) {
+  // ret = sjp_parser_next(&v->p, &evt);
+  switch (pret) {
     case SJP_MORE:
       return JVST_MORE;
 
     case SJP_PARTIAL:
-      if (sp->counters[0] + evt.n > sizeof v->kbuf) {
+      if (sp->work[WI_O_KEYSIZE] + evt->n > sizeof v->kbuf) {
         // FIXME: need better errors!
-        return JVST_INVALID;
+        return INVALID(v, "key split across buffers is too long");
       }
-      memcpy(&v->kbuf[sp->counters[0]], evt.text, evt.n);
-      sp->counters[0] += evt.n;
-      goto fetch_prop;
+      memcpy(&v->kbuf[sp->work[WI_O_KEYSIZE]], evt->text, evt->n);
+      sp->work[WI_O_KEYSIZE] += evt->n;
+      return JVST_MORE; // XXX - should this be JVST_NEXT ?
 
     case SJP_OK:
-      if (evt.type == SJP_OBJECT_END) {
+      if (evt->type == SJP_OBJECT_END) {
+        sp->state = JVST_ST_CHECKOBJ;
         goto check_obj;
       }
 
-      if (sp->counters[0] == 0) {
-        key = evt.text;
-        nkey = evt.n;
+      if (sp->work[WI_O_KEYSIZE] == 0) {
+        key = evt->text;
+        nkey = evt->n;
       } else {
-        if (sp->counters[0] + evt.n > sizeof v->kbuf) {
+        size_t ksz = sp->work[WI_O_KEYSIZE] + evt->n;
+        if (ksz > sizeof v->kbuf) {
           // FIXME: need better errors!
-          return JVST_INVALID;
+          return INVALID(v, "key split across buffers is too long");
         }
 
-        memcpy(&v->kbuf[sp->counters[0]], evt.text, evt.n);
-        sp->counters[0] += evt.n;
+        memcpy(&v->kbuf[sp->work[WI_O_KEYSIZE]], evt->text, evt->n);
+        sp->work[WI_O_KEYSIZE] = ksz; // record this for debugging purposes
 
         key = v->kbuf;
-        nkey = sp->counters[0];
+        nkey = ksz;
       }
       break;
 
     default:
-      // should be an error
-      if (!SJP_ERROR(ret)) {
-        SHOULD_NOT_REACH();
+      if (SJP_ERROR(pret)) {
+        return ERR_JSON(pret);
       }
-      return JVST_INVALID;
+      // should be a parser error
+      SHOULD_NOT_REACH();
   }
 
   // record items
   sp->nitems++;
 
+  if (schema->required.set != NULL) {
+    size_t bit;
+    bit = bit_from_set(schema->required.set, key, nkey);
+    sp->work[WI_O_REQBITS] |= bit;
+  }
+
   // check property
   pschema = NULL;
   if (schema->properties.set != NULL) {
     pschema = match_property(schema->properties.set, key, nkey);
-  }
-
-  if (schema->required.set != NULL) {
-    size_t bit;
-    bit = bit_from_set(schema->required.set, key, nkey);
-    sp->counters[1] |= bit;
   }
 
   if (pschema == NULL) {
@@ -788,98 +890,162 @@ fetch_prop:
   }
 
   // validate value against schema
-  sp->state = JVST_ST_OBJECT;
+  sp->state = JVST_ST_AFTER_VALUE;
   if (pushstate(v, JVST_ST_VALUE, pschema) == NULL) {
-    // FIXME: better errors!
-    return JVST_INVALID;
+    return ERR_OVERFLOW();
   }
 
-  return JVST_VALID;
+  return JVST_NEXT;
+
+after_value:
+  sp->state = JVST_ST_OBJECT;
+  return JVST_NEXT;
 
 check_obj:
   /* NB: not all checks are implemented */
   if (venum & OBJ_MINMAX_PROPERTIES) {
     if (sp->nitems < schema->min_properties) {
-      // XXX - give reason why
-      return JVST_INVALID;
+      return INVALID(v, "object has %zu properties, min is %zu", sp->nitems, schema->min_properties);
     }
 
     if (schema->max_properties > 0 && sp->nitems > schema->max_properties) {
-      // XXX - give reason why
-      return JVST_INVALID;
+      return INVALID(v, "object has %zu properties, max is %zu", sp->nitems, schema->max_properties);
     }
   }
 
   /* check for required properties */
-  if (venum & OBJ_REQUIRED && sp->counters[1] != reqmask) {
-    // XXX - give reason why
-    return JVST_INVALID;
+  if (venum & OBJ_REQUIRED && sp->work[WI_O_REQBITS] != reqmask) {
+    // XXX - give a more specific reason (eg: first required property that
+    // is missing)
+    return INVALID(v, "object is missing required properties");
   }
 
-  popstate(v);
-  return JVST_VALID;
+  return (popstate(v) != NULL) ? JVST_VALID : JVST_INVALID;
 }
 
-enum JVST_RESULT jvst_validate_more(struct jvst_validator *v, char *data, size_t n)
+static enum JVST_RESULT validate_next_event(struct jvst_validator *v, enum SJP_RESULT pret, struct sjp_event *evt)
 {
   struct jvst_state *top;
+  int ret;
 
-  sjp_parser_more(&v->p, data, n);
+  char dbgbuf[1024] = {0};
+  size_t n = evt->n;
+  if (n >= sizeof dbgbuf) {
+    n = sizeof dbgbuf - 1;
+  }
+  memcpy(dbgbuf, evt->text, n);
 
-  for (;;) {
-    int ret;
+  fprintf(stderr, "pret = %d (%s)  evt->type = %d (%s)  evt->text = '%s'\n",
+      pret, ret2name(pret), evt->type, evt2name(evt->type), dbgbuf);
+  dump_stack(v);
 
-    dump_stack(v);
-
+  do {
     if (top = getstate(v), top == NULL) {
-      return JVST_INVALID;
+      return ERR_UNDERFLOW();
     }
 
-    fprintf(stderr, "--> %zu [%s] schema = %p  nitems = %zu  counters=[%zu %zu]\n",
+    fprintf(stderr, "--> %zu [%s] schema = %p  nitems = %zu  counters=[%zu %zu]  work=[%" PRIu64 " %" PRIu64 "]\n",
         v->stop,
         vst2name(top->state),
         (void *)top->schema,
         top->nitems,
-        top->counters[0],
-        top->counters[1]);
+        top->counters[0], top->counters[1],
+        top->work[0], top->work[1]);
 
     switch (top->state) {
       case JVST_ST_ERR:
-        return invalid(v);
+        return ERR_ALREADY_ERR();
 
       case JVST_ST_VALUE:
-        ret = validate_value(v);
+        ret = validate_value(v, pret, evt);
         break;
 
       case JVST_ST_OBJECT:
       case JVST_ST_FETCH_PROP:
+      case JVST_ST_AFTER_VALUE:
       case JVST_ST_CHECKOBJ:
       case JVST_ST_CHECKOBJ1:
-        ret = validate_object(v);
+        ret = validate_object(v, pret, evt);
         break;
 
       case JVST_ST_EAT_VALUE:
-        ret = eat_value(v, NULL);
+        ret = eat_value(v, pret, evt);
         break;
 
       case JVST_ST_EAT_OBJECT:
-        ret = eat_object(v);
+        ret = eat_object(v, pret, evt);
         break;
 
       case JVST_ST_EAT_ARRAY:
-        ret = eat_array(v);
+        ret = eat_array(v, pret, evt);
         break;
 
       case JVST_ST_VALID:
         popstate(v);
-        ret = JVST_VALID;
+        ret = JVST_VALID; // JVST_NEXT;
         break;
 
       default:
         SHOULD_NOT_REACH(v);
     }
 
-    if (JVST_IS_INVALID(ret) || ret == JVST_MORE || v->stop < 1) {
+    fprintf(stderr, "--> event state: %d %s\n", ret, jvst_ret2name(ret));
+  } while (ret == JVST_VALID && v->stop > 0);
+
+  return ret;
+}
+
+enum JVST_RESULT jvst_validate_more(struct jvst_validator *v, char *data, size_t n)
+{
+  sjp_parser_more(&v->p, data, n);
+
+  // fast exit if we've already encountered an error...
+  if (v->etop > 0) {
+    return JVST_INVALID;
+  }
+
+  for(;;) {
+    struct sjp_event evt = { 0 };
+    enum SJP_RESULT pret;
+    enum JVST_RESULT ret;
+
+    pret = sjp_parser_next(&v->p, &evt);
+#if JVST_VALIDATE_DEBUG
+    {
+      char txt[256];
+      size_t n = evt.n;
+      if (n < sizeof txt) {
+        memcpy(txt,evt.text,n);
+        txt[n] = '\0';
+      } else {
+        n = sizeof txt - 4;
+        memcpy(txt,evt.text,n);
+        memcpy(&txt[n], "...", 4);
+      }
+
+      fprintf(stderr, "[%-8s] %-16s %s\n", ret2name(pret), evt2name(evt.type), txt);
+      if (SJP_ERROR(pret)) {
+        return ERR_JSON(pret);
+      }
+    }
+#endif /* JVST_VALIDATE_DEBUG */
+
+    // XXX - handle EOS here?
+    // FIXME: handle pret == SJP_PARTIAL!
+
+    if (pret == SJP_MORE && evt.type == SJP_TOK_NONE) {
+      // need more...
+      return JVST_MORE;
+    }
+
+    if (pret == SJP_OK && evt.type == SJP_TOK_NONE) {
+      // stream has closed
+      return (v->stop > 0) ? JVST_INVALID : JVST_VALID;
+    }
+
+    ret = validate_next_event(v, pret, &evt);
+
+    if (ret != JVST_VALID && ret != JVST_NEXT) {
       return ret;
     }
   }
@@ -911,9 +1077,14 @@ enum JVST_RESULT jvst_validate_close(struct jvst_validator *v)
   v->sstack = NULL;
   v->stop = v->smax = 0;
 
-  if (SJP_ERROR(ret) || st == JVST_ST_ERR) {
-    return JVST_INVALID;
+  if (SJP_ERROR(ret)) {
+    return ERR_JSON(ret);
   }
+
+  if (st == JVST_ST_ERR) {
+    return ERR_ALREADY_ERR();
+  }
+
   return JVST_VALID;
 }
 

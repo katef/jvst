@@ -7,6 +7,10 @@ enum JVST_RESULT {
   JVST_INVALID = -1,
   JVST_VALID = 0,
   JVST_MORE = 1,
+
+  // Internal states... should never be returned by
+  // the public API...
+  JVST_NEXT = 2,
 };
 
 #define JVST_IS_INVALID(x) ((x) < 0)
@@ -32,6 +36,14 @@ struct jvst_validator {
   char pbuf[4096];
 
   char kbuf[128]; // object key buffer
+
+  // XXX - revisit this
+  struct {
+    char msg[64];
+    const char *file;
+    int line;
+  } errstack[16];
+  int etop;
 };
 
 void jvst_validate_init_defaults(struct jvst_validator *v, const struct ast_schema *schema);
