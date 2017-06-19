@@ -790,7 +790,7 @@ void test_minimum(void)
   RUNTESTS(tests);
 }
 
-void test_anyof(void)
+void test_anyof_1(void)
 {
   struct arena_info A = {0};
   struct ast_schema *schema = newschema_p(&A, 0,
@@ -809,6 +809,63 @@ void test_anyof(void)
     { true, "3", schema, },
     // "description": "neither anyOf valid",
     { false, "1.5", schema, },
+
+    { false, NULL, NULL },
+  };
+
+  RUNTESTS(tests);
+}
+
+void test_anyof_2(void)
+{
+  struct arena_info A = {0};
+  struct ast_schema *schema = newschema_p(&A, 0,
+      "anyOf", schema_set(&A, 
+        newschema_p(&A, JSON_VALUE_OBJECT,
+          "properties", newprops(&A,
+            "foo", newschema_p(&A, JSON_VALUE_NUMBER, NULL),
+            "bar", newschema_p(&A, JSON_VALUE_STRING, NULL),
+            NULL),
+          NULL),
+        newschema_p(&A, JSON_VALUE_OBJECT,
+          "properties", newprops(&A,
+            "foo", newschema_p(&A, JSON_VALUE_STRING, NULL),
+            "bar", newschema_p(&A, JSON_VALUE_NUMBER, NULL),
+            NULL),
+          NULL),
+        NULL),
+      NULL);
+
+  const struct validation_test tests[] = {
+    // "description": "empty object should be valid"
+    { true, "{}", schema, },
+
+    // "description": "both schemas require an object"
+    { false, "1", schema, },
+
+    // "description": "foo is a number"
+    { true, "{ \"foo\" : 5 }", schema, },
+
+    // "description": "bar is a string"
+    { true, "{ \"bar\" : \"baz\" }", schema, },
+
+    // "description": "foo is a string"
+    { true, "{ \"foo\" : \"quux\" }", schema, },
+
+    // "description": "bar is a number"
+    { true, "{ \"bar\" : 7 }", schema, },
+
+    // "description": "foo is a number and bar is a string"
+    { true, "{ \"bar\" : \"this\", \"foo\" : 0.3 }", schema, },
+
+    // "description": "foo is a string and bar is a number"
+    { true, "{ \"foo\" : \"that\", \"bar\" : 0.6 }", schema, },
+
+    // "description": "invalid: foo is a string and bar is a string"
+    { false, "{ \"foo\" : \"abc\", \"bar\" : \"def\" }", schema, },
+
+    // "description": "invalid: foo is a number and bar is a number"
+    { false, "{ \"foo\" : 4, \"bar\" : 0.25 }", schema, },
 
     { false, NULL, NULL },
   };
@@ -837,7 +894,8 @@ int main(void)
 
   test_required();
 
-  test_anyof();
+  test_anyof_1();
+  test_anyof_2();
 
   printf("%d tests, %d failures\n", ntest, nfail);
 
