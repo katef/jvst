@@ -29,6 +29,7 @@ ${BUILD}/bin/jvst: ${BUILD}/${src:R}.o
 .endfor
 
 VALID_SRC += src/validate.c
+VALID_SRC += src/validate_testing.c
 VALID_SRC += src/sjp_parser.c
 VALID_SRC += src/sjp_testing.c
 
