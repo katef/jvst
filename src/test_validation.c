@@ -662,7 +662,5 @@ int main(void)
   test_anyof_1();
   test_anyof_2();
 
-  printf("%d tests, %d failures\n", ntest, nfail);
-
-  return (nfail == 0 && ntest > 0) ? 0 : 1;
+  return report_tests();
 }

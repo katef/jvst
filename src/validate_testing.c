@@ -3,16 +3,21 @@
 #include <string.h>
 #include <stdarg.h>
 
-#include "validate.h"
+#include "jvst_macros.h"
 
-extern int ntest;
-extern int nfail;
+#include "validate.h"
+#include "validate_testing.h"
+
+int ntest;
+int nfail;
+
+enum { NUM_TEST_THINGS = 1024 };
 
 // arena allocators to make it easy to programmatically set up a schema
-static struct ast_schema ar_schema[1024];
-static struct ast_property_schema ar_props[1024];
-static struct ast_string_set ar_stringsets[1024];
-static struct ast_schema_set ar_schemasets[1024];
+static struct ast_schema ar_schema[NUM_TEST_THINGS];
+static struct ast_property_schema ar_props[NUM_TEST_THINGS];
+static struct ast_string_set ar_stringsets[NUM_TEST_THINGS];
+static struct ast_schema_set ar_schemasets[NUM_TEST_THINGS];
 
 // Returns a constant empty schema
 struct ast_schema *empty_schema(void)
@@ -130,7 +135,7 @@ struct ast_schema *newschema_p(struct arena_info *A, int types, ...)
   va_list args;
 
   i = A->nschema++;
-  max = sizeof ar_schema / sizeof ar_schema[0];
+  max = ARRAYLEN(ar_schema);
   if (A->nschema >= max) {
     fprintf(stderr, "too many schema: %zu max\n", max);
     abort();

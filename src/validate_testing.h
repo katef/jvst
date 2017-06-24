@@ -4,10 +4,8 @@
 #include "jdom.h"
 #include "ast.h"
 
-#define MODULE_NAME TESTING
-
-int ntest;
-int nfail;
+extern int ntest;
+extern int nfail;
 
 struct arena_info {
   size_t nschema;
@@ -28,7 +26,14 @@ struct ast_property_schema *newprops(struct arena_info *A, ...);
 
 const char *jvst_ret2name(int ret);
 
-#undef MODULE_NAME
+static inline int report_tests(void)
+{
+  printf("%d tests, %d failures\n", ntest, nfail);
+  if (nfail == 0 && ntest > 0) {
+    return EXIT_SUCCESS;
+  }
+  return EXIT_FAILURE;
+}
 
 #endif /* TESTING_H */
 
