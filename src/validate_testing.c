@@ -7,6 +7,7 @@
 
 #include "validate.h"
 #include "validate_testing.h"
+#include "validate_constraints.h"
 
 int ntest;
 int nfail;
@@ -18,6 +19,7 @@ static struct ast_schema ar_schema[NUM_TEST_THINGS];
 static struct ast_property_schema ar_props[NUM_TEST_THINGS];
 static struct ast_string_set ar_stringsets[NUM_TEST_THINGS];
 static struct ast_schema_set ar_schemasets[NUM_TEST_THINGS];
+static struct jvst_cnode ar_cnodes[NUM_TEST_THINGS];
 
 // Returns a constant empty schema
 struct ast_schema *empty_schema(void)
@@ -239,3 +241,73 @@ const char *jvst_ret2name(int ret)
   }
 }
 
+struct jvst_cnode *valid_cnode(void)
+{
+  static struct jvst_cnode n = { .type = JVST_CNODE_VALID };
+  return &n;
+}
+
+struct jvst_cnode *invalid_cnode(void)
+{
+  static struct jvst_cnode n = { .type = JVST_CNODE_INVALID };
+  return &n;
+}
+
+struct jvst_cnode *newcnode(struct arena_info *A, enum JVST_CNODE_TYPE type)
+{
+  size_t i,max;
+  struct jvst_cnode *node;
+  const char *pname;
+  va_list args;
+
+  i = A->ncnode++;
+  max = ARRAYLEN(ar_cnodes);
+  if (A->ncnode >= max) {
+    fprintf(stderr, "too many cnodes: %zu max\n", max);
+    abort();
+  }
+
+  node = &ar_cnodes[i];
+  memset(node, 0, sizeof *node);
+  node->type = type;
+
+  return node;
+}
+
+struct jvst_cnode *newcnode_switch(struct arena_info *A, int isvalid, ...)
+{
+  struct jvst_cnode *node;
+  size_t i;
+  va_list args;
+
+  node = newcnode(A, JVST_CNODE_SWITCH);
+  for (i=0; i < SJP_EVENT_MAX; i++) {
+    node->u.sw[i] = isvalid ? valid_cnode() : invalid_cnode();
+  }
+
+  // ARRAY_END and OBJECT_END should not be valid by default...
+  node->u.sw[SJP_ARRAY_END] = invalid_cnode();
+  node->u.sw[SJP_OBJECT_END] = invalid_cnode();
+
+  va_start(args, isvalid);
+  for(;;) {
+    enum SJP_EVENT evt;
+    struct jvst_cnode *child;
+
+    evt = va_arg(args, enum SJP_EVENT);
+    if (evt == SJP_NONE) {
+      break;
+    }
+
+    if (evt >= SJP_EVENT_MAX) {
+      fprintf(stderr, "invalid event %d\n", evt);
+      abort();
+    }
+
+    child = va_arg(args, struct jvst_cnode *);
+    node->u.sw[evt] = child;
+  }
+  va_end(args);
+
+  return node;
+}

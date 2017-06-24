@@ -1,0 +1,147 @@
+#ifndef VALIDATE_CONSTRAINTS_H
+#define VALIDATE_CONSTRAINTS_H
+
+#include "sjp_parser.h"
+#include "ast.h"
+
+#define MODULE_NAME VALIDATE_CONSTRAINTS
+
+/* simplified tree of validation constraints
+ *
+ * This differs from the AST as follows:
+ *
+ * 1. Nodes are either control, token-switch, or constraint.
+ *
+ *    a) Control nodes: logical (AND/OR/NOT) with children, or
+ *       VALID/INVALID leaf nodes
+ *
+ *    b) Token-switch: nine children corresponding to the event types of
+ *       the SJP parser
+ *
+ *    c) Constraint: each constraint node is for a particular type
+ *       (null/true/false, string, number, object, array) and specifies
+ *       validation constraints for that specific type.
+ *
+ * 2. There is one validation constraint per constraint node.
+ *
+ */
+
+enum JVST_CNODE_RANGEFLAGS {
+  JVST_CNODE_RANGE_MIN      = (1<<0),
+  JVST_CNODE_RANGE_MAX      = (1<<1),
+  JVST_CNODE_RANGE_EXCL_MIN = (1<<2),
+  JVST_CNODE_RANGE_EXCL_MAX = (1<<3),
+};
+
+enum JVST_CNODE_TYPE {
+  /* Control nodes */
+  JVST_CNODE_INVALID = 0, // node always returns invalid
+  JVST_CNODE_VALID,       // node always returns valid
+
+  JVST_CNODE_AND, // requires all nodes to be valid
+  JVST_CNODE_OR,  // requires at least one node to be valid
+  JVST_CNODE_XOR, // requires exactly one node to be valid
+  JVST_CNODE_NOT,
+
+  /* Token-switch node */
+  JVST_CNODE_SWITCH,
+
+  /* Constraint nodes */
+  JVST_CNODE_STR_LENRANGE,
+  JVST_CNODE_STR_MATCH,
+  JVST_CNODE_STR_EQUAL,
+
+  JVST_CNODE_NUM_RANGE,
+  JVST_CNODE_NUM_INTEGER,
+
+  JVST_CNODE_OBJ_NUMPROP_RANGE,
+  JVST_CNODE_OBJ_PROPS,
+  JVST_CNODE_OBJ_PROP_MATCH,
+  JVST_CNODE_OBJ_REQUIRE,
+
+  JVST_CNODE_ARR_NUMITEM_RANGE,
+  JVST_CNODE_ARR_ITEM,
+  JVST_CNODE_ARR_ADDITIONAL,
+  JVST_CNODE_ARR_UNIQUE,
+};
+
+struct jvst_cnode {
+  enum JVST_CNODE_TYPE type;
+  struct jvst_cnode *next;
+
+  union {
+    /* type switch node */
+    struct jvst_cnode *sw[SJP_EVENT_MAX];
+
+    /* control nodes */
+    struct jvst_cnode *ctrl;
+
+    /* constraint for string length, array length,
+     * number of object properties
+     */
+    struct {
+      enum JVST_CNODE_RANGEFLAGS flags;
+      size_t min;
+      size_t max;
+    } counts;
+
+    /* for string pattern matching or matching string sets */
+    struct {
+      struct json_string pattern;
+      struct fsm *matcher;
+    } str_match;
+
+    /* special case if it's just a comparison */
+    struct json_string str_equal;
+
+    /* for number ranges */
+    struct {
+      enum JVST_CNODE_RANGEFLAGS flags;
+      double min;
+      double max;
+    } num_constraints;
+
+    /* object required property */
+    struct {
+      size_t n;
+      struct json_string *s;
+    } required;
+
+    /* object property constraints */
+    struct {
+      size_t n;
+      struct json_string *names;
+      struct jvst_cnode *constraints;
+    } props;
+
+    struct {
+      struct json_string pattern;
+      struct fsm *matcher;
+      struct jvst_cnode *constraint;
+    } prop_match;
+
+    // for array item and additional_item constraints
+    struct jvst_cnode *arr_item;
+  } u;
+};
+
+struct jvst_cnode *jvst_cnode_alloc(enum JVST_CNODE_TYPE type);
+void jvst_cnode_free(struct jvst_cnode *n);
+void jvst_cnode_free_tree(struct jvst_cnode *n);
+
+// Translates the AST into a contraint tree and optimizes the constraint
+// tree
+struct jvst_cnode *jvst_cnode_from_ast(struct ast_schema *ast);
+
+// Just do a raw translation without doing any optimization of the
+// constraint tree
+struct jvst_cnode *jvst_cnode_translate_ast(struct ast_schema *ast);
+
+// Writes a textual represetnation of the cnode into the buffer,
+// returns 0 if the representation fit, non-zero otherwise
+int jvst_cnode_dump(struct jvst_cnode *node, char *buf, size_t nb);
+
+#undef MODULE_NAME
+
+#endif /* VALIDATE_CONSTRAINTS_H */
+
