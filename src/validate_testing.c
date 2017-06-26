@@ -216,6 +216,7 @@ struct ast_property_schema *newprops(struct arena_info *A, ...)
     memset(p, 0, sizeof *p);
 
     p->pattern.str = newstr(name);
+    p->pattern.dialect = RE_LITERAL;
     p->schema = va_arg(args, struct ast_schema *);
 
     *pp = p;
@@ -241,13 +242,13 @@ const char *jvst_ret2name(int ret)
   }
 }
 
-struct jvst_cnode *valid_cnode(void)
+struct jvst_cnode *newcnode_valid(void)
 {
   static struct jvst_cnode n = { .type = JVST_CNODE_VALID };
   return &n;
 }
 
-struct jvst_cnode *invalid_cnode(void)
+struct jvst_cnode *newcnode_invalid(void)
 {
   static struct jvst_cnode n = { .type = JVST_CNODE_INVALID };
   return &n;
@@ -282,12 +283,12 @@ struct jvst_cnode *newcnode_switch(struct arena_info *A, int isvalid, ...)
 
   node = newcnode(A, JVST_CNODE_SWITCH);
   for (i=0; i < SJP_EVENT_MAX; i++) {
-    node->u.sw[i] = isvalid ? valid_cnode() : invalid_cnode();
+    node->u.sw[i] = isvalid ? newcnode_valid() : newcnode_invalid();
   }
 
   // ARRAY_END and OBJECT_END should not be valid by default...
-  node->u.sw[SJP_ARRAY_END] = invalid_cnode();
-  node->u.sw[SJP_OBJECT_END] = invalid_cnode();
+  node->u.sw[SJP_ARRAY_END] = newcnode_invalid();
+  node->u.sw[SJP_OBJECT_END] = newcnode_invalid();
 
   va_start(args, isvalid);
   for(;;) {
@@ -311,3 +312,82 @@ struct jvst_cnode *newcnode_switch(struct arena_info *A, int isvalid, ...)
 
   return node;
 }
+
+struct jvst_cnode *newcnode_bool(struct arena_info *A, enum JVST_CNODE_TYPE type, ...)
+{
+  struct jvst_cnode *node, **pp;
+  va_list args;
+
+  if ((type != JVST_CNODE_AND) && (type != JVST_CNODE_OR) && (type != JVST_CNODE_XOR)) {
+    fprintf(stderr, "invalid cnode type for %s: %d\n", __func__, type);
+    abort();
+  }
+
+  node = newcnode(A, type);
+  pp = &node->u.ctrl;
+  *pp = NULL;
+
+  va_start(args, type);
+  for(;;) {
+    struct jvst_cnode *child;
+
+    child = va_arg(args, struct jvst_cnode *);
+    if (child == NULL) {
+      break;
+    }
+
+    *pp = child;
+    pp = &child->next;
+  }
+  va_end(args);
+
+  return node;
+}
+
+struct jvst_cnode *newcnode_prop_match(struct arena_info *A,
+    enum re_dialect dialect, const char *pat, struct jvst_cnode *constraint)
+{
+  struct jvst_cnode *node;
+
+  node = newcnode(A, JVST_CNODE_OBJ_PROP_MATCH);
+
+  node->u.prop_match.match.dialect = dialect;
+  node->u.prop_match.match.str = newstr(pat);
+  node->u.prop_match.match.fsm = NULL;
+  node->u.prop_match.constraint = constraint;
+
+  return node;
+}
+
+struct jvst_cnode *newcnode_range(struct arena_info *A,
+    enum JVST_CNODE_RANGEFLAGS flags, double min, double max)
+{
+  struct jvst_cnode *node, **pp;
+  node = newcnode(A, JVST_CNODE_NUM_RANGE);
+  node->u.num_range.flags = flags;
+  node->u.num_range.min = min;
+  node->u.num_range.max = max;
+  return node;
+}
+
+struct jvst_cnode *newcnode_counts(struct arena_info *A, size_t min, size_t max)
+{
+  struct jvst_cnode *node, **pp;
+  node = newcnode(A, JVST_CNODE_COUNT_RANGE);
+  node->u.counts.min = min;
+  node->u.counts.max = max;
+  return node;
+}
+
+struct jvst_cnode *newcnode_required(struct arena_info *A, struct ast_string_set *sset)
+{
+  struct ast_string_set **spp;
+  struct jvst_cnode *node;
+  va_list args;
+
+  node = newcnode(A, JVST_CNODE_OBJ_REQUIRED);
+  node->u.required = sset;
+
+  return node;
+}
+

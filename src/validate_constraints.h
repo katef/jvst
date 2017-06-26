@@ -46,20 +46,19 @@ enum JVST_CNODE_TYPE {
   /* Token-switch node */
   JVST_CNODE_SWITCH,
 
+  /* range for string lengths, number of object properties, number of
+   * array items */
+  JVST_CNODE_COUNT_RANGE,
+
   /* Constraint nodes */
-  JVST_CNODE_STR_LENRANGE,
   JVST_CNODE_STR_MATCH,
-  JVST_CNODE_STR_EQUAL,
 
   JVST_CNODE_NUM_RANGE,
   JVST_CNODE_NUM_INTEGER,
 
-  JVST_CNODE_OBJ_NUMPROP_RANGE,
-  JVST_CNODE_OBJ_PROPS,
   JVST_CNODE_OBJ_PROP_MATCH,
-  JVST_CNODE_OBJ_REQUIRE,
+  JVST_CNODE_OBJ_REQUIRED,
 
-  JVST_CNODE_ARR_NUMITEM_RANGE,
   JVST_CNODE_ARR_ITEM,
   JVST_CNODE_ARR_ADDITIONAL,
   JVST_CNODE_ARR_UNIQUE,
@@ -80,43 +79,26 @@ struct jvst_cnode {
      * number of object properties
      */
     struct {
-      enum JVST_CNODE_RANGEFLAGS flags;
       size_t min;
-      size_t max;
+      size_t max; // 0 indicates no upper bound
     } counts;
 
     /* for string pattern matching or matching string sets */
-    struct {
-      struct json_string pattern;
-      struct fsm *matcher;
-    } str_match;
-
-    /* special case if it's just a comparison */
-    struct json_string str_equal;
+    struct ast_regexp str_match;
 
     /* for number ranges */
     struct {
       enum JVST_CNODE_RANGEFLAGS flags;
       double min;
       double max;
-    } num_constraints;
+    } num_range;
 
     /* object required property */
-    struct {
-      size_t n;
-      struct json_string *s;
-    } required;
+    struct ast_string_set *required;
 
     /* object property constraints */
     struct {
-      size_t n;
-      struct json_string *names;
-      struct jvst_cnode *constraints;
-    } props;
-
-    struct {
-      struct json_string pattern;
-      struct fsm *matcher;
+      struct ast_regexp match;
       struct jvst_cnode *constraint;
     } prop_match;
 
