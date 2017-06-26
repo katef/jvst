@@ -9,13 +9,15 @@
 
 #include "jdom.h"
 
+#include <re/re.h>
+
 struct fsm;
 
 typedef json_number ast_number;
 typedef unsigned long ast_count;
 
-/* ECMA-262 dialect */
 struct ast_regexp {
+        enum re_dialect dialect;
 	struct json_string str;
 	struct fsm *fsm;
 };

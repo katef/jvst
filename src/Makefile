@@ -27,3 +27,7 @@ PROG += jvst
 ${BUILD}/bin/jvst: ${BUILD}/${src:R}.o
 .endfor
 
+.for src in ${SRC:Msrc/*.c}
+CFLAGS.${src} += ${CFLAGS.libre}
+DFLAGS.${src} += ${CFLAGS.libre}
+.endfor
