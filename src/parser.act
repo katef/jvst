@@ -103,6 +103,52 @@
 			xerr(lex_state, 0, "sjp error: %d, n=%zu", r, t->n);
 			exit(EXIT_FAILURE);
 		}
+
+		switch (r) {
+		case SJP_OK:
+			if (t->type == SJP_TOK_NONE) {
+				xerr(lex_state, 0, "parsing after EOS");
+				abort();
+			}
+			break;
+
+		case SJP_MORE:
+			assert(t->type == SJP_TOK_NONE
+				|| t->type == SJP_TOK_STRING || t->type == SJP_TOK_NUMBER);
+
+			if (t->type == SJP_TOK_NONE) {
+				sjp_lexer_eos(lex_state);
+				next(lex_state, t);
+				return;
+			}
+
+			/*
+			 * TODO: need more input; pull from sjp_lexer_more(),
+			 * and get rid of readfile() in main.
+			 * Tokens returned here are partial; I don't see how to sensibly avoid
+			 * buffering those.
+			 */
+
+			/*
+			 * Partial tokens are currently not possible in valid input
+			 * due to main() buffering the entire input. So any partial token here
+			 * is from an incomplete token at the end of input (presumably an
+			 * unterminated string).
+			 */
+			/* TODO: show token name, position */
+			xerr(lex_state, 0, "sjp incomplete token at end of input\n");
+			exit(EXIT_FAILURE);
+
+		case SJP_PARTIAL:
+			assert(t->type  SJP_TOK_NONE);
+			/* XXX: how can this happen? */
+			xerr(lex_state, 0, "sjp unexpected partial token\n");
+			abort();
+
+		default:
+			xerr(lex_state, 0, "sjp unrecognised error: %d", r);
+			abort();
+		}
 	}
 
 @}, @{
