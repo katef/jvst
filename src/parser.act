@@ -278,10 +278,6 @@
 		xerr_syntax(lex_state, NULL);
 	@};
 
-	<err-expected-directive> = @{
-		xerr_syntax(lex_state, "keyword directive");
-	@};
-
 	<err-expected-colon> = @{
 		xerr_syntax(lex_state, "colon");
 	@};
@@ -290,8 +286,28 @@
 		xerr_syntax(lex_state, "comma");
 	@};
 
+	<err-expected-directive> = @{
+		xerr_syntax(lex_state, "keyword directive");
+	@};
+
 	<err-expected-schema> = @{
 		xerr_syntax(lex_state, "schema");
+	@};
+
+	<err-expected-type> = @{
+		xerr_syntax(lex_state, "type");
+	@};
+
+	<err-expected-number> = @{
+		xerr_syntax(lex_state, "number");
+	@};
+
+	<err-expected-string> = @{
+		xerr_syntax(lex_state, "string");
+	@};
+
+	<err-expected-id> = @{
+		xerr_syntax(lex_state, "id");
 	@};
 
 %trailer% @{

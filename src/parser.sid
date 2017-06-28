@@ -90,6 +90,10 @@
 	<err-expected-comma>;
 	<err-expected-directive>;
 	<err-expected-schema>;
+	<err-expected-type>;
+	<err-expected-number>;
+	<err-expected-string>;
+	<err-expected-id>;
 
 	placeholder = {
 		NULL;
@@ -111,6 +115,8 @@
 	directive-schema = {
 		s = STRING;
 		<set-schema>(s);
+	##
+		<err-expected-string>;
 	};
 
 	directive-ref = {
@@ -120,31 +126,43 @@
 	directive-id = {
 		s = STRING;
 		<set-id>(s);
+	##
+		<err-expected-id>;
 	};
 
 	directive-multiple-of = {
 		n = NUMBER;
 		<set-multiple-of>(n);
+	##
+		<err-expected-number>;
 	};
 
 	directive-maximum = {
 		n = NUMBER;
 		<set-maximum>(n);
+	##
+		<err-expected-number>;
 	};
 
 	directive-exclusive-maximum = {
 		n = NUMBER;
 		<set-exclusive-maximum>(n);
+	##
+		<err-expected-number>;
 	};
 
 	directive-minimum = {
 		n = NUMBER;
 		<set-minimum>(n);
+	##
+		<err-expected-number>;
 	};
 
 	directive-exclusive-minimum = {
 		n = NUMBER;
 		<set-exclusive-minimum>(n);
+	##
+		<err-expected-number>;
 	};
 
 	directive-type [
@@ -180,6 +198,8 @@
 			list-of-types;
 			CBRACKET;
 		};
+	##
+		<err-expected-type>;
 	};
 
 	directive: (k: kw) -> () = {
