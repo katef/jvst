@@ -82,6 +82,8 @@ main(void)
 
 	parse(&l, &ast);
 
+	ast_dump(stdout, &ast);
+
 	r = sjp_lexer_close(&l);
 	if (SJP_ERROR(r)) {
 		fprintf(stderr, "sjp error B: %d\n", r); /* TODO */

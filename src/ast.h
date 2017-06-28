@@ -215,5 +215,8 @@ struct ast_schema {
 	struct ast_schema *next;
 };
 
+void
+ast_dump(FILE *f, const struct ast_schema *ast);
+
 #endif
 
