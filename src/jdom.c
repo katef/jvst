@@ -33,7 +33,7 @@ type_lookup(const struct json_string *str)
 
 	for (i = 0; i < sizeof a / sizeof *a; i++) {
 		/* TODO: json_strcmp() */
-		if (str->len != strlen(a[i].s) + 1) {
+		if (str->len != strlen(a[i].s)) {
 			continue;
 		}
 
