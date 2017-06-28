@@ -65,12 +65,7 @@ kw_lookup(const struct json_string *str)
 	assert(str->s != NULL);
 
 	for (i = 0; i < sizeof a / sizeof *a; i++) {
-		/* TODO: json_strcmp() */
-		if (str->len != strlen(a[i].s)) {
-			continue;
-		}
-
-		if (0 == strcmp(str->s, a[i].s)) {
+		if (0 == json_strcmp(str, a[i].s)) {
 			return a[i].k;
 		}
 	}

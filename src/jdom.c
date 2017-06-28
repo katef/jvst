@@ -23,6 +23,27 @@ static struct {
 	{ "any",     ~0U                }
 };
 
+int
+json_strcmp(const struct json_string *str, const char *s)
+{
+	size_t z;
+
+	assert(str != NULL);
+	assert(s != NULL);
+
+	z = strlen(s);
+
+	if (str->len < z) {
+		return -1;
+	}
+
+	if (str->len > z) {
+		return +1;
+	}
+
+	return memcmp(str->s, s, z);
+}
+
 enum json_valuetype
 type_lookup(const struct json_string *str)
 {
@@ -32,12 +53,7 @@ type_lookup(const struct json_string *str)
 	assert(str->s != NULL);
 
 	for (i = 0; i < sizeof a / sizeof *a; i++) {
-		/* TODO: json_strcmp() */
-		if (str->len != strlen(a[i].s)) {
-			continue;
-		}
-
-		if (0 == strcmp(str->s, a[i].s)) {
+		if (0 == json_strcmp(str, a[i].s)) {
 			return a[i].t;
 		}
 	}
