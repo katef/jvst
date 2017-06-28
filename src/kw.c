@@ -50,6 +50,7 @@ static struct {
 	{ "not",                  KW_NOT                   },
 
 	/* metadata */
+	{ "title",                KW_TITLE                 },
 	{ "definitions",          KW_DEFINITIONS           },
 	{ "description",          KW_DESCRIPTION           },
 	{ "default",              KW_DEFAULT               },

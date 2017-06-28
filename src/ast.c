@@ -79,6 +79,23 @@ dump_schema(FILE *f, const struct ast_schema *ast)
 		fprintf(f, "</TD>");
 		fprintf(f, "</TR>");
 	}
+
+	if (ast->title.s != NULL) {
+		fprintf(f, "<TR>");
+		fprintf(f, "<TD align='left'>title</TD>");
+		fprintf(f, "<TD align='left'>%.*s</TD>",
+			(int) ast->title.len, ast->title.s); /* XXX: escape */
+		fprintf(f, "</TR>");
+	}
+
+	if (ast->description.s != NULL) {
+		fprintf(f, "<TR>");
+		fprintf(f, "<TD align='left'>description</TD>");
+		fprintf(f, "<TD align='left'>%.*s</TD>",
+			(int) ast->description.len, ast->description.s); /* XXX: escape */
+		fprintf(f, "</TR>");
+	}
+
 	fprintf(f, "</TABLE>> ];\n");
 }
 

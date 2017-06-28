@@ -68,6 +68,7 @@
 	<kw-one-of>:                (:kw) -> (:bool);
 	<kw-not>:                   (:kw) -> (:bool);
 
+	<kw-title>:                 (:kw) -> (:bool);
 	<kw-definitions>:           (:kw) -> (:bool);
 	<kw-description>:           (:kw) -> (:bool);
 	<kw-default>:               (:kw) -> (:bool);
@@ -81,6 +82,8 @@
 	<set-minimum>:              (:number) -> ();
 	<set-exclusive-minimum>:    (:number) -> ();
 	<set-type>:                 (:type)   -> ();
+	<set-title>:                (:string) -> ();
+	<set-description>:          (:string) -> ();
 
 	<clear-types>;
 
@@ -202,6 +205,20 @@
 		<err-expected-type>;
 	};
 
+	directive-title = {
+		s = STRING;
+		<set-title>(s);
+	##
+		<err-expected-string>;
+	};
+
+	directive-description = {
+		s = STRING;
+		<set-description>(s);
+	##
+		<err-expected-string>;
+	};
+
 	directive: (k: kw) -> () = {
 		? = <kw-schema>(k);
 		directive-schema;
@@ -299,11 +316,14 @@
 		? = <kw-not>(k);
 		placeholder;
 	||
+		? = <kw-title>(k);
+		directive-title;
+	||
 		? = <kw-definitions>(k);
 		placeholder;
 	||
 		? = <kw-description>(k);
-		placeholder;
+		directive-description;
 	||
 		? = <kw-default>(k);
 		placeholder;

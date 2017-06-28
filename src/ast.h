@@ -89,7 +89,7 @@ struct ast_schema {
 	 * "anyOf"/"allOf"/"oneOf":          .some_of.set is NULL
 	 * "not":                            .not is NULL
 	 * "title":                          .title.str is NULL
-	 * "desc":                           .desc.str is NULL
+	 * "description":                    .description.str is NULL
 	 * "$Id":                            .id.str is NULL
 	 * "$Ref":                           unioned during parse
 	 *
@@ -200,7 +200,7 @@ struct ast_schema {
 	struct json_string schema;
 	struct json_string id;
 	struct json_string title;
-	struct json_string desc;
+	struct json_string description;
 
 	struct {
 		int dummy;

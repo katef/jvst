@@ -238,6 +238,7 @@
 	<kw-one-of>:                (k :kw) -> (v :bool) = @{ @v = (@k == KW_ONE_OF);                @};
 	<kw-not>:                   (k :kw) -> (v :bool) = @{ @v = (@k == KW_NOT);                   @};
 
+	<kw-title>:                 (k :kw) -> (v :bool) = @{ @v = (@k == KW_TITLE);                 @};
 	<kw-definitions>:           (k :kw) -> (v :bool) = @{ @v = (@k == KW_DEFINITIONS);           @};
 	<kw-description>:           (k :kw) -> (v :bool) = @{ @v = (@k == KW_DESCRIPTION);           @};
 	<kw-default>:               (k :kw) -> (v :bool) = @{ @v = (@k == KW_DEFAULT);               @};
@@ -314,6 +315,18 @@
 		}
 
 		ast->types |= @t;
+	@};
+
+	<set-title>: (s :string) -> () = @{
+		assert(@s.s != NULL);
+
+		ast->title = @s;
+	@};
+
+	<set-description>: (s :string) -> () = @{
+		assert(@s.s != NULL);
+
+		ast->description = @s;
 	@};
 
 	<err-unimplemented> = @{

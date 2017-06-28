@@ -45,6 +45,7 @@ enum kw {
 	KW_NOT,
 
 	/* metadata */
+	KW_TITLE,
 	KW_DEFINITIONS,
 	KW_DESCRIPTION,
 	KW_DEFAULT,
