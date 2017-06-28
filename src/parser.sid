@@ -17,6 +17,9 @@
 
 	!ERROR;
 	EOS;
+
+	COMMA;
+	COLON;
 	OCURLY;    CCURLY;
 	OBRACKET;  CBRACKET;
 	STRING: () -> (:string);
@@ -83,12 +86,26 @@
 
 	<err-unimplemented>;
 	<err-syntax>;
+	<err-expected-colon>;
+	<err-expected-comma>;
 	<err-expected-directive>;
 	<err-expected-schema>;
 
 	placeholder = {
 		NULL;
 		<err-unimplemented>;
+	};
+
+	colon = {
+		COLON;
+	##
+		<err-expected-colon>;
+	};
+
+	comma = {
+		COMMA;
+	##
+		<err-expected-comma>;
 	};
 
 	directive-schema = {
@@ -140,9 +157,12 @@
 
 		list-of-types = {
 			type;
-			list-of-types;
-		||
-			$;
+			{
+				comma;
+				list-of-types;
+			||
+				$;
+			};
 		};
 
 	] = {
@@ -277,10 +297,14 @@
 	list-of-directives = {
 		s = STRING;
 		k = <kw-lookup>(s);
+		colon;
 		directive(k);
-		list-of-directives;
-	||
-		$;
+		{
+			comma;
+			list-of-directives;
+		||
+			$;
+		};
 	##
 		<err-expected-directive>;
 	};
@@ -293,7 +317,11 @@
 
 	schema = {
 		OCURLY;
-		list-of-directives;
+		{
+			list-of-directives;
+		||
+			$;
+		};
 		CCURLY;
 	||
 		array;

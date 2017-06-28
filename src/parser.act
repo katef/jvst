@@ -282,6 +282,14 @@
 		xerr_syntax(lex_state, "keyword directive");
 	@};
 
+	<err-expected-colon> = @{
+		xerr_syntax(lex_state, "colon");
+	@};
+
+	<err-expected-comma> = @{
+		xerr_syntax(lex_state, "comma");
+	@};
+
 	<err-expected-schema> = @{
 		xerr_syntax(lex_state, "schema");
 	@};
