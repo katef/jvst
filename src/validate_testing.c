@@ -221,6 +221,10 @@ struct ast_schema *newschema_p(struct arena_info *A, int types, ...)
     } else if (strcmp(pname, "minimum") == 0) {
       s->kws |= KWS_MINIMUM;
       s->minimum = va_arg(args, double);
+    } else if (strcmp(pname, "dep_strings") == 0) {
+      s->dependencies_strings.set = va_arg(args, struct ast_property_names *);
+    } else if (strcmp(pname, "dep_schema") == 0) {
+      s->dependencies_schema.set = va_arg(args, struct ast_property_schema *);
     } else if (strcmp(pname, "anyOf") == 0) {
       struct ast_schema_set *sset;
       sset = va_arg(args, struct ast_schema_set *);

@@ -672,6 +672,95 @@ struct jvst_cnode *jvst_cnode_translate_ast(struct ast_schema *ast)
     node->u.sw[SJP_OBJECT_BEG] = jxn;
   }
 
+  if (ast->dependencies_strings.set != NULL) {
+    struct ast_property_names *pnames;
+    struct jvst_cnode *top_jxn, **tpp;
+
+    top_jxn = jvst_cnode_alloc(JVST_CNODE_AND);
+    top_jxn->u.ctrl = NULL;
+    tpp = &top_jxn->u.ctrl;
+
+    for (pnames = ast->dependencies_strings.set; pnames != NULL; pnames = pnames->next) {
+      struct jvst_cnode *req, *pset, *pm, *jxn;
+      struct ast_string_set *strset;
+
+      req = jvst_cnode_alloc(JVST_CNODE_OBJ_REQUIRED);
+      // build required stringset for the dependency pair
+      assert(pnames->pattern.dialect == RE_LITERAL);
+      req->u.required = cnode_strset(pnames->pattern.str, 
+          cnode_strset_copy(pnames->set));
+
+      pm = jvst_cnode_alloc(JVST_CNODE_OBJ_PROP_MATCH);
+      pm->u.prop_match.match = pnames->pattern;
+      pm->u.prop_match.constraint = jvst_cnode_alloc(JVST_CNODE_INVALID);
+
+      pset = jvst_cnode_alloc(JVST_CNODE_OBJ_PROP_SET);
+      pset->u.prop_set = pm;
+
+      req->next = pset;
+      jxn = jvst_cnode_alloc(JVST_CNODE_OR);
+      jxn->u.ctrl = req;
+
+      *tpp = jxn;
+      tpp = &jxn->next;
+    }
+
+    *tpp = node->u.sw[SJP_OBJECT_BEG];
+    node->u.sw[SJP_OBJECT_BEG] = top_jxn;
+  }
+
+  if (ast->dependencies_schema.set != NULL) {
+    struct ast_property_schema *pschema;
+    struct jvst_cnode *top_jxn, **tpp;
+
+    top_jxn = jvst_cnode_alloc(JVST_CNODE_AND);
+    top_jxn->u.ctrl = node;
+    tpp = &node->next;
+    node = top_jxn;
+
+    for (pschema = ast->dependencies_schema.set; pschema != NULL; pschema = pschema->next) {
+      struct jvst_cnode *jxn, **jpp;
+      struct jvst_cnode *sw, *req, *schema, *andjxn, *pm, *pset;
+      struct ast_string_set *strset;
+
+      jxn = jvst_cnode_alloc(JVST_CNODE_OR);
+      jpp = &jxn->u.ctrl;
+      *jpp = NULL;
+
+      andjxn = jvst_cnode_alloc(JVST_CNODE_AND);
+
+      req = jvst_cnode_alloc(JVST_CNODE_OBJ_REQUIRED);
+      // build required stringset for the dependency pair
+      assert(pschema->pattern.dialect == RE_LITERAL);
+      req->u.required = cnode_strset(pschema->pattern.str, NULL);
+
+      sw = cnode_new_switch(false);
+      sw->u.sw[SJP_OBJECT_BEG] = req;
+      andjxn->u.ctrl = sw;
+      sw->next = jvst_cnode_translate_ast(pschema->schema);
+
+      *jpp = andjxn;
+      jpp = &(*jpp)->next;
+
+      sw = cnode_new_switch(true);
+
+      pm = jvst_cnode_alloc(JVST_CNODE_OBJ_PROP_MATCH);
+      pm->u.prop_match.match = pschema->pattern;
+      pm->u.prop_match.constraint = jvst_cnode_alloc(JVST_CNODE_INVALID);
+
+      pset = jvst_cnode_alloc(JVST_CNODE_OBJ_PROP_SET);
+      pset->u.prop_set = pm;
+
+      sw->u.sw[SJP_OBJECT_BEG] = pset;
+
+      *jpp = sw;
+      jpp = &(*jpp)->next;
+
+      *tpp = jxn;
+      tpp = &jxn->next;
+    }
+  }
+
   if (ast->some_of.set != NULL) {
     struct jvst_cnode *top_jxn, *some_jxn, **conds;
     struct ast_schema_set *sset;
