@@ -12,6 +12,7 @@ struct arena_info {
   size_t nschema;
   size_t nprop;
   size_t nstr;
+  size_t npnames;
   size_t nset;
   size_t ncnode;
 };
@@ -25,12 +26,15 @@ struct ast_string_set *stringset(struct arena_info *A, ...);
 struct ast_schema_set *schema_set(struct arena_info *A, ...);
 size_t schema_set_count(struct ast_schema_set *s);
 struct ast_property_schema *newprops(struct arena_info *A, ...);
+struct ast_property_names *newpropnames(struct arena_info *A, ...);
 
 struct jvst_cnode *newcnode(struct arena_info *A, enum JVST_CNODE_TYPE type);
 struct jvst_cnode *newcnode_switch(struct arena_info *A, int isvalid, ...);
 
 struct jvst_cnode *newcnode_prop_match(struct arena_info *A,
     enum re_dialect dialect, const char *pat, struct jvst_cnode *constraint);
+
+struct jvst_cnode *newcnode_propset(struct arena_info *A, ...);
 
 struct jvst_cnode *newcnode_bool(struct arena_info *A, enum JVST_CNODE_TYPE type, ...);
 

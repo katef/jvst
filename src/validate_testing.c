@@ -18,6 +18,7 @@ enum { NUM_TEST_THINGS = 1024 };
 static struct ast_schema ar_schema[NUM_TEST_THINGS];
 static struct ast_property_schema ar_props[NUM_TEST_THINGS];
 static struct ast_string_set ar_stringsets[NUM_TEST_THINGS];
+static struct ast_property_names ar_propnames[NUM_TEST_THINGS];
 static struct ast_schema_set ar_schemasets[NUM_TEST_THINGS];
 static struct jvst_cnode ar_cnodes[NUM_TEST_THINGS];
 
@@ -34,13 +35,29 @@ struct json_string newstr(const char *s)
   return str;
 }
 
+static struct ast_string_set *stringset_alloc(struct arena_info *A)
+{
+  struct ast_string_set *elt;
+  size_t i,max;
+
+  max = ARRAYLEN(ar_stringsets);
+  i = A->nstr++;
+  if (A->nstr >= max) {
+    fprintf(stderr, "too many string sets: %zu max\n", max);
+    abort();
+  }
+
+  elt = &ar_stringsets[i];
+  memset(elt, 0, sizeof *elt);
+
+  return elt;
+}
+
 struct ast_string_set *stringset(struct arena_info *A, ...)
 {
-  size_t max;
   struct ast_string_set *ss = NULL, **ssp = &ss;
   va_list args;
 
-  max = sizeof ar_stringsets / sizeof ar_stringsets[0];
   va_start(args, A);
   for(;;) {
     struct ast_string_set *elt;
@@ -52,13 +69,7 @@ struct ast_string_set *stringset(struct arena_info *A, ...)
       break;
     }
 
-    i = A->nstr++;
-    if (A->nstr >= max) {
-      fprintf(stderr, "too many string sets: %zu max\n", max);
-      abort();
-    }
-
-    elt = &ar_stringsets[i];
+    elt = stringset_alloc(A);
     elt->str = newstr(s);
     *ssp = elt;
     ssp = &elt->next;
@@ -91,6 +102,7 @@ struct ast_schema_set *schema_set(struct arena_info *A, ...)
     }
 
     elt = &ar_schemasets[i];
+    memset(elt, 0, sizeof *elt);
     elt->schema = s;
     *sp = elt;
     sp = &elt->next;
@@ -109,6 +121,47 @@ size_t schema_set_count(struct ast_schema_set *s)
   }
 
   return n;
+}
+
+struct ast_property_names *newpropnames(struct arena_info *A, ...)
+{
+  size_t i,max;
+  struct ast_property_names *pnames, **pp;
+  va_list args;
+
+  pnames = NULL;
+  pp = &pnames;
+
+  va_start(args, A);
+  for (;;) {
+    const char *n;
+    struct ast_string_set *set;
+
+    n = va_arg(args, const char *);
+    if (n == NULL) {
+      break;
+    }
+
+    set = va_arg(args, struct ast_string_set *);
+    i = A->npnames++;
+    max = ARRAYLEN(ar_propnames);
+    if (A->nschema >= max) {
+      fprintf(stderr, "too many schema: %zu max\n", max);
+      abort();
+    }
+
+    *pp = &ar_propnames[i];
+    memset(*pp, 0, sizeof **pp);
+    (*pp)->set = set;
+    (*pp)->pattern.dialect = RE_LITERAL;
+    (*pp)->pattern.str = newstr(n);
+    (*pp)->pattern.fsm = NULL;
+
+    pp = &(*pp)->next;
+  }
+  va_end(args);
+
+  return pnames;
 }
 
 struct ast_schema *newschema(struct arena_info *A, int types)
@@ -338,6 +391,30 @@ struct jvst_cnode *newcnode_bool(struct arena_info *A, enum JVST_CNODE_TYPE type
 
     *pp = child;
     pp = &child->next;
+  }
+  va_end(args);
+
+  return node;
+}
+
+struct jvst_cnode *newcnode_propset(struct arena_info *A, ...)
+{
+  struct jvst_cnode *node, **mlp;
+  va_list args;
+
+  node = newcnode(A, JVST_CNODE_OBJ_PROP_SET);
+  mlp = &node->u.prop_set;
+  *mlp = NULL;
+
+  va_start(args, A);
+  for(;;) {
+    struct jvst_cnode *match;
+    match = va_arg(args, struct jvst_cnode *);
+    if (match == NULL) {
+      break;
+    }
+    *mlp = match;
+    mlp = &(*mlp)->next;
   }
   va_end(args);
 

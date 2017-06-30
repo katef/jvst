@@ -56,6 +56,7 @@ enum JVST_CNODE_TYPE {
   JVST_CNODE_NUM_RANGE,
   JVST_CNODE_NUM_INTEGER,
 
+  JVST_CNODE_OBJ_PROP_SET,
   JVST_CNODE_OBJ_PROP_MATCH,
   JVST_CNODE_OBJ_REQUIRED,
 
@@ -66,6 +67,7 @@ enum JVST_CNODE_TYPE {
 
 struct jvst_cnode {
   enum JVST_CNODE_TYPE type;
+
   struct jvst_cnode *next;
 
   union {
@@ -96,6 +98,8 @@ struct jvst_cnode {
     /* object required property */
     struct ast_string_set *required;
 
+    struct jvst_cnode *prop_set;
+
     /* object property constraints */
     struct {
       struct ast_regexp match;
@@ -118,6 +122,9 @@ struct jvst_cnode *jvst_cnode_from_ast(struct ast_schema *ast);
 // Just do a raw translation without doing any optimization of the
 // constraint tree
 struct jvst_cnode *jvst_cnode_translate_ast(struct ast_schema *ast);
+
+// Optimize the cnode tree.  Returns a new tree.
+struct jvst_cnode *jvst_cnode_optimize(struct jvst_cnode *tree);
 
 // Writes a textual represetnation of the cnode into the buffer,
 // returns 0 if the representation fit, non-zero otherwise
