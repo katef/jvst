@@ -13,5 +13,11 @@ xrealloc(void *p, size_t sz);
 char *
 xstrndup(const char *s, size_t n);
 
+void *
+xmalloc(size_t n);
+
+void *
+xcalloc(size_t count, size_t sz);
+
 #endif
 
