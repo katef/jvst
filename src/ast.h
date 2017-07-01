@@ -55,7 +55,7 @@ struct ast_property_schema {
 struct ast_property_names {
 	struct ast_regexp pattern;
 	struct ast_string_set *set;
-	struct ast_pattern_properties *next;
+	struct ast_property_names *next;
 };
 
 struct ast_schema {
