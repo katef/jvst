@@ -49,24 +49,23 @@ xstrndup(const char *s, size_t n)
 void *
 xmalloc(size_t n)
 {
-  void *p;
-  if (p = malloc(n), p == NULL) {
-    perror("malloc");
-    abort();
-  }
+	void *p;
+	if (p = malloc(n), p == NULL) {
+		perror("malloc");
+		abort();
+	}
 
-  return p;
+	return p;
 }
 
 void *
 xcalloc(size_t count, size_t sz)
 {
-  void *p;
-  if (p = calloc(count,sz), p == NULL) {
-    perror("malloc");
-    abort();
-  }
+	void *p;
+	if (p = calloc(count, sz), p == NULL) {
+		perror("malloc");
+		abort();
+	}
 
-  return p;
+	return p;
 }
-
