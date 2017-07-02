@@ -992,8 +992,8 @@ cnode_optimize_andor_switches(struct jvst_cnode *top)
 	return sw;
 }
 
-static struct jvst_cnode *
-cnode_optimize_andor(struct jvst_cnode *top)
+void
+cnode_optimize_ctrl_children(struct jvst_cnode *top)
 {
 	struct jvst_cnode *node, *next, **pp;
 	pp = &top->u.ctrl;
@@ -1004,76 +1004,16 @@ cnode_optimize_andor(struct jvst_cnode *top)
 		*pp  = jvst_cnode_optimize(node);
 		pp   = &(*pp)->next;
 	}
+}
 
-	// pass 1: remove VALID/INVALID nodes
-	switch (top->type) {
-	case JVST_CNODE_AND:
-		for (pp = &top->u.ctrl; *pp != NULL;) {
-			switch ((*pp)->type) {
-			case JVST_CNODE_INVALID:
-				// whole AND becomes invalid
-				(*pp)->next = NULL;
-				return *pp;
+void
+cnode_optimize_ctrl_combine_like(struct jvst_cnode *top)
+{
+	struct jvst_cnode *node, *next, **pp;
 
-			case JVST_CNODE_VALID:
-				// can eliminate VALID from AND
-				*pp = (*pp)->next;
-				continue;
-
-			default:
-				break;
-			}
-
-			pp = &(*pp)->next;
-		}
-
-		// all nodes were valid
-		if (top->u.ctrl == NULL) {
-			return jvst_cnode_alloc(JVST_CNODE_VALID);
-		}
-		break;
-
-	case JVST_CNODE_OR:
-		for (pp = &top->u.ctrl; *pp != NULL;) {
-			switch ((*pp)->type) {
-			case JVST_CNODE_VALID:
-				// whole OR becomes valid
-				(*pp)->next = NULL;
-				return *pp;
-
-			case JVST_CNODE_INVALID:
-				// can eliminate INVALID from OR
-				*pp = (*pp)->next;
-				continue;
-
-			default:
-				break;
-			}
-
-			pp = &(*pp)->next;
-		}
-
-		// all nodes were invalid
-		if (top->u.ctrl == NULL) {
-			return jvst_cnode_alloc(JVST_CNODE_INVALID);
-		}
-		break;
-
-	default:
-		SHOULD_NOT_REACH();
-	}
-
-	assert(top->u.ctrl != NULL);
-	if (top->u.ctrl->next == NULL) {
-		// only one child
-		return top->u.ctrl;
-	}
-
-	// pass 2: combine subnodes of the same type (ie: AND will combine
-	// with AND and OR will combine with OR)
+	// combine subnodes of the same type (ie: AND will combine with
+	// AND and OR will combine with OR)
 	for (pp = &top->u.ctrl; *pp != NULL; pp = &(*pp)->next) {
-		struct jvst_cnode *head, *tail;
-
 		if ((*pp)->type != top->type) {
 			continue;
 		}
@@ -1093,6 +1033,61 @@ cnode_optimize_andor(struct jvst_cnode *top)
 
 		*pp = next;
 	}
+}
+
+static struct jvst_cnode *
+cnode_optimize_andor(struct jvst_cnode *top)
+{
+	struct jvst_cnode *node, *next, **pp;
+	enum jvst_cnode_type snt; // short circuit node type
+	enum jvst_cnode_type rnt; // remove node type
+
+	cnode_optimize_ctrl_children(top);
+
+	// pass 1: remove VALID/INVALID nodes
+	switch (top->type) {
+	case JVST_CNODE_AND:
+		snt = JVST_CNODE_INVALID;
+		rnt = JVST_CNODE_VALID;
+		break;
+
+	case JVST_CNODE_OR:
+		snt = JVST_CNODE_VALID;
+		rnt = JVST_CNODE_INVALID;
+		break;
+
+	default:
+		SHOULD_NOT_REACH();
+	}
+
+	for (pp = &top->u.ctrl; *pp != NULL;) {
+		enum jvst_cnode_type nt = (*pp)->type;
+
+		if (nt == snt) {
+			(*pp)->next = NULL;
+			return *pp;
+		}
+
+		if (nt == rnt) {
+			*pp = (*pp)->next;
+			continue;
+		}
+
+		pp = &(*pp)->next;
+	}
+
+	// all nodes were valid
+	if (top->u.ctrl == NULL) {
+		return jvst_cnode_alloc(rnt);
+	}
+
+	assert(top->u.ctrl != NULL);
+	if (top->u.ctrl->next == NULL) {
+		// only one child
+		return top->u.ctrl;
+	}
+
+	cnode_optimize_ctrl_combine_like(top);
 
 	return cnode_optimize_andor_switches(top);
 }
