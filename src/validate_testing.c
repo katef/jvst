@@ -236,14 +236,26 @@ newschema_p(struct arena_info *A, int types, ...)
 			s->dependencies_schema.set = va_arg(args, struct ast_property_schema *);
 		} else if (strcmp(pname, "anyOf") == 0) {
 			struct ast_schema_set *sset;
-			sset	   = va_arg(args, struct ast_schema_set *);
+			sset = va_arg(args, struct ast_schema_set *);
 			s->some_of.set = sset;
 			s->some_of.min = 1;
 			s->some_of.max = schema_set_count(sset);
+		} else if (strcmp(pname, "allOf") == 0) {
+			struct ast_schema_set *sset;
+			sset = va_arg(args, struct ast_schema_set *);
+			s->some_of.set = sset;
+			s->some_of.min = schema_set_count(sset);
+			s->some_of.max = s->some_of.min;
+		} else if (strcmp(pname, "oneOf") == 0) {
+			struct ast_schema_set *sset;
+			sset = va_arg(args, struct ast_schema_set *);
+			s->some_of.set = sset;
+			s->some_of.min = 1;
+			s->some_of.max = 1;
 		} else {
 			// okay to abort() a test if the test writer forgot to add a
 			// property to the big dumb if-else chain
-			fprintf(stderr, "unsupported schema properties '%s'\n", pname);
+			fprintf(stderr, "unsupported schema property '%s'\n", pname);
 			abort();
 		}
 	}

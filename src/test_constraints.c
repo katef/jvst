@@ -745,33 +745,92 @@ void test_xlate_dependencies(void)
   RUNTESTS(tests);
 }
 
-void test_xlate_anyof_1(void)
+void test_xlate_anyof_allof_oneof_1(void)
 {
   struct arena_info A = {0};
-  struct ast_schema *schema = newschema_p(&A, 0,
-      "anyOf", schema_set(&A, 
-        newschema_p(&A, JSON_VALUE_INTEGER, NULL),
-        newschema_p(&A, 0, "minimum", 2.0, NULL),
-        NULL),
-      NULL);
 
   const struct cnode_test tests[] = {
     {
-      TRANSLATE, schema, NULL, newcnode_bool(&A, JVST_CNODE_AND,
-          newcnode_bool(&A, JVST_CNODE_OR,
-            newcnode_switch(&A, 0,
-              SJP_NUMBER, newcnode(&A,JVST_CNODE_NUM_INTEGER),
-              SJP_NONE),
-            newcnode_switch(&A, 1,
-              SJP_NUMBER, newcnode_bool(&A, JVST_CNODE_AND,
-                            newcnode_range(&A, JVST_CNODE_RANGE_MIN, 2.0, 0.0),
-                            newcnode_valid(),
-                            NULL),
-              SJP_NONE),
+      TRANSLATE,
+      newschema_p(&A, 0,
+          "anyOf", schema_set(&A, 
+            newschema_p(&A, JSON_VALUE_INTEGER, NULL),
+            newschema_p(&A, 0, "minimum", 2.0, NULL),
             NULL),
-          newcnode_switch(&A, 1, SJP_NONE),
           NULL),
+
+      NULL,
+
+      newcnode_bool(&A, JVST_CNODE_AND,
+        newcnode_bool(&A, JVST_CNODE_OR,
+          newcnode_switch(&A, 0,
+            SJP_NUMBER, newcnode(&A,JVST_CNODE_NUM_INTEGER),
+            SJP_NONE),
+          newcnode_switch(&A, 1,
+            SJP_NUMBER, newcnode_bool(&A, JVST_CNODE_AND,
+                          newcnode_range(&A, JVST_CNODE_RANGE_MIN, 2.0, 0.0),
+                          newcnode_valid(),
+                          NULL),
+            SJP_NONE),
+          NULL),
+        newcnode_switch(&A, 1, SJP_NONE),
+        NULL),
     },
+
+    {
+      TRANSLATE,
+      newschema_p(&A, 0,
+          "allOf", schema_set(&A, 
+            newschema_p(&A, JSON_VALUE_INTEGER, NULL),
+            newschema_p(&A, 0, "minimum", 2.0, NULL),
+            NULL),
+          NULL),
+
+      NULL,
+
+      newcnode_bool(&A, JVST_CNODE_AND,
+        newcnode_bool(&A, JVST_CNODE_AND,
+          newcnode_switch(&A, 0,
+            SJP_NUMBER, newcnode(&A,JVST_CNODE_NUM_INTEGER),
+            SJP_NONE),
+          newcnode_switch(&A, 1,
+            SJP_NUMBER, newcnode_bool(&A, JVST_CNODE_AND,
+                          newcnode_range(&A, JVST_CNODE_RANGE_MIN, 2.0, 0.0),
+                          newcnode_valid(),
+                          NULL),
+            SJP_NONE),
+          NULL),
+        newcnode_switch(&A, 1, SJP_NONE),
+        NULL),
+    },
+
+    {
+      TRANSLATE,
+      newschema_p(&A, 0,
+          "oneOf", schema_set(&A, 
+            newschema_p(&A, JSON_VALUE_INTEGER, NULL),
+            newschema_p(&A, 0, "minimum", 2.0, NULL),
+            NULL),
+          NULL),
+
+      NULL,
+
+      newcnode_bool(&A, JVST_CNODE_AND,
+        newcnode_bool(&A, JVST_CNODE_XOR,
+          newcnode_switch(&A, 0,
+            SJP_NUMBER, newcnode(&A,JVST_CNODE_NUM_INTEGER),
+            SJP_NONE),
+          newcnode_switch(&A, 1,
+            SJP_NUMBER, newcnode_bool(&A, JVST_CNODE_AND,
+                          newcnode_range(&A, JVST_CNODE_RANGE_MIN, 2.0, 0.0),
+                          newcnode_valid(),
+                          NULL),
+            SJP_NONE),
+          NULL),
+        newcnode_switch(&A, 1, SJP_NONE),
+        NULL),
+    },
+
     { STOP },
   };
 
@@ -1057,7 +1116,7 @@ int main(void)
   test_xlate_required();
   test_xlate_dependencies();
 
-  test_xlate_anyof_1();
+  test_xlate_anyof_allof_oneof_1();
   test_xlate_anyof_2();
 
   test_simplify_ands();
