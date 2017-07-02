@@ -17,7 +17,7 @@ DFLAGS.${src} += -I share/git/sjp
 .endfor
 
 .for src in ${SRC:Msrc/ast.c} ${SRC:Msrc/sjp_lexer.c} ${SRC:Msrc/parser.c} ${SRC:Msrc/main.c}
-CFLAGS.${src} += -std=c99
+CFLAGS.${src} += -std=c99 -Wno-missing-field-initializers
 DFLAGS.${src} += -std=c99
 .endfor
 
