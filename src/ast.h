@@ -9,6 +9,8 @@
 
 #include "jdom.h"
 
+#include <stdio.h>
+
 #include <re/re.h>
 
 struct fsm;
