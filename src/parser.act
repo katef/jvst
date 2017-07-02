@@ -140,7 +140,7 @@
 			exit(EXIT_FAILURE);
 
 		case SJP_PARTIAL:
-			assert(t->type  SJP_TOK_NONE);
+			assert(t->type != SJP_TOK_NONE);
 			/* XXX: how can this happen? */
 			xerr(lex_state, 0, "sjp unexpected partial token\n");
 			abort();
