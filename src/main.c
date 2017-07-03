@@ -4,16 +4,24 @@
  * See LICENCE for the full copyright terms.
  */
 
+#define _POSIX_C_SOURCE 2
+
+#include <unistd.h>
+
 #include <assert.h>
 #include <stdlib.h>
+#include <stdint.h>
 #include <stdio.h>
 
 #include "sjp_lexer.h"
 
+#include "debug.h"
 #include "parser.h"
 #include "jdom.h"
 #include "ast.h"
 #include "xalloc.h"
+
+unsigned debug;
 
 static char *
 readfile(FILE *f, size_t *np)
@@ -59,8 +67,45 @@ readfile(FILE *f, size_t *np)
 	return p;
 }
 
+static int
+debug_flags(const char *s)
+{
+	int v;
+
+	assert(s != NULL);
+
+	v = 1;
+
+	for ( ; *s != '\0'; s++) {
+		int e;
+
+		switch (*s) {
+		case '+': v = 1; continue;
+		case '-': v = 0; continue;
+
+		case 'a': e = ~0U;         break;
+		case 's': e = DEBUG_SJP;   break;
+		case 'l': e = DEBUG_LEX;   break;
+		case 'c': e = DEBUG_ACT;   break;
+
+		default:
+			fprintf(stderr, "-d: unrecognised flag '%c'\n", *s);
+			return -1;
+		}
+
+		if (v) {
+			debug |=  e;
+		} else {
+			debug &= ~e;
+		}
+	}
+
+	return 0;
+}
+
+
 int
-main(void)
+main(int argc, char *argv[])
 {
 	static const struct ast_schema ast_default;
 	struct ast_schema ast = ast_default;
@@ -68,6 +113,26 @@ main(void)
 	size_t n;
 	char *p;
 	int r;
+
+	{
+		int c;
+
+		while (c = getopt(argc, argv, "d:"), c != -1) {
+			switch (c) {
+			case 'd':
+				if (-1 == debug_flags(optarg)) {
+					goto usage;
+				}
+				break;
+
+			default:
+				goto usage;
+			}
+		}
+
+		argc -= optind;
+		argv += optind;
+	}
 
 	sjp_lexer_init(&l);
 
@@ -91,5 +156,11 @@ main(void)
 	}
 
 	return 0;
+
+usage:
+
+	fprintf(stderr, "usage: jvst [-d +-aslc]\n");
+
+	return 1;
 }
 

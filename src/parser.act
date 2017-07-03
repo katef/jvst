@@ -33,6 +33,7 @@
 
 	#include "sjp_lexer.h"
 
+	#include "debug.h"
 	#include "parser.h"
 	#include "jdom.h"
 	#include "ast.h"
@@ -104,6 +105,10 @@
 			exit(EXIT_FAILURE);
 		}
 
+		if (debug & DEBUG_SJP) {
+/* TODO: talk about r */
+		}
+
 		switch (r) {
 		case SJP_OK:
 			if (t->type == SJP_TOK_NONE) {
@@ -149,6 +154,38 @@
 			xerr(lex_state, 0, "sjp unrecognised error: %d", r);
 			abort();
 		}
+
+		if (debug & DEBUG_LEX) {
+			switch (t->type) {
+			case SJP_TOK_NULL:
+				fprintf(stderr, "<NULL>\n");
+				break;
+
+			case SJP_TOK_TRUE:
+				fprintf(stderr, "<TRUE>\n");
+				break;
+
+			case SJP_TOK_FALSE:
+				fprintf(stderr, "<FALSE>\n");
+				break;
+
+			case SJP_TOK_STRING:
+				fprintf(stderr, "<STRING: \"%.*s\">\n", (int) t->n, t->value);
+				break;
+
+			case SJP_TOK_NUMBER:
+				fprintf(stderr, "<NUMBER: %f>\n", t->dbl);
+				break;
+
+			case SJP_TOK_EOS:
+				fprintf(stderr, "<EOS>\n");
+				break;
+
+			default:
+				fprintf(stderr, "<'%c'>\n", (int) t->type);
+				break;
+			}
+		}
 	}
 
 @}, @{
@@ -189,6 +226,10 @@
 %actions%
 
 	<kw-lookup>: (s :string) -> (k :kw) = @{
+		if (debug & DEBUG_ACT) {
+			fprintf(stderr, "<kw-lookup>: \"%.*s\"\n", (int) @s.len, @s.s);
+		}
+
 		@k = kw_lookup(&@s);
 		if (@k == 0) {
 			xerr(lex_state, 0, "Unrecognised keyword: \"%s\"", @s.s);
@@ -197,6 +238,10 @@
 	@};
 
 	<type-lookup>: (s :string) -> (t :type) = @{
+		if (debug & DEBUG_ACT) {
+			fprintf(stderr, "<type-lookup>: \"%.*s\"\n", (int) @s.len, @s.s);
+		}
+
 		@t = type_lookup(&@s);
 		if (@t == 0) {
 			xerr(lex_state, KW_TYPE, "Unknown type name: \"%s\"", @s.s);
@@ -247,11 +292,19 @@
 	<set-schema>: (s :string) -> () = @{
 		assert(@s.s != NULL);
 
+		if (debug & DEBUG_ACT) {
+			fprintf(stderr, "<set-schema>: \"%.*s\"\n", (int) @s.len, @s.s);
+		}
+
 		ast->schema = @s;
 	@};
 
 	<set-id>: (s :string) -> () = @{
 		assert(@s.s != NULL);
+
+		if (debug & DEBUG_ACT) {
+			fprintf(stderr, "<set-id>: \"%.*s\"\n", (int) @s.len, @s.s);
+		}
 
 		ast->id = @s;
 	@};
@@ -261,39 +314,67 @@
 			xerr(lex_state, KW_MULTIPLE_OF, "expected > 0, got %f", @n);
 		}
 
+		if (debug & DEBUG_ACT) {
+			fprintf(stderr, "<set-multiple-of>: %f\n", @n);
+		}
+
 		ast->kws |= KWS_MULTIPLE_OF;
 		ast->multiple_of = @n;
 	@};
 
 	<set-maximum>: (n :number) -> () = @{
+		if (debug & DEBUG_ACT) {
+			fprintf(stderr, "<set-maximum>: %f\n", @n);
+		}
+
 		ast->kws |= KWS_MAXIMUM;
 		ast->maximum = @n;
 		ast->exclusive_maximum = false;
 	@};
 
 	<set-exclusive-maximum>: (n :number) -> () = @{
+		if (debug & DEBUG_ACT) {
+			fprintf(stderr, "<set-exclusive-maximum>: %f\n", @n);
+		}
+
 		ast->kws |= KWS_MAXIMUM;
 		ast->maximum = @n;
 		ast->exclusive_maximum = true;
 	@};
 
 	<set-minimum>: (n :number) -> () = @{
+		if (debug & DEBUG_ACT) {
+			fprintf(stderr, "<set-minimum>: %f\n", @n);
+		}
+
 		ast->kws |= KWS_MINIMUM;
 		ast->minimum = @n;
 		ast->exclusive_minimum = false;
 	@};
 
 	<set-exclusive-minimum>: (n :number) -> () = @{
+		if (debug & DEBUG_ACT) {
+			fprintf(stderr, "<set-exclusive-minimum>: %f\n", @n);
+		}
+
 		ast->kws |= KWS_MINIMUM;
 		ast->minimum = @n;
 		ast->exclusive_minimum = true;
 	@};
 
 	<clear-types> = @{
+		if (debug & DEBUG_ACT) {
+			fprintf(stderr, "<clear-types>\n");
+		}
+
 		ast->types = 0;
 	@};
 
 	<set-type>: (t :type) -> () = @{
+		if (debug & DEBUG_ACT) {
+			fprintf(stderr, "<set-type>: \"%s\"\n", type_name(@t));
+		}
+
 		switch (@t) {
 		case JSON_VALUE_OBJECT:
 		case JSON_VALUE_ARRAY:
@@ -320,11 +401,19 @@
 	<set-title>: (s :string) -> () = @{
 		assert(@s.s != NULL);
 
+		if (debug & DEBUG_ACT) {
+			fprintf(stderr, "<set-title>: \"%.*s\"\n", (int) @s.len, @s.s);
+		}
+
 		ast->title = @s;
 	@};
 
 	<set-description>: (s :string) -> () = @{
 		assert(@s.s != NULL);
+
+		if (debug & DEBUG_ACT) {
+			fprintf(stderr, "<set-description>: \"%.*s\"\n", (int) @s.len, @s.s);
+		}
 
 		ast->description = @s;
 	@};
