@@ -141,4 +141,5 @@ jvst_cnode_dump(struct jvst_cnode *node, char *buf, size_t nb);
 
 #endif /* VALIDATE_CONSTRAINTS_H */
 
-/* vim: set tabstop=8 shiftwidth=8 noexpandtab */
+/* vim: set tabstop=8 shiftwidth=8 noexpandtab: */
+
