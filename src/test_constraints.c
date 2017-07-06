@@ -901,13 +901,17 @@ static void test_simplify_ands(void)
   const struct cnode_test tests[] = {
     // handle AND with only one level...
     {
-      OPTIMIZE, NULL,
+      OPTIMIZE,
+
+      NULL,
+
       newcnode_switch(&A, 1,
           SJP_NUMBER, newcnode_bool(&A, JVST_CNODE_AND,
                         newcnode_range(&A, JVST_CNODE_RANGE_MIN, 1.1, 0.0),
                         newcnode_valid(),
                         NULL),
           SJP_NONE),
+
       newcnode_switch(&A, 1,
           SJP_NUMBER, newcnode_range(&A, JVST_CNODE_RANGE_MIN, 1.1, 0.0),
           SJP_NONE),
@@ -915,7 +919,10 @@ static void test_simplify_ands(void)
 
     // handle nested ANDs
     {
-      OPTIMIZE, NULL,
+      OPTIMIZE,
+
+      NULL,
+
       newcnode_switch(&A, 1,
           SJP_NUMBER, newcnode_bool(&A, JVST_CNODE_AND,
                         newcnode_bool(&A, JVST_CNODE_AND,
@@ -925,6 +932,7 @@ static void test_simplify_ands(void)
                         newcnode(&A,JVST_CNODE_NUM_INTEGER),
                         NULL),
           SJP_NONE),
+
       newcnode_switch(&A, 1,
           SJP_NUMBER, newcnode_bool(&A, JVST_CNODE_AND,
                         newcnode_range(&A, JVST_CNODE_RANGE_MIN, 1.1, 0.0),
@@ -935,7 +943,10 @@ static void test_simplify_ands(void)
 
     // handle more complex nested ANDs
     {
-      OPTIMIZE, NULL,
+      OPTIMIZE,
+      
+      NULL,
+
       newcnode_switch(&A, 1,
           SJP_NUMBER, newcnode_bool(&A, JVST_CNODE_AND,
                         newcnode_bool(&A, JVST_CNODE_AND,
@@ -948,6 +959,7 @@ static void test_simplify_ands(void)
                         newcnode_range(&A, JVST_CNODE_RANGE_MAX, 0.0, 3.2),
                         NULL),
           SJP_NONE),
+
       newcnode_switch(&A, 1,
           SJP_NUMBER, newcnode_bool(&A, JVST_CNODE_AND,
                         newcnode_range(&A, JVST_CNODE_RANGE_MIN, 1.1, 0.0),
