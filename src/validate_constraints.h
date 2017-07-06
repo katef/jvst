@@ -137,6 +137,10 @@ jvst_cnode_optimize(struct jvst_cnode *tree);
 int
 jvst_cnode_dump(struct jvst_cnode *node, char *buf, size_t nb);
 
+// for debugging, prints node to stderr
+void
+jvst_cnode_print(struct jvst_cnode *node);
+
 #undef MODULE_NAME
 
 #endif /* VALIDATE_CONSTRAINTS_H */
