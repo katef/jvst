@@ -10,6 +10,7 @@
 
 #include "jvst_macros.h"
 #include "sjp_testing.h"
+#include "validate_sbuf.h"
 
 #define SHOULD_NOT_REACH()							\
 	do {									\
@@ -260,61 +261,6 @@ jvst_cnode_free_tree(struct jvst_cnode *root)
 	}
 }
 
-struct sbuf {
-	char *buf;
-	size_t cap;
-	size_t len;
-	size_t np;
-};
-
-static int
-add_indent(struct sbuf *buf, int indent)
-{
-	int i;
-
-	for (i = 0; i < indent; i++) {
-		if (buf->len >= buf->cap) {
-			break;
-		}
-		buf->buf[buf->len++] = ' ';
-	}
-
-	buf->np += indent;
-
-	return indent;
-}
-
-static void
-xsnprintf(struct sbuf *b, const char *fmt, ...)
-{
-	int ret;
-	va_list args;
-	char *p;
-	size_t nb;
-
-	assert(b->len <= b->cap);
-
-	p  = b->buf + b->len;
-	nb = b->cap - b->len;
-
-	va_start(args, fmt);
-	ret = vsnprintf(p, nb, fmt, args);
-	va_end(args);
-	if (ret < 0) {
-		// FIXME: handle this more gracefully!
-		perror("ERROR dumping cnode to a buffer");
-		abort();
-	}
-
-	if ((size_t)ret <= nb) {
-		b->len += ret;
-	} else {
-		b->len = b->cap;
-	}
-
-	b->np += ret;
-}
-
 // returns number of bytes written
 static void
 jvst_cnode_dump_inner(struct jvst_cnode *node, struct sbuf *buf, int indent)
@@ -322,58 +268,58 @@ jvst_cnode_dump_inner(struct jvst_cnode *node, struct sbuf *buf, int indent)
 	const char *op = NULL;
 
 	if (node == NULL) {
-		xsnprintf(buf, "<null>");
+		sbuf_snprintf(buf, "<null>");
 		return;
 	}
 
 	switch (node->type) {
 	case JVST_CNODE_INVALID:
 	case JVST_CNODE_VALID:
-		xsnprintf(buf, (node->type == JVST_CNODE_VALID) ? "VALID" : "INVALID");
+		sbuf_snprintf(buf, (node->type == JVST_CNODE_VALID) ? "VALID" : "INVALID");
 		return;
 
 	case JVST_CNODE_SWITCH:
 		{
 			size_t i, n;
 
-			xsnprintf(buf, "SWITCH(\n");
+			sbuf_snprintf(buf, "SWITCH(\n");
 			n = ARRAYLEN(node->u.sw);
 			for (i = 0; i < n; i++) {
-				add_indent(buf, indent + 2);
-				xsnprintf(buf, "%-10s : ", evt2name(i));
+				sbuf_indent(buf, indent + 2);
+				sbuf_snprintf(buf, "%-10s : ", evt2name(i));
 				jvst_cnode_dump_inner(node->u.sw[i], buf, indent + 2);
 				if (i < n - 1) {
-					xsnprintf(buf, ",\n");
+					sbuf_snprintf(buf, ",\n");
 				} else {
-					xsnprintf(buf, "\n");
-					add_indent(buf, indent);
-					xsnprintf(buf, ")");
+					sbuf_snprintf(buf, "\n");
+					sbuf_indent(buf, indent);
+					sbuf_snprintf(buf, ")");
 				}
 			}
 		}
 		break;
 
 	case JVST_CNODE_NUM_INTEGER:
-		xsnprintf(buf, "IS_INTEGER");
+		sbuf_snprintf(buf, "IS_INTEGER");
 		break;
 
 	case JVST_CNODE_NUM_RANGE:
-		xsnprintf(buf, "NUM_RANGE(");
+		sbuf_snprintf(buf, "NUM_RANGE(");
 		if (node->u.num_range.flags & JVST_CNODE_RANGE_EXCL_MIN) {
-			xsnprintf(buf, "%g < ", node->u.num_range.min);
+			sbuf_snprintf(buf, "%g < ", node->u.num_range.min);
 		} else if (node->u.num_range.flags & JVST_CNODE_RANGE_MIN) {
-			xsnprintf(buf, "%g <= ", node->u.num_range.min);
+			sbuf_snprintf(buf, "%g <= ", node->u.num_range.min);
 		}
 
-		xsnprintf(buf, "x");
+		sbuf_snprintf(buf, "x");
 
 		if (node->u.num_range.flags & JVST_CNODE_RANGE_EXCL_MAX) {
-			xsnprintf(buf, " < %g", node->u.num_range.max);
+			sbuf_snprintf(buf, " < %g", node->u.num_range.max);
 		} else if (node->u.num_range.flags & JVST_CNODE_RANGE_MAX) {
-			xsnprintf(buf, " <= %g", node->u.num_range.max);
+			sbuf_snprintf(buf, " <= %g", node->u.num_range.max);
 		}
 
-		xsnprintf(buf, ")");
+		sbuf_snprintf(buf, ")");
 		break;
 
 	case JVST_CNODE_AND:
@@ -393,16 +339,16 @@ and_or_xor:
 		{
 			struct jvst_cnode *cond;
 
-			xsnprintf(buf, "%s(\n", op);
+			sbuf_snprintf(buf, "%s(\n", op);
 			for (cond = node->u.ctrl; cond != NULL; cond = cond->next) {
-				add_indent(buf, indent + 2);
+				sbuf_indent(buf, indent + 2);
 				jvst_cnode_dump_inner(cond, buf, indent + 2);
 				if (cond->next) {
-					xsnprintf(buf, ",\n");
+					sbuf_snprintf(buf, ",\n");
 				} else {
-					xsnprintf(buf, "\n");
-					add_indent(buf, indent);
-					xsnprintf(buf, ")");
+					sbuf_snprintf(buf, "\n");
+					sbuf_indent(buf, indent);
+					sbuf_snprintf(buf, ")");
 				}
 			}
 		}
@@ -412,16 +358,16 @@ and_or_xor:
 		{
 			struct jvst_cnode *prop;
 
-			xsnprintf(buf, "PROP_SET(\n");
+			sbuf_snprintf(buf, "PROP_SET(\n");
 			for (prop = node->u.prop_set; prop != NULL; prop = prop->next) {
-				add_indent(buf, indent + 2);
+				sbuf_indent(buf, indent + 2);
 				jvst_cnode_dump_inner(prop, buf, indent + 2);
 				if (prop->next) {
-					xsnprintf(buf, ",\n");
+					sbuf_snprintf(buf, ",\n");
 				} else {
-					xsnprintf(buf, "\n");
-					add_indent(buf, indent);
-					xsnprintf(buf, ")");
+					sbuf_snprintf(buf, "\n");
+					sbuf_indent(buf, indent);
+					sbuf_snprintf(buf, ")");
 				}
 			}
 		}
@@ -440,8 +386,8 @@ and_or_xor:
 						node->u.prop_match.match.str.len);
 			}
 
-			xsnprintf(buf, "PROP_MATCH(\n");
-			add_indent(buf, indent + 2);
+			sbuf_snprintf(buf, "PROP_MATCH(\n");
+			sbuf_indent(buf, indent + 2);
 			{
 				char *prefix = "";
 				char delim   = '/';
@@ -462,36 +408,38 @@ and_or_xor:
 						prefix = "???";
 						break;
 				}
-				xsnprintf(buf, "%s%c%s%c,\n", prefix, delim, match, delim);
-				add_indent(buf, indent + 2);
+				sbuf_snprintf(buf, "%s%c%s%c,\n", prefix, delim, match, delim);
+				sbuf_indent(buf, indent + 2);
 				jvst_cnode_dump_inner(node->u.prop_match.constraint, buf, indent + 2);
-				xsnprintf(buf, "\n");
-				add_indent(buf, indent);
-				xsnprintf(buf, ")");
+				sbuf_snprintf(buf, "\n");
+				sbuf_indent(buf, indent);
+				sbuf_snprintf(buf, ")");
 			}
 		}
 		break;
 
 	case JVST_CNODE_COUNT_RANGE:
-		xsnprintf(buf, "COUNT_RANGE(");
+		sbuf_snprintf(buf, "COUNT_RANGE(");
 		if (node->u.counts.min > 0) {
-			xsnprintf(buf, "%zu <= ", node->u.counts.min);
+			sbuf_snprintf(buf, "%zu <= ", node->u.counts.min);
 		}
 
-		xsnprintf(buf, "x");
+		sbuf_snprintf(buf, "x");
 
 		if (node->u.counts.max > 0) {
-			xsnprintf(buf, "<= %zu", node->u.counts.min);
+			sbuf_snprintf(buf, "<= %zu", node->u.counts.min);
 		}
 
-		xsnprintf(buf, ")");
+		sbuf_snprintf(buf, ")");
+		break;
+
 		break;
 
 	case JVST_CNODE_OBJ_REQUIRED:
 		{
 			struct ast_string_set *ss;
 
-			xsnprintf(buf, "REQUIRED(\n");
+			sbuf_snprintf(buf, "REQUIRED(\n");
 			for (ss = node->u.required; ss != NULL; ss = ss->next) {
 				char str[256] = {0};
 				size_t n;
@@ -504,11 +452,11 @@ and_or_xor:
 					memcpy(str + sizeof str - 4, "...", 4);
 				}
 
-				add_indent(buf, indent + 2);
-				xsnprintf(buf, "\"%s\"%s\n", str, (ss->next != NULL) ? "," : "");
+				sbuf_indent(buf, indent + 2);
+				sbuf_snprintf(buf, "\"%s\"%s\n", str, (ss->next != NULL) ? "," : "");
 			}
-			add_indent(buf, indent);
-			xsnprintf(buf, ")");
+			sbuf_indent(buf, indent);
+			sbuf_snprintf(buf, ")");
 		}
 		break;
 

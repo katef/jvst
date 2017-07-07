@@ -29,6 +29,7 @@ PROG += test_constraints
 ${BUILD}/bin/jvst: ${BUILD}/${src:R}.o
 .endfor
 
+VALID_SRC += src/validate_sbuf.c
 VALID_SRC += src/validate.c
 VALID_SRC += src/validate_constraints.c
 VALID_SRC += src/validate_testing.c
