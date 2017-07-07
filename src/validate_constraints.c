@@ -36,8 +36,8 @@ struct jvst_cnode_pool {
 
 /* XXX - should these be global vars?  also, not thread safe. */
 static struct jvst_cnode_pool *pool = NULL;
-static size_t pool_item		    = 0;
 static struct jvst_cnode *freelist  = NULL;
+static size_t pool_item	= 0;
 
 struct jvst_strset_pool {
 	struct jvst_strset_pool *next;

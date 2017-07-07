@@ -342,7 +342,6 @@ newcnode(struct arena_info *A, enum jvst_cnode_type type)
 	size_t i, max;
 	struct jvst_cnode *node;
 	const char *pname;
-	va_list args;
 
 	i   = A->ncnode++;
 	max = ARRAYLEN(ar_cnodes);
@@ -474,7 +473,7 @@ struct jvst_cnode *
 newcnode_range(struct arena_info *A, enum jvst_cnode_rangeflags flags, double min, double max)
 {
 	struct jvst_cnode *node, **pp;
-	node			= newcnode(A, JVST_CNODE_NUM_RANGE);
+	node = newcnode(A, JVST_CNODE_NUM_RANGE);
 	node->u.num_range.flags = flags;
 	node->u.num_range.min   = min;
 	node->u.num_range.max   = max;
@@ -485,7 +484,7 @@ struct jvst_cnode *
 newcnode_counts(struct arena_info *A, size_t min, size_t max)
 {
 	struct jvst_cnode *node, **pp;
-	node		   = newcnode(A, JVST_CNODE_COUNT_RANGE);
+	node = newcnode(A, JVST_CNODE_COUNT_RANGE);
 	node->u.counts.min = min;
 	node->u.counts.max = max;
 	return node;
@@ -498,8 +497,10 @@ newcnode_required(struct arena_info *A, struct ast_string_set *sset)
 	struct jvst_cnode *node;
 	va_list args;
 
-	node		 = newcnode(A, JVST_CNODE_OBJ_REQUIRED);
+	node = newcnode(A, JVST_CNODE_OBJ_REQUIRED);
 	node->u.required = sset;
 
 	return node;
 }
+
+/* vim: set tabstop=8 shiftwidth=8 noexpandtab: */
