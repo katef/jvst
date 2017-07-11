@@ -57,7 +57,7 @@ LFLAGS.${prog} += -fsanitize=address
 _p = ${BUILD}/bin/${test:T:R}
 ${_p}: ${BUILD}/${test:R}.o
 
-.for src in ${VALID_SRC:Msrc/*.c} ${SRC:Msrc/*.c:Nsrc/main.c}
+.for src in ${VALID_SRC:Msrc/*.c} ${SRC:Msrc/*.c:Nsrc/main.c:Nsrc/parser.c}
 ${_p}: ${BUILD}/${src:R}.o
 .endfor
 
