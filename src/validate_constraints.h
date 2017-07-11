@@ -113,10 +113,15 @@ struct jvst_cnode {
 
 struct jvst_cnode *
 jvst_cnode_alloc(enum jvst_cnode_type type);
+
 void
 jvst_cnode_free(struct jvst_cnode *n);
+
 void
 jvst_cnode_free_tree(struct jvst_cnode *n);
+
+const char *
+jvst_cnode_type_name(enum jvst_cnode_type type);
 
 // Translates the AST into a contraint tree and optimizes the constraint
 // tree

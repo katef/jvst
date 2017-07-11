@@ -261,6 +261,51 @@ jvst_cnode_free_tree(struct jvst_cnode *root)
 	}
 }
 
+const char *
+jvst_cnode_type_name(enum jvst_cnode_type type)
+{
+	switch (type) {
+	case JVST_CNODE_INVALID:
+		return "INVALID";
+	case JVST_CNODE_VALID:
+		return "VALID";
+	case JVST_CNODE_AND:
+		return "AND";
+	case JVST_CNODE_OR:
+		return "OR";
+	case JVST_CNODE_XOR:
+		return "XOR";
+	case JVST_CNODE_NOT:
+		return "NOT";
+	case JVST_CNODE_SWITCH:
+		return "SWITCH";
+	case JVST_CNODE_COUNT_RANGE:
+		return "COUNT_RANGE";
+	case JVST_CNODE_STR_MATCH:
+		return "STR_MATCH";
+	case JVST_CNODE_NUM_RANGE:
+		return "NUM_RANGE";
+	case JVST_CNODE_NUM_INTEGER:
+		return "NUM_INTEGER";
+	case JVST_CNODE_OBJ_PROP_SET:
+		return "OBJ_PROP_SET";
+	case JVST_CNODE_OBJ_PROP_MATCH:
+		return "OBJ_PROP_MATCH";
+	case JVST_CNODE_OBJ_REQUIRED:
+		return "OBJ_REQUIRED";
+	case JVST_CNODE_ARR_ITEM:
+		return "ARR_ITEM";
+	case JVST_CNODE_ARR_ADDITIONAL:
+		return "ARR_ADDITIONAL";
+	case JVST_CNODE_ARR_UNIQUE:
+		return "ARR_UNIQUE";
+
+	default:
+		fprintf(stderr, "unknown cnode type %d\n", type);
+		abort();
+	}
+}
+
 // returns number of bytes written
 static void
 jvst_cnode_dump_inner(struct jvst_cnode *node, struct sbuf *buf, int indent)
