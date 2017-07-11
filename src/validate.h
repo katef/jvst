@@ -3,7 +3,7 @@
 
 #include "sjp_parser.h"
 
-enum JVST_RESULT {
+enum jvst_result {
   JVST_INVALID = -1,
   JVST_VALID = 0,
   JVST_MORE = 1,
@@ -47,8 +47,8 @@ struct jvst_validator {
 };
 
 void jvst_validate_init_defaults(struct jvst_validator *v, const struct ast_schema *schema);
-enum JVST_RESULT jvst_validate_more(struct jvst_validator *v, char *data, size_t n);
-enum JVST_RESULT jvst_validate_close(struct jvst_validator *v);
+enum jvst_result jvst_validate_more(struct jvst_validator *v, char *data, size_t n);
+enum jvst_result jvst_validate_close(struct jvst_validator *v);
 
 #endif /* JVST_VALIDATE_H */
 

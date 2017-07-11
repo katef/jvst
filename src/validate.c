@@ -307,7 +307,7 @@ static int invalid(struct jvst_validator *v, const char *file, int line, const c
 //
 // For numbers, counts the number of bytes and returns them in the
 // nitems field of the top stack frame.
-static enum JVST_RESULT eat_value(struct jvst_validator *v, enum SJP_RESULT pret, struct sjp_event *evt)
+static enum jvst_result eat_value(struct jvst_validator *v, enum SJP_RESULT pret, struct sjp_event *evt)
 {
   struct jvst_state *sp;
 
@@ -346,7 +346,7 @@ static enum JVST_RESULT eat_value(struct jvst_validator *v, enum SJP_RESULT pret
 //
 // Counts the number of values encountered in the array and returns them
 // in the nitems field of the return stack frame.
-static enum JVST_RESULT eat_array(struct jvst_validator *v, enum SJP_RESULT pret, struct sjp_event *evt)
+static enum jvst_result eat_array(struct jvst_validator *v, enum SJP_RESULT pret, struct sjp_event *evt)
 {
   struct jvst_state *sp;
 
@@ -423,7 +423,7 @@ static enum JVST_RESULT eat_array(struct jvst_validator *v, enum SJP_RESULT pret
 //
 // Counts the number of values encountered in the array and returns them
 // in the nitems field of the return stack frame.
-static enum JVST_RESULT eat_object(struct jvst_validator *v, enum SJP_RESULT pret, struct sjp_event *evt)
+static enum jvst_result eat_object(struct jvst_validator *v, enum SJP_RESULT pret, struct sjp_event *evt)
 {
   struct jvst_state *sp;
 
@@ -492,7 +492,7 @@ static enum JVST_RESULT eat_object(struct jvst_validator *v, enum SJP_RESULT pre
   return JVST_NEXT;
 }
 
-static enum JVST_RESULT validate_object(struct jvst_validator *v, enum SJP_RESULT pret, struct sjp_event *evt);
+static enum jvst_result validate_object(struct jvst_validator *v, enum SJP_RESULT pret, struct sjp_event *evt);
 
 static inline bool is_valid_type(struct jvst_validator *v, enum json_valuetype mask, enum json_valuetype bits)
 {
@@ -506,7 +506,7 @@ static inline bool is_valid_type(struct jvst_validator *v, enum json_valuetype m
   return false;
 }
 
-static enum JVST_RESULT validate_number(struct jvst_validator *v, enum SJP_RESULT pret, struct sjp_event *evt)
+static enum jvst_result validate_number(struct jvst_validator *v, enum SJP_RESULT pret, struct sjp_event *evt)
 {
   struct jvst_state *sp;
   const struct ast_schema *schema;
@@ -536,7 +536,7 @@ static enum JVST_RESULT validate_number(struct jvst_validator *v, enum SJP_RESUL
   return (popstate(v) != NULL) ? JVST_VALID : ERR_UNDERFLOW();
 }
 
-static enum JVST_RESULT validate_integer(struct jvst_validator *v, enum SJP_RESULT pret, struct sjp_event *evt)
+static enum jvst_result validate_integer(struct jvst_validator *v, enum SJP_RESULT pret, struct sjp_event *evt)
 {
   double x,cx;
 
@@ -551,7 +551,7 @@ static enum JVST_RESULT validate_integer(struct jvst_validator *v, enum SJP_RESU
   return validate_number(v,pret,evt);
 }
 
-static inline enum JVST_RESULT check_type_priv(struct jvst_validator *v, 
+static inline enum jvst_result check_type_priv(struct jvst_validator *v, 
     enum json_valuetype mask, enum json_valuetype bits, const char *file, int line)
 {
   if (is_valid_type(v,mask,bits)) {
@@ -561,9 +561,9 @@ static inline enum JVST_RESULT check_type_priv(struct jvst_validator *v,
   return invalid(v, file, line, "expected type %d but found %d", mask, bits);
 }
 
-static enum JVST_RESULT validate_next_event(struct jvst_validator *v, enum SJP_RESULT pret, struct sjp_event *evt);
+static enum jvst_result validate_next_event(struct jvst_validator *v, enum SJP_RESULT pret, struct sjp_event *evt);
 
-static enum JVST_RESULT validate_some_of(struct jvst_validator *v, enum SJP_RESULT pret, struct sjp_event *evt)
+static enum jvst_result validate_some_of(struct jvst_validator *v, enum SJP_RESULT pret, struct sjp_event *evt)
 {
   struct jvst_state *sp;
   const struct ast_schema *schema;
@@ -630,7 +630,7 @@ next:
 
     // feed token to each validator
     for (i=0; i < count; i++) {
-      enum JVST_RESULT ret;
+      enum jvst_result ret;
       ret = validate_next_event(&vv[i], pret, evt);
       switch (ret) {
         case JVST_INVALID:
@@ -672,7 +672,7 @@ next:
 final:
   {
     unsigned num_valid = 0, num_invalid = 0;
-    enum JVST_RESULT ret;
+    enum jvst_result ret;
 
     vv = sp->u.split.vv;
     count = sp->u.split.nv;
@@ -702,7 +702,7 @@ final:
     return JVST_INVALID;            \
   } } while(0)
 
-static enum JVST_RESULT validate_value(struct jvst_validator *v, enum SJP_RESULT pret, struct sjp_event *evt)
+static enum jvst_result validate_value(struct jvst_validator *v, enum SJP_RESULT pret, struct sjp_event *evt)
 {
   struct jvst_state *sp;
 
@@ -851,7 +851,7 @@ static size_t bit_from_set(const struct ast_string_set *ss, const char *k, size_
   return 0;
 }
 
-static enum JVST_RESULT validate_object(struct jvst_validator *v, enum SJP_RESULT pret, struct sjp_event *evt)
+static enum jvst_result validate_object(struct jvst_validator *v, enum SJP_RESULT pret, struct sjp_event *evt)
 {
   struct jvst_state *sp;
   const struct ast_schema *schema, *pschema;
@@ -1057,7 +1057,7 @@ check_obj:
   return (popstate(v) != NULL) ? JVST_VALID : ERR_UNDERFLOW();
 }
 
-static enum JVST_RESULT validate_next_event(struct jvst_validator *v, enum SJP_RESULT pret, struct sjp_event *evt)
+static enum jvst_result validate_next_event(struct jvst_validator *v, enum SJP_RESULT pret, struct sjp_event *evt)
 {
   struct jvst_state *top;
   int ret;
@@ -1134,7 +1134,7 @@ static enum JVST_RESULT validate_next_event(struct jvst_validator *v, enum SJP_R
   return ret;
 }
 
-enum JVST_RESULT jvst_validate_more(struct jvst_validator *v, char *data, size_t n)
+enum jvst_result jvst_validate_more(struct jvst_validator *v, char *data, size_t n)
 {
   sjp_parser_more(&v->p, data, n);
 
@@ -1146,7 +1146,7 @@ enum JVST_RESULT jvst_validate_more(struct jvst_validator *v, char *data, size_t
   for(;;) {
     struct sjp_event evt = { 0 };
     enum SJP_RESULT pret;
-    enum JVST_RESULT ret;
+    enum jvst_result ret;
 
     pret = sjp_parser_next(&v->p, &evt);
 #if JVST_VALIDATE_DEBUG
@@ -1190,7 +1190,7 @@ enum JVST_RESULT jvst_validate_more(struct jvst_validator *v, char *data, size_t
   }
 }
 
-enum JVST_RESULT jvst_validate_close(struct jvst_validator *v)
+enum jvst_result jvst_validate_close(struct jvst_validator *v)
 {
   int ret, st;
   struct jvst_state *top;
