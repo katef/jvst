@@ -24,6 +24,7 @@ DFLAGS.${src} += -std=c99
 PROG += jvst
 PROG += test_validation
 PROG += test_constraints
+PROG += test_ir
 
 .for src in ${SRC:Msrc/*.c}
 ${BUILD}/bin/jvst: ${BUILD}/${src:R}.o
@@ -33,12 +34,14 @@ VALID_SRC += src/validate_sbuf.c
 VALID_SRC += src/validate.c
 VALID_SRC += src/validate_constraints.c
 VALID_SRC += src/validate_testing.c
+VALID_SRC += src/validate_ir.c
 VALID_SRC += src/sjp_parser.c
 VALID_SRC += src/sjp_testing.c
 
 # currently each test_*.c is a separate program
 VALID_TESTS_SRC += src/test_validation.c
 VALID_TESTS_SRC += src/test_constraints.c
+VALID_TESTS_SRC += src/test_ir.c
 
 .for src in ${VALID_SRC} ${VALID_TESTS_SRC}
 CFLAGS.${src} += -std=c99 -fsanitize=address -Wno-missing-field-initializers -Wno-unused
@@ -68,7 +71,11 @@ ${_p}: ${BUILD}/${src:R}.o
 SRC += ${VALID_SRC} ${VALID_TESTS_SRC}
 
 .for src in ${SRC:Msrc/*.c}
-CFLAGS.${src} += ${CFLAGS.libre}
-DFLAGS.${src} += ${CFLAGS.libre}
+CFLAGS.${src} += ${CFLAGS.libre} ${CFLAGS.libfsm}
+DFLAGS.${src} += ${CFLAGS.libre} ${CFLAGS.libfsm}
+.endfor
+
+.for prog in ${PROG}
+LFLAGS.${prog} += ${LIBS.libre} ${LIBS.libfsm}
 .endfor
 
