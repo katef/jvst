@@ -26,14 +26,14 @@
  *
  */
 
-enum JVST_CNODE_RANGEFLAGS {
+enum jvst_cnode_rangeflags {
   JVST_CNODE_RANGE_MIN      = (1<<0),
   JVST_CNODE_RANGE_MAX      = (1<<1),
   JVST_CNODE_RANGE_EXCL_MIN = (1<<2),
   JVST_CNODE_RANGE_EXCL_MAX = (1<<3),
 };
 
-enum JVST_CNODE_TYPE {
+enum jvst_cnode_type {
   /* Control nodes */
   JVST_CNODE_INVALID = 0, // node always returns invalid
   JVST_CNODE_VALID,       // node always returns valid
@@ -66,7 +66,7 @@ enum JVST_CNODE_TYPE {
 };
 
 struct jvst_cnode {
-  enum JVST_CNODE_TYPE type;
+  enum jvst_cnode_type type;
 
   struct jvst_cnode *next;
 
@@ -90,7 +90,7 @@ struct jvst_cnode {
 
     /* for number ranges */
     struct {
-      enum JVST_CNODE_RANGEFLAGS flags;
+      enum jvst_cnode_rangeflags flags;
       double min;
       double max;
     } num_range;
@@ -111,7 +111,7 @@ struct jvst_cnode {
   } u;
 };
 
-struct jvst_cnode *jvst_cnode_alloc(enum JVST_CNODE_TYPE type);
+struct jvst_cnode *jvst_cnode_alloc(enum jvst_cnode_type type);
 void jvst_cnode_free(struct jvst_cnode *n);
 void jvst_cnode_free_tree(struct jvst_cnode *n);
 

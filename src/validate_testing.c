@@ -311,7 +311,7 @@ struct jvst_cnode *newcnode_invalid(void)
   return &n;
 }
 
-struct jvst_cnode *newcnode(struct arena_info *A, enum JVST_CNODE_TYPE type)
+struct jvst_cnode *newcnode(struct arena_info *A, enum jvst_cnode_type type)
 {
   size_t i,max;
   struct jvst_cnode *node;
@@ -370,7 +370,7 @@ struct jvst_cnode *newcnode_switch(struct arena_info *A, int isvalid, ...)
   return node;
 }
 
-struct jvst_cnode *newcnode_bool(struct arena_info *A, enum JVST_CNODE_TYPE type, ...)
+struct jvst_cnode *newcnode_bool(struct arena_info *A, enum jvst_cnode_type type, ...)
 {
   struct jvst_cnode *node, **pp;
   va_list args;
@@ -441,7 +441,7 @@ struct jvst_cnode *newcnode_prop_match(struct arena_info *A,
 }
 
 struct jvst_cnode *newcnode_range(struct arena_info *A,
-    enum JVST_CNODE_RANGEFLAGS flags, double min, double max)
+    enum jvst_cnode_rangeflags flags, double min, double max)
 {
   struct jvst_cnode *node, **pp;
   node = newcnode(A, JVST_CNODE_NUM_RANGE);

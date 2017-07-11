@@ -28,7 +28,7 @@ size_t schema_set_count(struct ast_schema_set *s);
 struct ast_property_schema *newprops(struct arena_info *A, ...);
 struct ast_property_names *newpropnames(struct arena_info *A, ...);
 
-struct jvst_cnode *newcnode(struct arena_info *A, enum JVST_CNODE_TYPE type);
+struct jvst_cnode *newcnode(struct arena_info *A, enum jvst_cnode_type type);
 struct jvst_cnode *newcnode_switch(struct arena_info *A, int isvalid, ...);
 
 struct jvst_cnode *newcnode_prop_match(struct arena_info *A,
@@ -36,10 +36,10 @@ struct jvst_cnode *newcnode_prop_match(struct arena_info *A,
 
 struct jvst_cnode *newcnode_propset(struct arena_info *A, ...);
 
-struct jvst_cnode *newcnode_bool(struct arena_info *A, enum JVST_CNODE_TYPE type, ...);
+struct jvst_cnode *newcnode_bool(struct arena_info *A, enum jvst_cnode_type type, ...);
 
 struct jvst_cnode *newcnode_range(struct arena_info *A,
-    enum JVST_CNODE_RANGEFLAGS flags, double min, double max);
+    enum jvst_cnode_rangeflags flags, double min, double max);
 
 struct jvst_cnode *newcnode_counts(struct arena_info *A, size_t min, size_t max);
 

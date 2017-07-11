@@ -142,7 +142,7 @@ new_pool:
   return &p->items[0];
 }
 
-struct jvst_cnode *jvst_cnode_alloc(enum JVST_CNODE_TYPE type)
+struct jvst_cnode *jvst_cnode_alloc(enum jvst_cnode_type type)
 {
   struct jvst_cnode *n;
   n = cnode_new();
@@ -154,7 +154,7 @@ struct jvst_cnode *jvst_cnode_alloc(enum JVST_CNODE_TYPE type)
 static struct jvst_cnode *cnode_new_switch(int allvalid)
 {
   size_t i,n;
-  enum JVST_CNODE_TYPE type;
+  enum jvst_cnode_type type;
   struct jvst_cnode *node, *v, *inv;
 
   node = jvst_cnode_alloc(JVST_CNODE_SWITCH);
@@ -595,7 +595,7 @@ struct jvst_cnode *jvst_cnode_translate_ast(struct ast_schema *ast)
   }
 
   if (ast->kws & (KWS_MINIMUM|KWS_MAXIMUM)) {
-    enum JVST_CNODE_RANGEFLAGS flags = 0;
+    enum jvst_cnode_rangeflags flags = 0;
     double min = 0, max = 0;
     struct jvst_cnode *range, *jxn;
 
@@ -764,7 +764,7 @@ struct jvst_cnode *jvst_cnode_translate_ast(struct ast_schema *ast)
   if (ast->some_of.set != NULL) {
     struct jvst_cnode *top_jxn, *some_jxn, **conds;
     struct ast_schema_set *sset;
-    enum JVST_CNODE_TYPE op = JVST_CNODE_OR;
+    enum jvst_cnode_type op = JVST_CNODE_OR;
 
     if (ast->some_of.min == ast->some_of.max) {
       op = (ast->some_of.min == 1) ? JVST_CNODE_XOR : JVST_CNODE_AND;
@@ -922,7 +922,7 @@ struct jvst_cnode *cnode_list_concat(struct jvst_cnode **headp, struct jvst_cnod
   return *hp0;
 }
 
-static struct jvst_cnode *cnode_find_type(struct jvst_cnode *node, enum JVST_CNODE_TYPE type)
+static struct jvst_cnode *cnode_find_type(struct jvst_cnode *node, enum jvst_cnode_type type)
 {
   for(; node != NULL; node = node->next) {
     if (node->type == type) {
