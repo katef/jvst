@@ -785,12 +785,12 @@ void test_ir_minproperties_2(void)
                         )
                       ),
 
-                      // match "bar"
+                      // match "foo"
                       newir_case(&A, 1,
-                        newmatchset(&A, RE_LITERAL,  "bar", -1),
+                        newmatchset(&A, RE_LITERAL,  "foo", -1),
                         newir_frame(&A,
                           newir_stmt(&A, JVST_IR_STMT_TOKEN),
-                          newir_if(&A, newir_istok(&A, SJP_STRING),
+                          newir_if(&A, newir_istok(&A, SJP_NUMBER),
                             newir_stmt(&A, JVST_IR_STMT_VALID),
                             newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token")
                           ),
@@ -798,12 +798,12 @@ void test_ir_minproperties_2(void)
                         )
                       ),
 
-                      // match "foo"
+                      // match "bar"
                       newir_case(&A, 2,
-                        newmatchset(&A, RE_LITERAL,  "foo", -1),
+                        newmatchset(&A, RE_LITERAL,  "bar", -1),
                         newir_frame(&A,
                           newir_stmt(&A, JVST_IR_STMT_TOKEN),
-                          newir_if(&A, newir_istok(&A, SJP_NUMBER),
+                          newir_if(&A, newir_istok(&A, SJP_STRING),
                             newir_stmt(&A, JVST_IR_STMT_VALID),
                             newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token")
                           ),

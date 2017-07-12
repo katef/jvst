@@ -1167,11 +1167,10 @@ ir_translate_obj_inner(struct jvst_cnode *top, struct ir_object_builder *builder
 		{
 			size_t which;
 			struct jvst_cnode *caselist;
-			struct jvst_ir_stmt *frame, **spp;
+			struct jvst_ir_stmt *frame, **spp, *matcher_stmt;
 
 			// duplicate DFA.
 			builder->matcher = fsm_clone(top->u.mswitch.dfa);
-			builder->match->u.match.dfa = builder->matcher;
 
 			// replace MATCH_CASE opaque entries in copy with jvst_ir_mcase nodes
 			fsm_all(builder->matcher, mcase_builder);
@@ -1199,6 +1198,12 @@ ir_translate_obj_inner(struct jvst_cnode *top, struct ir_object_builder *builder
 			// FIXME: is default_case always VALID?  in that
 			// case we can eliminate it.  Otherwise, we need
 			// to do something more sophisticated here.
+
+			// 5. Add matcher statement to frame and fixup refs
+			matcher_stmt = ir_stmt_matcher(builder->frame, "dfa", builder->matcher);
+			builder->match->u.match.dfa = builder->matcher;
+			builder->match->u.match.name = matcher_stmt->u.matcher.name;
+			builder->match->u.match.ind  = matcher_stmt->u.matcher.ind;
 		}
 		break;
 
@@ -1321,47 +1326,6 @@ ir_translate_object(struct jvst_cnode *top, struct jvst_ir_stmt *frame)
 	builder.matcher = NULL;
 
 	ir_translate_obj_inner(top, &builder);
-
-	if (builder.matcher) {
-		struct jvst_ir_stmt *matcher_stmt;
-		struct jvst_ir_mcase *mcase, **mcpp;
-		size_t case_ind;
-
-		if (!fsm_determinise(builder.matcher)) {
-			perror("cannot determinise fsm");
-			abort();
-		}
-
-		// remove cases with stmt==NULL
-		for (mcpp = &builder.match->u.match.cases; (*mcpp) != NULL;) {
-			if ((*mcpp)->stmt != NULL) {
-				mcpp = &(*mcpp)->next;
-				continue;
-			}
-
-			if ((*mcpp)->next == NULL) {
-				*mcpp = NULL;
-				continue;
-			}
-
-			mcpp = &(*mcpp)->next;
-		}
-
-		matcher_stmt = ir_stmt_matcher(frame, "dfa", builder.matcher);
-
-		builder.match->u.match.dfa  = builder.matcher;
-		builder.match->u.match.name = matcher_stmt->u.matcher.name;
-		builder.match->u.match.ind  = matcher_stmt->u.matcher.ind;
-
-		// number cases...
-		assert(builder.match->u.match.cases != NULL); // matcher != NULL, should have at least one case!
-		for (case_ind=1, mcase=builder.match->u.match.cases; mcase != NULL; case_ind++, mcase = mcase->next) {
-			mcase->which = case_ind;
-		}
-
-		// XXX - should we iterate through the matcher end
-		// states and replace the pointers with numbers?
-	}
 
 	if (builder.match->u.match.default_case == NULL) {
 		builder.match->u.match.default_case = obj_default_case();
