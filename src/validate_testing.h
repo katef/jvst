@@ -11,6 +11,7 @@
 
 extern int ntest;
 extern int nfail;
+extern int nskipped;
 
 struct arena_info {
 	size_t nschema;
@@ -18,7 +19,10 @@ struct arena_info {
 	size_t nstr;
 	size_t npnames;
 	size_t nset;
+
+	/* cnode related */
 	size_t ncnode;
+	size_t nmatchsets;
 
         /* IR related */
         size_t nstmt;
@@ -84,6 +88,18 @@ newcnode_invalid(void);
 struct jvst_cnode *
 newcnode_required(struct arena_info *A, struct ast_string_set *sset);
 
+struct jvst_cnode *
+newcnode_mswitch(struct arena_info *A, struct jvst_cnode *dft, ...);
+
+struct jvst_cnode *
+newcnode_mcase(struct arena_info *A, struct jvst_cnode_matchset *mset,
+	struct jvst_cnode *constraint);
+
+struct jvst_cnode_matchset *
+newmatchset(struct arena_info *A, ...);
+
+
+/* IR-related */
 struct jvst_ir_stmt *
 newir_stmt(struct arena_info *A, enum jvst_ir_stmt_type type);
 
@@ -116,7 +132,7 @@ struct jvst_ir_stmt *
 newir_match(struct arena_info *A, size_t ind, ...);
 
 struct jvst_ir_mcase *
-newir_case(struct arena_info *A, size_t ind, struct jvst_ir_stmt *frame);
+newir_case(struct arena_info *A, size_t ind, struct jvst_cnode_matchset *mset, struct jvst_ir_stmt *frame);
 
 struct jvst_ir_expr *
 newir_istok(struct arena_info *A, enum SJP_EVENT tt);
@@ -135,15 +151,8 @@ newir_num(struct arena_info *A, double num);
 const char *
 jvst_ret2name(int ret);
 
-static inline int
-report_tests(void)
-{
-	printf("%d tests, %d failures\n", ntest, nfail);
-	if (nfail == 0 && ntest > 0) {
-		return EXIT_SUCCESS;
-	}
-	return EXIT_FAILURE;
-}
+int
+report_tests(void);
 
 #endif /* TESTING_H */
 

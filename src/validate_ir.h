@@ -101,6 +101,7 @@ struct jvst_ir_label;
 struct jvst_ir_mcase {
 	struct jvst_ir_mcase *next;
 	size_t which;
+	struct jvst_cnode_matchset *matchset;
 	struct jvst_ir_stmt *stmt;
 };
 

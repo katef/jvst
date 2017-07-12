@@ -14,6 +14,7 @@
 #include <fsm/out.h>
 #include <fsm/options.h>
 #include <fsm/pred.h>
+#include <fsm/walk.h>
 #include <re/re.h>
 
 #include "validate_sbuf.h"
@@ -673,6 +674,10 @@ jvst_ir_dump_expr(struct sbuf *buf, struct jvst_ir_expr *expr, int indent)
 
 }
 
+// definition in validate_constraints.c
+void
+jvst_cnode_matchset_dump(struct jvst_cnode_matchset *ms, struct sbuf *buf, int indent);
+
 void
 jvst_ir_dump_inner(struct sbuf *buf, struct jvst_ir_stmt *ir, int indent)
 {
@@ -779,8 +784,15 @@ jvst_ir_dump_inner(struct sbuf *buf, struct jvst_ir_stmt *ir, int indent)
 			}
 
 			for (cases = ir->u.match.cases; cases != NULL; cases = cases->next) {
+				struct jvst_cnode_matchset *mset;
+
 				sbuf_indent(buf, indent+2);
 				sbuf_snprintf(buf, "CASE(%zu,\n", cases->which);
+
+				for (mset=cases->matchset; mset != NULL; mset = mset->next) {
+					jvst_cnode_matchset_dump(mset, buf, indent+4);
+					sbuf_snprintf(buf, ",\n");
+				}
 
 				jvst_ir_dump_inner(buf, cases->stmt, indent+4);
 				sbuf_snprintf(buf, "\n");
@@ -1002,26 +1014,32 @@ static void merge_constraints(struct set *orig, struct fsm *dfa, struct fsm_stat
 	}
 }
 
-struct json_str_iter {
-	struct json_string str;
-	size_t off;
-};
+#define UNASSIGNED_MATCH  (~(size_t)0)
 
 static int
-json_str_getc(void *p)
+mcase_builder(const struct fsm *dfa, const struct fsm_state *st)
 {
-	struct json_str_iter *iter = p;
-	unsigned char ch;
+	struct jvst_cnode *node;
+	struct jvst_ir_mcase *mcase;
+	struct jvst_ir_stmt *stmt;
 
-	if (iter->off >= iter->str.len) {
-		return EOF;
+	if (!fsm_isend(dfa, st)) {
+		return 1;
 	}
 
-	ch = iter->str.s[iter->off++];
-	return ch;
-}
+	node = fsm_getopaque((struct fsm *)dfa, st);
+	assert(node->type == JVST_CNODE_MATCH_CASE);
+	assert(node->u.mcase.tmp == NULL);
 
-#define UNASSIGNED_MATCH  (~(size_t)0)
+	stmt = jvst_ir_translate(node->u.mcase.constraint);
+	mcase = ir_mcase_new(UNASSIGNED_MATCH, stmt);
+	mcase->matchset = node->u.mcase.matchset;
+
+	node->u.mcase.tmp = mcase;
+	fsm_setopaque((struct fsm *)dfa, (struct fsm_state *)st, mcase);
+
+	return 1;
+}
 
 static struct jvst_ir_stmt *
 ir_translate_object(struct jvst_cnode *top, struct jvst_ir_stmt *frame)
@@ -1034,24 +1052,10 @@ ir_translate_object(struct jvst_cnode *top, struct jvst_ir_stmt *frame)
 	struct jvst_ir_mcase **mcpp;
 	size_t nreqs;
 
-	// FIXME: this is a leak...
-	opts = malloc(sizeof *opts);
-	*opts = (struct fsm_options) {
-		.tidy = false,
-		.anonymous_states = false,
-		.consolidate_edges = true,
-		.fragment = true,
-		.comments = true,
-		.case_ranges = true,
-
-		.io = FSM_IO_GETC,
-		.prefix = NULL,
-		.carryopaque = merge_constraints,
-	};
-
 	stmt = ir_stmt_new(JVST_IR_STMT_SEQ);
 	spp = &stmt->u.stmt_list;
 	pre_loop = spp;
+
 	oloop = ir_stmt_loop(frame,"L_OBJ");
 	*spp = oloop;
 	post_loop = &oloop->next;
@@ -1086,52 +1090,59 @@ ir_translate_object(struct jvst_cnode *top, struct jvst_ir_stmt *frame)
 	switch (top->type) {
 	case JVST_CNODE_VALID:
 	case JVST_CNODE_INVALID:
+		// VALID/INVALID should have been picked up in the
+		// various cases...
 		fprintf(stderr, "top node should not be VALID or INVALID\n");
 		abort();
 		break;
 
 	case JVST_CNODE_OBJ_PROP_SET:
-		for (pmatch = top->u.prop_set; pmatch != NULL; pmatch = pmatch->next) {
-			struct fsm *pat;
-			struct re_err err = { 0 };
-			struct jvst_ir_stmt *stmts;
-			struct jvst_ir_mcase *mcase;
-			struct json_str_iter siter;
+		fprintf(stderr, "simplified cnode trees should not have PROP_SET nodes\n");
+		abort();
+		break;
 
-			stmts = jvst_ir_translate(pmatch->u.prop_match.constraint);
-			mcase = ir_mcase_new(UNASSIGNED_MATCH, stmts);
-			*mcpp = mcase;
-			mcpp = &(*mcpp)->next;
+	case JVST_CNODE_MATCH_SWITCH:
+		{
+			size_t which;
+			struct jvst_cnode *caselist;
+			struct jvst_ir_stmt *frame, **spp;
 
-			siter.str = pmatch->u.prop_match.match.str;
-			siter.off = 0;
+			// duplicate DFA.
+			matcher = fsm_clone(top->u.mswitch.dfa);
+			match->u.match.dfa = matcher;
 
-			pat = re_comp(
-				pmatch->u.prop_match.match.dialect,
-				json_str_getc,
-				&siter,
-				opts,
-				(enum re_flags)0,
-				&err);
+			// replace MATCH_CASE opaque entries in copy with jvst_ir_mcase nodes
+			fsm_all(matcher, mcase_builder);
 
-			// errors should be checked in parsing
-			assert(pat != NULL);
+			// assemble jvst_ir_mcase nodes into list for an MATCH_SWITCH node and number the cases
+			which = 0;
+			for (caselist = top->u.mswitch.cases; caselist != NULL; caselist = caselist->next) {
+				struct jvst_ir_mcase *mc;
+				assert(caselist->type == JVST_CNODE_MATCH_CASE);
+				assert(caselist->u.mcase.tmp != NULL);
 
-			fsm_setendopaque(pat, mcase);
+				mc = caselist->u.mcase.tmp;
+				assert(mc->next == NULL);
 
-			fprintf(stderr, "matcher is %p\n", (void *)matcher);
-			if (matcher == NULL) {
-				matcher = pat;
-			} else {
-				// XXX - any error handling required?
-				matcher = fsm_union(matcher, pat);
-
-				// we can't handle failure states right
-				// now...
-				assert(matcher != NULL);
+				mc->which = ++which;
+				*mcpp = mc;
+				mcpp = &mc->next;
 			}
-		}
 
+			// 4. translate the default case
+			//
+			// FIXME: either default_case is always VALID or
+			// we need to do something more sophisticated
+			// here.
+			frame = ir_stmt_frame();
+			match->u.match.default_case = frame;
+			spp = &frame->u.frame.stmts;
+			*spp = ir_stmt_new(JVST_IR_STMT_TOKEN);
+			spp = &(*spp)->next;
+			*spp = ir_stmt_new(JVST_IR_STMT_VALID);
+
+			// match->u.match.default_case = jvst_ir_translate(top->u.mswitch.default_case);
+		}
 		break;
 
 	case JVST_CNODE_OBJ_REQUIRED:
@@ -1327,29 +1338,5 @@ jvst_ir_translate(struct jvst_cnode *ctree)
 
 	return frame;
 }
-
-#if 0
-	switch (ctree->type) {
-	case JVST_CNODE_INVALID: 
-	case JVST_CNODE_VALID:       
-	case JVST_CNODE_AND: 
-	case JVST_CNODE_OR:  
-	case JVST_CNODE_XOR: 
-	case JVST_CNODE_NOT:
-	case JVST_CNODE_SWITCH:
-	case JVST_CNODE_COUNT_RANGE:
-	case JVST_CNODE_STR_MATCH:
-	case JVST_CNODE_NUM_RANGE:
-	case JVST_CNODE_NUM_INTEGER:
-	case JVST_CNODE_OBJ_PROP_SET:
-	case JVST_CNODE_OBJ_REQUIRED:
-
-	case JVST_CNODE_ARR_ITEM:
-	case JVST_CNODE_ARR_ADDITIONAL:
-	case JVST_CNODE_ARR_UNIQUE:
-
-	case JVST_CNODE_OBJ_PROP_MATCH:
-#endif /* 0 */
-
 
 /* vim: set tabstop=8 shiftwidth=8 noexpandtab: */

@@ -6,6 +6,15 @@
 #include <string.h>
 #include <limits.h>
 
+#include <adt/set.h>
+#include <fsm/bool.h>
+#include <fsm/fsm.h>
+#include <fsm/out.h>
+#include <fsm/options.h>
+#include <fsm/pred.h>
+#include <fsm/walk.h>
+#include <re/re.h>
+
 #include "xalloc.h"
 
 #include "jvst_macros.h"
@@ -79,8 +88,8 @@ cnode_strset_alloc(void)
 
 new_pool:
 	// fall back to allocating a new pool
-	p		 = xmalloc(sizeof *p);
-	p->next		 = strset_pool.head;
+	p = xmalloc(sizeof *p);
+	p->next = strset_pool.head;
 	strset_pool.head = p;
 	strset_pool.top  = 1;
 	return &p->items[0];
@@ -90,7 +99,7 @@ static struct ast_string_set *
 cnode_strset(struct json_string str, struct ast_string_set *next)
 {
 	struct ast_string_set *sset;
-	sset       = cnode_strset_alloc();
+	sset = cnode_strset_alloc();
 	sset->str  = str;
 	sset->next = next;
 	return sset;
@@ -108,6 +117,59 @@ cnode_strset_copy(struct ast_string_set *orig)
 	}
 
 	return head;
+}
+
+struct cnode_matchset_pool {
+	struct cnode_matchset_pool *next;
+	struct jvst_cnode_matchset items[JVST_CNODE_CHUNKSIZE];
+	unsigned char marks[MARKSIZE];
+};
+
+static struct {
+	struct cnode_matchset_pool *head;
+	size_t top;
+	struct jvst_cnode_matchset *freelist;
+} matchset_pool;
+
+static struct jvst_cnode_matchset *
+cnode_matchset_alloc(void)
+{
+	struct cnode_matchset_pool *pool;
+
+	if (matchset_pool.head == NULL) {
+		goto new_pool;
+	}
+
+	// first try bump allocation
+	if (matchset_pool.top < ARRAYLEN(matchset_pool.head->items)) {
+		return &matchset_pool.head->items[pool_item++];
+	}
+
+	// next try the free list
+	if (matchset_pool.freelist != NULL) {
+		struct jvst_cnode_matchset *ms;
+		ms = matchset_pool.freelist;
+		matchset_pool.freelist = ms->next;
+		return ms;
+	}
+
+new_pool:
+	// fall back to allocating a new pool
+	pool = xmalloc(sizeof *pool);
+	pool->next = matchset_pool.head;
+	matchset_pool.head = pool;
+	matchset_pool.top  = 1;
+	return &pool->items[0];
+}
+
+static struct jvst_cnode_matchset *
+cnode_matchset_new(struct ast_regexp match, struct jvst_cnode_matchset *next)
+{
+	struct jvst_cnode_matchset *ms;
+	ms = cnode_matchset_alloc();
+	ms->match = match;
+	ms->next = next;
+	return ms;
 }
 
 void
@@ -140,9 +202,9 @@ cnode_new(void)
 
 new_pool:
 	// fall back to allocating a new pool
-	p	 = xmalloc(sizeof *p);
-	p->next   = pool;
-	pool      = p;
+	p = xmalloc(sizeof *p);
+	p->next = pool;
+	pool = p;
 	pool_item = 1;
 	return &p->items[0];
 }
@@ -151,7 +213,7 @@ struct jvst_cnode *
 jvst_cnode_alloc(enum jvst_cnode_type type)
 {
 	struct jvst_cnode *n;
-	n       = cnode_new();
+	n = cnode_new();
 	n->type = type;
 	n->next = NULL;
 	return n;
@@ -176,6 +238,18 @@ cnode_new_switch(int allvalid)
 		node->u.sw[SJP_ARRAY_END]  = jvst_cnode_alloc(JVST_CNODE_INVALID);
 		node->u.sw[SJP_OBJECT_END] = jvst_cnode_alloc(JVST_CNODE_INVALID);
 	}
+
+	return node;
+}
+
+static struct jvst_cnode *
+cnode_new_mcase(struct jvst_cnode_matchset *ms, struct jvst_cnode *constraint)
+{
+	struct jvst_cnode *node;
+
+	node = jvst_cnode_alloc(JVST_CNODE_MATCH_CASE);
+	node->u.mcase.matchset = ms;
+	node->u.mcase.constraint = constraint;
 
 	return node;
 }
@@ -241,10 +315,6 @@ jvst_cnode_free_tree(struct jvst_cnode *root)
 			jvst_cnode_free_tree(node->u.prop_match.constraint);
 			break;
 
-		case JVST_CNODE_OBJ_REQUIRED:
-			// XXX - finalize the string set?
-			break;
-
 		case JVST_CNODE_ARR_ITEM:
 		case JVST_CNODE_ARR_ADDITIONAL:
 			if (node->u.arr_item != NULL) {
@@ -304,6 +374,49 @@ jvst_cnode_type_name(enum jvst_cnode_type type)
 		fprintf(stderr, "unknown cnode type %d\n", type);
 		abort();
 	}
+}
+
+void
+jvst_cnode_matchset_dump(struct jvst_cnode_matchset *ms, struct sbuf *buf, int indent)
+{
+	char str[256] = {0};
+	size_t n;
+
+	sbuf_indent(buf, indent);
+	sbuf_snprintf(buf, "P[");
+	switch (ms->match.dialect) {
+	case RE_LIKE:
+		sbuf_snprintf(buf, "LIKE");
+		break;
+
+	case RE_LITERAL:
+		sbuf_snprintf(buf, "LITERAL");
+		break;
+
+	case RE_GLOB:
+		sbuf_snprintf(buf, "GLOB");
+		break;
+
+	case RE_NATIVE:
+		sbuf_snprintf(buf, "NATIVE");
+		break;
+
+	default:
+		// avoid ??( trigraph by splitting
+		// "???(..." into "???" and "(..."
+		sbuf_snprintf(buf, "???" "(%d)", ms->match.dialect);
+		break;
+	}
+
+	n = ms->match.str.len;
+	if (n < sizeof str) {
+		memcpy(str, ms->match.str.s, n);
+	} else {
+		memcpy(str, ms->match.str.s, sizeof str - 4);
+		memcpy(str + sizeof str - 4, "...", 4);
+	}
+
+	sbuf_snprintf(buf, ", \"%s\"]", str);
 }
 
 // returns number of bytes written
@@ -478,8 +591,6 @@ and_or_xor:
 		sbuf_snprintf(buf, ")");
 		break;
 
-		break;
-
 	case JVST_CNODE_OBJ_REQUIRED:
 		{
 			struct ast_string_set *ss;
@@ -500,6 +611,63 @@ and_or_xor:
 				sbuf_indent(buf, indent + 2);
 				sbuf_snprintf(buf, "\"%s\"%s\n", str, (ss->next != NULL) ? "," : "");
 			}
+			sbuf_indent(buf, indent);
+			sbuf_snprintf(buf, ")");
+		}
+		break;
+
+	case JVST_CNODE_MATCH_SWITCH:
+		{
+			struct jvst_cnode *c;
+
+			sbuf_snprintf(buf, "MATCH_SWITCH(\n");
+			if (node->u.mswitch.default_case != NULL) {
+				sbuf_indent(buf, indent+2);
+				sbuf_snprintf(buf, "DEFAULT[\n");
+
+				sbuf_indent(buf, indent+4);
+				jvst_cnode_dump_inner(node->u.mswitch.default_case, buf, indent + 4);
+				sbuf_snprintf(buf, "\n");
+
+				sbuf_indent(buf, indent+2);
+				if (node->u.mswitch.cases != NULL) {
+					sbuf_snprintf(buf, "],\n");
+				} else {
+					sbuf_snprintf(buf, "]\n");
+				}
+			}
+
+			for (c = node->u.mswitch.cases; c != NULL; c = c->next) {
+				assert(c->type == JVST_CNODE_MATCH_CASE);
+				sbuf_indent(buf, indent+2);
+				jvst_cnode_dump_inner(c, buf, indent+2);
+				if (c->next != NULL) {
+					sbuf_snprintf(buf, ",\n");
+				} else {
+					sbuf_snprintf(buf, "\n");
+				}
+			}
+			sbuf_indent(buf, indent);
+			sbuf_snprintf(buf, ")");
+		}
+		break;
+
+	case JVST_CNODE_MATCH_CASE:
+		{
+			struct jvst_cnode_matchset *ms;
+
+			sbuf_snprintf(buf, "MATCH_SWITCH(\n");
+			assert(node->u.mcase.matchset != NULL);
+
+			for (ms = node->u.mcase.matchset; ms != NULL; ms = ms->next) {
+				jvst_cnode_matchset_dump(ms, buf, indent+2);
+				sbuf_snprintf(buf, ",\n");
+			}
+
+			sbuf_indent(buf, indent+2);
+			jvst_cnode_dump_inner(node->u.mcase.constraint, buf, indent+2);
+			sbuf_snprintf(buf, "\n");
+
 			sbuf_indent(buf, indent);
 			sbuf_snprintf(buf, ")");
 		}
@@ -800,6 +968,67 @@ jvst_cnode_translate_ast(struct ast_schema *ast)
 }
 
 static struct jvst_cnode *
+cnode_deep_copy(struct jvst_cnode *node);
+
+static int
+mcase_copier(const struct fsm *dfa, const struct fsm_state *st)
+{
+	struct jvst_cnode *node, *ndup;
+
+	if (!fsm_isend(dfa, st)) {
+		return 1;
+	}
+
+	node = fsm_getopaque((struct fsm *)dfa, st);
+	assert(node->type == JVST_CNODE_MATCH_CASE);
+	assert(node->u.mcase.tmp == NULL);
+
+	ndup = cnode_deep_copy(node);
+	node->u.mcase.tmp = ndup;
+
+	fsm_setopaque((struct fsm *)dfa, (struct fsm_state *)st, ndup);
+
+	return 1;
+}
+
+static struct jvst_cnode *
+cnode_mswitch_copy(struct jvst_cnode *node)
+{
+	struct jvst_cnode *tree, *mcases, **mcpp;
+	struct fsm *dup_fsm;
+
+	tree = jvst_cnode_alloc(JVST_CNODE_MATCH_SWITCH);
+
+	// it would be lovely to copy this but there doesn't seem to be
+	// a way to get/set it on the fsm.
+	tree->u.mswitch.opts = node->u.mswitch.opts;
+
+	// duplicate FSM
+	//
+	// XXX - need to determine how we're keeping track of
+	// FSMs
+	dup_fsm = fsm_clone(node->u.mswitch.dfa);
+
+	tree->u.mswitch.dfa = dup_fsm;
+
+	// copy and collect all opaque states
+	fsm_all(dup_fsm, mcase_copier);
+
+	mcpp = &tree->u.mswitch.cases;
+	for (mcases = node->u.mswitch.cases; mcases != NULL; mcases = mcases->next) {
+		assert(mcases->u.mcase.tmp != NULL);
+		*mcpp = mcases->u.mcase.tmp;
+		mcases->u.mcase.tmp = NULL;
+		mcpp = &(*mcpp)->next;
+	}
+
+	assert(node->u.mswitch.default_case != NULL);
+	tree->u.mswitch.default_case = cnode_deep_copy(node->u.mswitch.default_case);
+
+	return tree;
+}
+
+static struct jvst_cnode *
 cnode_deep_copy(struct jvst_cnode *node)
 {
 	struct jvst_cnode *tree;
@@ -894,12 +1123,27 @@ cnode_deep_copy(struct jvst_cnode *node)
 		tree->u.arr_item = cnode_deep_copy(node->u.arr_item);
 		return tree;
 
-	default:
-		SHOULD_NOT_REACH();
+	case JVST_CNODE_MATCH_SWITCH:
+		return cnode_mswitch_copy(node);
+
+	case JVST_CNODE_MATCH_CASE:
+		{
+			struct jvst_cnode_matchset *mset, **mspp;
+
+			tree = jvst_cnode_alloc(JVST_CNODE_MATCH_CASE);
+			mspp = &tree->u.mcase.matchset;
+			for(mset = node->u.mcase.matchset; mset != NULL; mset = mset->next) {
+				*mspp = cnode_matchset_new(mset->match, NULL);
+				mspp = &(*mspp)->next;
+			}
+			tree->u.mcase.constraint = cnode_deep_copy(node->u.mcase.constraint);
+			return tree;
+		}
 	}
 
-	// now free the node
-	jvst_cnode_free(node);
+	// avoid default case in switch so the compiler can complain if
+	// we add new cnode types
+	SHOULD_NOT_REACH();
 }
 
 struct jvst_cnode *
@@ -1085,6 +1329,238 @@ cnode_optimize_andor(struct jvst_cnode *top)
 	return cnode_optimize_andor_switches(top);
 }
 
+struct json_str_iter {
+	struct json_string str;
+	size_t off;
+};
+
+static int
+json_str_getc(void *p)
+{
+	struct json_str_iter *iter = p;
+	unsigned char ch;
+
+	if (iter->off >= iter->str.len) {
+		return EOF;
+	}
+
+	ch = iter->str.s[iter->off++];
+	return ch;
+}
+
+static void
+merge_mcases(struct set *orig, struct fsm *dfa, struct fsm_state *comb)
+{
+	struct jvst_cnode *mcase, *jxn, **jpp;
+	struct jvst_cnode_matchset **mspp;
+	struct fsm_state *st;
+	struct set_iter it;
+	size_t nstates;
+
+	// first count states to make sure that we need to merge...
+	mcase = NULL;
+	nstates = 0;
+
+	for (st = set_first(orig, &it); st != NULL; st = set_next(&it)) {
+		struct jvst_cnode *c;
+
+		if (!fsm_isend(dfa, st)) {
+			continue;
+		}
+
+		c = fsm_getopaque(dfa, st);
+		assert(c != NULL);
+
+		// allow a fast path if nstates==1
+		if (mcase == NULL) {
+			mcase = c;
+		}
+
+		nstates++;
+	}
+
+	if (nstates == 0) {
+		return;
+	}
+
+	if (nstates == 1) {
+		assert(mcase != NULL);
+		fsm_setopaque(dfa, comb, mcase);
+		return;
+	}
+
+	// okay... need to combine things...
+	jxn = jvst_cnode_alloc(JVST_CNODE_AND);
+	jpp = &jxn->u.ctrl;
+	mcase = cnode_new_mcase(NULL, jxn);
+	mspp = &mcase->u.mcase.matchset;
+
+	for (st = set_first(orig, &it); st != NULL; st = set_next(&it)) {
+		struct jvst_cnode *c;
+		struct jvst_cnode_matchset *mset;
+
+		if (!fsm_isend(dfa, st)) {
+			continue;
+		}
+
+		c = fsm_getopaque(dfa, st);
+		assert(c != NULL);
+
+		assert(c->type == JVST_CNODE_MATCH_CASE);
+		assert(c->u.mcase.matchset != NULL);
+
+		// XXX - currently don't check for duplicates.
+		// Do we need to?
+		for (mset = c->u.mcase.matchset; mset != NULL; mset = mset->next) {
+			*mspp = cnode_matchset_new(mset->match, NULL);
+			mspp = &(*mspp)->next;
+		}
+
+		*jpp = cnode_deep_copy(c->u.mcase.constraint);
+		jpp = &(*jpp)->next;
+	}
+
+	fsm_setopaque(dfa, comb, mcase);
+}
+
+static struct jvst_cnode **mcase_collector_head;
+
+static int
+mcase_collector(const struct fsm *dfa, const struct fsm_state *st)
+{
+	struct jvst_cnode *node;
+
+	assert(mcase_collector_head != NULL);
+	assert(*mcase_collector_head == NULL);
+
+	if (!fsm_isend(dfa, st)) {
+		return 1;
+	}
+
+	node = fsm_getopaque((struct fsm *)dfa, st);
+	assert(node->type == JVST_CNODE_MATCH_CASE);
+	assert(node->next == NULL);
+
+	*mcase_collector_head = node;
+	mcase_collector_head = &node->next;
+
+	return 1;
+}
+
+static struct jvst_cnode *
+cnode_optimize_propset(struct jvst_cnode *top)
+{
+	struct jvst_cnode *pm, *mcases, *msw, **mcpp;
+	struct fsm_options *opts;
+	struct fsm *matches;
+
+	// FIXME: this is a leak...
+	opts = xmalloc(sizeof *opts);
+	*opts = (struct fsm_options) {
+		.tidy = false,
+		.anonymous_states = false,
+		.consolidate_edges = true,
+		.fragment = true,
+		.comments = true,
+		.case_ranges = true,
+
+		.io = FSM_IO_GETC,
+		.prefix = NULL,
+		.carryopaque = merge_mcases,
+	};
+
+	assert(top->type == JVST_CNODE_OBJ_PROP_SET);
+	assert(top->u.prop_set != NULL);
+
+	// step 1: iterate over PROP_MATCH nodes and optimize each
+	// constraint individually
+	// 
+	// step 2: construct a FSM from all PROP_MATCH nodes.
+	//
+	// This involves:
+	//
+	//  a. create an FSM for each PROP_MATCH node
+	//  b. create a MATCH_CASE for each PROP_MATCH node
+	//  c. Set the MATCH_CASE as the opaque value for all end states
+	//     in the FSM
+	//  d. Union the FSM with the previous FSMs.
+	matches = NULL;
+	for (pm = top->u.prop_set; pm != NULL; pm=pm->next) {
+		struct jvst_cnode *cons, *mcase;
+		struct jvst_cnode_matchset *mset;
+		struct fsm *pat;
+		struct json_str_iter siter;
+		struct re_err err = { 0 };
+
+		cons = jvst_cnode_optimize(pm->u.prop_match.constraint);
+		mset = cnode_matchset_new(pm->u.prop_match.match, NULL);
+		mcase = cnode_new_mcase(mset, cons);
+
+		siter.str = pm->u.prop_match.match.str;
+		siter.off = 0;
+
+		pat = re_comp(
+			pm->u.prop_match.match.dialect,
+			json_str_getc,
+			&siter,
+			opts,
+			(enum re_flags)0,
+			&err);
+
+		// errors should be checked in parsing
+		assert(pat != NULL);
+
+		fsm_setendopaque(pat, mcase);
+
+		if (matches == NULL) {
+			matches = pat;
+		} else {
+			matches = fsm_union(matches, pat);
+
+			// XXX - we can't handle failure states right
+			// now...
+			assert(matches != NULL);
+		}
+	}
+
+	// step 3: convert the FSM from an NFA to a DFA.
+	//
+	// This may involve merging MATCH_CASE nodes.  The rules are
+	// fairly simple: combine pattern sets, combine constraints with
+	// an AND condition.
+	//
+	// NB: combining requires copying because different end states
+	// may still have the original MATCH_CASE node.
+
+	if (!fsm_determinise(matches)) {
+		perror("cannot determinise fsm");
+		abort();
+	}
+
+	// step 4: collect all MATCH_CASE nodes from the DFA by
+	// iterating over the DFA end states.  All MATCH_CASE nodes must
+	// be placed into a linked list.
+	mcases = NULL;
+	mcase_collector_head = &mcases; // XXX - ugly global variable
+
+	fsm_all(matches, mcase_collector);
+
+	// step 5: build the MATCH_SWITCH container to hold the cases
+	// and the DFA.  The default case should be VALID.
+	msw = jvst_cnode_alloc(JVST_CNODE_MATCH_SWITCH);
+	msw->u.mswitch.dfa = matches;
+	msw->u.mswitch.opts = opts;
+	msw->u.mswitch.cases = mcases;
+	msw->u.mswitch.default_case = jvst_cnode_alloc(JVST_CNODE_VALID);
+
+	// step 6: optimize the constraint of each MATCH_CASE node
+	for (; mcases != NULL; mcases = mcases->next) {
+		mcases->u.mcase.constraint = jvst_cnode_optimize(mcases->u.mcase.constraint);
+	}
+
+	return msw;
+}
+
 struct jvst_cnode *
 jvst_cnode_optimize(struct jvst_cnode *tree)
 {
@@ -1122,6 +1598,8 @@ jvst_cnode_optimize(struct jvst_cnode *tree)
 		return tree;
 
 	case JVST_CNODE_OBJ_PROP_SET:
+		return cnode_optimize_propset(tree);
+
 	case JVST_CNODE_NUM_RANGE:
 	case JVST_CNODE_COUNT_RANGE:
 	case JVST_CNODE_STR_MATCH:
@@ -1129,12 +1607,15 @@ jvst_cnode_optimize(struct jvst_cnode *tree)
 	case JVST_CNODE_OBJ_REQUIRED:
 	case JVST_CNODE_ARR_ITEM:
 	case JVST_CNODE_ARR_ADDITIONAL:
+	case JVST_CNODE_MATCH_SWITCH:
+	case JVST_CNODE_MATCH_CASE:
 		// TODO: basic optimization for these nodes
 		return tree;
-
-	default:
-		SHOULD_NOT_REACH();
 	}
+
+	// avoid default case in switch so the compiler can complain if
+	// we add new cnode types
+	SHOULD_NOT_REACH();
 }
 
 /* vim: set tabstop=8 shiftwidth=8 noexpandtab: */
