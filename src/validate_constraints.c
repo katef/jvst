@@ -1365,7 +1365,8 @@ json_str_getc(void *p)
 	return ch;
 }
 
-static void merge_mcases(struct set *orig, struct fsm *dfa, struct fsm_state *comb)
+static void
+merge_mcases(struct set *orig, struct fsm *dfa, struct fsm_state *comb)
 {
 	struct jvst_cnode *mcase, *jxn, **jpp;
 	struct jvst_cnode_matchset **mspp;
