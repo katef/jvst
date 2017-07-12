@@ -315,13 +315,6 @@ jvst_cnode_free_tree(struct jvst_cnode *root)
 			jvst_cnode_free_tree(node->u.prop_match.constraint);
 			break;
 
-#if 0
-		case JVST_CNODE_OBJ_REQMASK:
-		case JVST_CNODE_OBJ_REQBIT:
-			// XXX - finalize the string set?
-			break;
-#endif /* 0 */
-
 		case JVST_CNODE_ARR_ITEM:
 		case JVST_CNODE_ARR_ADDITIONAL:
 			if (node->u.arr_item != NULL) {
@@ -597,16 +590,6 @@ and_or_xor:
 
 		sbuf_snprintf(buf, ")");
 		break;
-
-#if 0
-	case JVST_CNODE_OBJ_REQMASK:
-		sbuf_snprintf(buf, "REQMASK(nbits=%zu)", node->u.reqmask.nbits);
-		break;
-
-	case JVST_CNODE_OBJ_REQBIT:
-		sbuf_snprintf(buf, "REQBIT(bit=%zu)", node->u.reqbit.bit);
-		break;
-#endif /* 0 */
 
 	case JVST_CNODE_OBJ_REQUIRED:
 		{

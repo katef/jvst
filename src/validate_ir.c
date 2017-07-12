@@ -1339,28 +1339,4 @@ jvst_ir_translate(struct jvst_cnode *ctree)
 	return frame;
 }
 
-#if 0
-	switch (ctree->type) {
-	case JVST_CNODE_INVALID: 
-	case JVST_CNODE_VALID:       
-	case JVST_CNODE_AND: 
-	case JVST_CNODE_OR:  
-	case JVST_CNODE_XOR: 
-	case JVST_CNODE_NOT:
-	case JVST_CNODE_SWITCH:
-	case JVST_CNODE_COUNT_RANGE:
-	case JVST_CNODE_STR_MATCH:
-	case JVST_CNODE_NUM_RANGE:
-	case JVST_CNODE_NUM_INTEGER:
-	case JVST_CNODE_OBJ_PROP_SET:
-	case JVST_CNODE_OBJ_REQUIRED:
-
-	case JVST_CNODE_ARR_ITEM:
-	case JVST_CNODE_ARR_ADDITIONAL:
-	case JVST_CNODE_ARR_UNIQUE:
-
-	case JVST_CNODE_OBJ_PROP_MATCH:
-#endif /* 0 */
-
-
 /* vim: set tabstop=8 shiftwidth=8 noexpandtab: */

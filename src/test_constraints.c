@@ -1198,13 +1198,6 @@ void test_simplify_propsets(void)
     { STOP },
   };
 
-#if 0
-  jvst_cnode_print(tests[0].expected);
-  fprintf(stderr, "\n\n");
-  jvst_cnode_print(tests[1].expected);
-  fprintf(stderr, "\n\n");
-#endif /* 0 */
-
   RUNTESTS(tests);
 }
 
