@@ -1247,8 +1247,16 @@ ir_translate_obj_inner(struct jvst_cnode *top, struct ir_object_builder *builder
 		}
 		break;
 
-	case JVST_CNODE_OBJ_REQUIRED:
 	case JVST_CNODE_AND:
+		{
+			struct jvst_cnode *n;
+			for (n = top->u.ctrl; n != NULL; n = n->next) {
+				ir_translate_obj_inner(n, builder);
+			}
+		}
+		break;
+
+	case JVST_CNODE_OBJ_REQUIRED:
 	case JVST_CNODE_OR:
 	case JVST_CNODE_NOT:
 	case JVST_CNODE_XOR:
