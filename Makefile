@@ -14,6 +14,7 @@ BUILD  ?= build
 PREFIX ?= /usr/local
 
 PKG += libre
+PKG += libfsm
 
 # layout
 SUBDIR += src

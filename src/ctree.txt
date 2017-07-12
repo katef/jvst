@@ -1,0 +1,378 @@
+cnode tree:
+SWITCH(
+  NONE       : VALID,
+  NULL       : VALID,
+  TRUE       : VALID,
+  FALSE      : VALID,
+  STRING     : VALID,
+  NUMBER     : AND(
+    NUM_RANGE(1.1 <= x),
+    IS_INTEGER
+  ),
+  OBJECT_BEG : VALID,
+  OBJECT_END : INVALID,
+  ARRAY_BEG  : VALID,
+  ARRAY_END  : INVALID
+)
+
+Sketch of code tree IR:
+
+FRAME(ncounters=0, nnums=0, nparams=0,
+  TOKEN,
+  IF(ISTOK($NUMBER),
+     IF(AND(ISINT(@TOK_NUM),
+            GE(@TOK_NUM, 1.1)),
+        VALID,
+        INVALID),
+     IF(ISTOK($OBJECT_END),
+        INVALID,
+        IF(ISTOK($ARRAY_END),
+           INVALID,
+           VALID))))
+
+cnode tree:
+SWITCH(
+  NONE       : INVALID,
+  NULL       : INVALID,
+  TRUE       : INVALID,
+  FALSE      : INVALID,
+  STRING     : INVALID,
+  NUMBER     : INVALID,
+  OBJECT_BEG : OR(
+    PROP_SET(
+      PROP_MATCH(
+        "foo",
+        SWITCH(
+          NONE       : INVALID,
+          NULL       : INVALID,
+          TRUE       : INVALID,
+          FALSE      : INVALID,
+          STRING     : INVALID,
+          NUMBER     : VALID,
+          OBJECT_BEG : INVALID,
+          OBJECT_END : INVALID,
+          ARRAY_BEG  : INVALID,
+          ARRAY_END  : INVALID
+        )
+      ),
+      PROP_MATCH(
+        "bar",
+        SWITCH(
+          NONE       : INVALID,
+          NULL       : INVALID,
+          TRUE       : INVALID,
+          FALSE      : INVALID,
+          STRING     : VALID,
+          NUMBER     : INVALID,
+          OBJECT_BEG : INVALID,
+          OBJECT_END : INVALID,
+          ARRAY_BEG  : INVALID,
+          ARRAY_END  : INVALID
+        )
+      )
+    ),
+    PROP_SET(
+      PROP_MATCH(
+        "foo",
+        SWITCH(
+          NONE       : INVALID,
+          NULL       : INVALID,
+          TRUE       : INVALID,
+          FALSE      : INVALID,
+          STRING     : VALID,
+          NUMBER     : INVALID,
+          OBJECT_BEG : INVALID,
+          OBJECT_END : INVALID,
+          ARRAY_BEG  : INVALID,
+          ARRAY_END  : INVALID
+        )
+      ),
+      PROP_MATCH(
+        "bar",
+        SWITCH(
+          NONE       : INVALID,
+          NULL       : INVALID,
+          TRUE       : INVALID,
+          FALSE      : INVALID,
+          STRING     : INVALID,
+          NUMBER     : VALID,
+          OBJECT_BEG : INVALID,
+          OBJECT_END : INVALID,
+          ARRAY_BEG  : INVALID,
+          ARRAY_END  : INVALID
+        )
+      )
+    )
+  ),
+  OBJECT_END : INVALID,
+  ARRAY_BEG  : INVALID,
+  ARRAY_END  : INVALID
+)
+
+Sketch of code tree IR:
+--> need DFA spec somewhere
+FRAME(ncounters=0, nnums=0, nparams=0,
+  IF(ISTOK($OBJECT_BEG),
+     IF(GE(SPLIT(
+             SEQ(
+               LOOP(
+                 TOKEN,
+                 IF(ISTOK($OBJECT_END),
+                    JUMP(L_END1)
+                    DFA(
+                      MATCH(0, CONSUME),   # neither "foo" nor "bar"
+                      MATCH(1,             # matched "foo"
+                        TOKEN,
+                        IF(ISTOK($NUMBER),
+                           CONSUME,
+                           INVALID
+                        )
+                      ),
+                      MATCH(2,             # matched "bar"
+                        TOKEN,
+                        IF(ISTOK($STRING),
+                           CONSUME,
+                           INVALID
+                        )
+                      )
+                    )
+                 )
+               ),
+               LABEL(L_END1),
+               VALID
+             ),
+             SEQ(
+               LOOP(
+                 TOKEN,
+                 IF(ISTOK($OBJECT_END),
+                    JUMP(L_END2)
+                    DFA(
+                      MATCH(0, CONSUME),   # neither "foo" nor "bar"
+                      MATCH(1,             # matched "foo"
+                        TOKEN,
+                        IF(ISTOK($STRING),
+                           CONSUME,
+                           INVALID
+                        )
+                      ),
+                      MATCH(2,             # matched "bar"
+                        TOKEN,
+                        IF(ISTOK($NUMBER),
+                           CONSUME,
+                           INVALID
+                        )
+                      )
+                    )
+                 )
+               )
+               LABEL(L_END2),
+               VALID
+             ),
+           ),
+           1
+        ),
+        VALID,
+        INVALID
+     ),
+     INVALID
+  )
+)
+
+
+cnode tree:
+
+SWITCH(
+  NONE       : VALID,
+  NULL       : VALID,
+  TRUE       : VALID,
+  FALSE      : VALID,
+  STRING     : VALID,
+  NUMBER     : VALID,
+  OBJECT_BEG : OR(
+    AND(
+      REQUIRED(
+        "bar"
+      ),
+      PROP_SET(
+        PROP_MATCH(
+          "foo",
+          SWITCH(
+            NONE       : INVALID,
+            NULL       : INVALID,
+            TRUE       : INVALID,
+            FALSE      : INVALID,
+            STRING     : INVALID,
+            NUMBER     : IS_INTEGER,
+            OBJECT_BEG : INVALID,
+            OBJECT_END : INVALID,
+            ARRAY_BEG  : INVALID,
+            ARRAY_END  : INVALID
+          )
+        ),
+        PROP_MATCH(
+          "bar",
+          SWITCH(
+            NONE       : INVALID,
+            NULL       : INVALID,
+            TRUE       : INVALID,
+            FALSE      : INVALID,
+            STRING     : INVALID,
+            NUMBER     : IS_INTEGER,
+            OBJECT_BEG : INVALID,
+            OBJECT_END : INVALID,
+            ARRAY_BEG  : INVALID,
+            ARRAY_END  : INVALID
+          )
+        )
+      )
+    ),
+    PROP_SET(
+      PROP_MATCH(
+        "bar",
+        INVALID
+      )
+    )
+  ),
+  OBJECT_END : INVALID,
+  ARRAY_BEG  : VALID,
+  ARRAY_END  : INVALID
+)
+
+Sketch of code tree IR:
+--> need DFA spec somewhere
+FRAME(ncounters=0, nnums=0, nparams=0,
+  IF(ISTOK($OBJECT_BEG),
+     IF(GE(SPLIT(
+             FRAME(
+               STATE(
+                 COUNTERS(1, "required"),       # one counter named 'required'
+                 MATCHER("dfa1"),            # one matcher state for matcher "dfa1"
+               ),
+               LOOP(
+                 TOKEN,
+                 IF(ISTOK($OBJECT_END),
+                    JUMP(L_END1)
+                    MATCH("dfa1",        # use matcher 0 (with allocated state)
+                      CASE(0, CONSUME),   # neither "foo" nor "bar"
+                      CASE(1,             # matched "foo"
+                        TOKEN,
+                        IF(AND(ISTOK($NUMBER), ISINT(@TOK_NUM)),
+                           CONSUME,
+                           INVALID
+                        )
+                      ),
+                      CASE(2,             # matched "bar"
+                        BSET(COUNTER(0), 1)     # set bit that we've seen the required item
+                        TOKEN,
+                        IF(AND(ISTOK($NUMBER), ISINT(@TOK_NUM)),
+                           CONSUME,
+                           INVALID
+                        )
+                      )
+                    )
+                 )
+               ),
+               LABEL(L_END1),
+               IF(EQ(BAND(COUNTER(0),1),1),
+                  VALID,
+                  INVALID
+               )
+             ),
+             FRAME(ncounters=1, nnums=0, nparams=0,
+               LOOP(
+                 TOKEN,
+                 IF(ISTOK($OBJECT_END),
+                    JUMP(L_END2)
+                    DFA(
+                      MATCH(0, CONSUME),   # neither "foo" nor "bar"
+                      MATCH(1, CONSUME),   # matched "foo"
+                      MATCH(2, INVALID)    # matched "bar"
+                    )
+                 )
+               )
+               LABEL(L_END2),
+               VALID
+             ),
+           ),
+           1
+        ),
+        VALID,
+        INVALID
+     ),
+     IF(ISTOK($OBJECT_END),
+        INVALID,
+        IF(ISTOK($ARRAY_END),
+           INVALID,
+           VALID
+        )
+     )
+   )
+)
+
+Some notes:
+
+1. renaming DFA -> matcher to potentially allow different kinds of matchers
+2. matchers require some state.  They have to be restartable to handle partial tokens.
+3. SPLIT children should be FRAMEs.
+4. FRAME setup should be clearer, counters should be given symbolic names
+
+
+
+
+Okay... let's see if we can derive some basic rules here...
+
+1. SWITCH() forms should be converted into a cascade of IF(ISTOK($TOK_TYPE), <is_type>, ...
+   The common VALID/INVALID forms should be grouped together to allow a fast exit.  The
+   heuristic for this grouping may need some experimentation.
+
+2. NOT(), OR() and XOR() forms require a SPLIT and must check the number of valid returns as follows:
+        A. NOT(): IF(EQ(SPLIT(...),0), VALID, INVALID)
+        B. OR():  IF(GT(SPLIT(...),0), VALID, INVALID)
+        C. XOR(): IF(EQ(SPLIT(...),1), VALID, INVALID)
+
+   NB: NOT() can probably be reduced before emitting the IR in some cases
+
+3. AND() forms associate constraints together.
+
+4. PROP_SET() forms add match requirements.
+
+5. REQUIRED() forms add state, match requirements, and post-object checking
+
+6. COUNT_RANGE() forms add:
+
+        A. Objects: state, each-match code, and post-object checking
+        B. Arrays:  state, each-item code, and post-array checking
+        C. Strings: state, length gathering, and post-object checking
+
+7. NUM_RANGE() forms add a value constraint
+8. INTEGER() forms add a value constraint
+
+9. STR_MATCH() forms add match requirements for strings
+
+10. UNIQUE() constraints add stat, each-item code, and post-array checking
+
+
+When we add enum/const constraints, they will vary depending on the item
+type.  For strings, const/enum will probably be rewritten as a
+STR_MATCH() form.  For numbers, we can add a special form that will
+reduce to range check and then a set of equality checks.  For objects
+and arrays, we'll have to split the interpreter and add appropriate
+checks that count as equality.
+
+
+The translation needs to occur in sets of FRAMEs.  A FRAME is
+established with each SWITCH form.  A frame sets the scope and holds the
+following:
+
+        1. counters used to count or hold bitmasks
+        2. numbers held by various things       <-- is this necessary?
+        3. matcher name/state used in the frame
+
+In constructing each FRAME, we also accumulate the following lists:
+
+        1. State held
+        2. any code that has to be handled per-property or per-item
+        3. any code that has to be checked after the object/array is
+           complete
+
+

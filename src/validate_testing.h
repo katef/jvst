@@ -1,9 +1,13 @@
 #ifndef TESTING_H
 #define TESTING_H
 
+#include "sjp_parser.h"
+
 #include "jdom.h"
 #include "ast.h"
+
 #include "validate_constraints.h"
+#include "validate_ir.h"
 
 extern int ntest;
 extern int nfail;
@@ -15,6 +19,11 @@ struct arena_info {
 	size_t npnames;
 	size_t nset;
 	size_t ncnode;
+
+        /* IR related */
+        size_t nstmt;
+        size_t nexpr;
+	size_t nmcases;
 };
 
 struct ast_schema *
@@ -74,6 +83,54 @@ newcnode_invalid(void);
 
 struct jvst_cnode *
 newcnode_required(struct arena_info *A, struct ast_string_set *sset);
+
+struct jvst_ir_stmt *
+newir_stmt(struct arena_info *A, enum jvst_ir_stmt_type type);
+
+struct jvst_ir_expr *
+newir_expr(struct arena_info *A, enum jvst_ir_expr_type type);
+
+struct jvst_ir_stmt *
+newir_invalid(struct arena_info *A, int code, const char *msg);
+
+struct jvst_ir_stmt *
+newir_frame(struct arena_info *A, ...);
+
+struct jvst_ir_stmt *
+newir_seq(struct arena_info *A, ...);
+
+struct jvst_ir_stmt *
+newir_loop(struct arena_info *A, const char *loopname, size_t ind, ...);
+
+struct jvst_ir_stmt *
+newir_break(struct arena_info *A, const char *loopname, size_t ind);
+
+struct jvst_ir_stmt *
+newir_if(struct arena_info *A, struct jvst_ir_expr *cond,
+	struct jvst_ir_stmt *br_true, struct jvst_ir_stmt *br_false);
+
+struct jvst_ir_stmt *
+newir_matcher(struct arena_info *A, size_t ind, const char *name);
+
+struct jvst_ir_stmt *
+newir_match(struct arena_info *A, size_t ind, ...);
+
+struct jvst_ir_mcase *
+newir_case(struct arena_info *A, size_t ind, struct jvst_ir_stmt *frame);
+
+struct jvst_ir_expr *
+newir_istok(struct arena_info *A, enum SJP_EVENT tt);
+
+struct jvst_ir_expr *
+newir_isint(struct arena_info *A, struct jvst_ir_expr *arg);
+
+struct jvst_ir_expr *
+newir_op(struct arena_info *A, enum jvst_ir_expr_type op,
+		struct jvst_ir_expr *left,
+		struct jvst_ir_expr *right);
+
+struct jvst_ir_expr *
+newir_num(struct arena_info *A, double num);
 
 const char *
 jvst_ret2name(int ret);

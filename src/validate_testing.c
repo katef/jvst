@@ -1,5 +1,6 @@
 #include "validate_testing.h"
 
+#include <assert.h>
 #include <string.h>
 #include <stdarg.h>
 
@@ -21,6 +22,9 @@ static struct ast_string_set ar_stringsets[NUM_TEST_THINGS];
 static struct ast_property_names ar_propnames[NUM_TEST_THINGS];
 static struct ast_schema_set ar_schemasets[NUM_TEST_THINGS];
 static struct jvst_cnode ar_cnodes[NUM_TEST_THINGS];
+static struct jvst_ir_stmt ar_ir_stmts[NUM_TEST_THINGS];
+static struct jvst_ir_expr ar_ir_exprs[NUM_TEST_THINGS];
+static struct jvst_ir_mcase ar_ir_mcases[NUM_TEST_THINGS];
 
 // Returns a constant empty schema
 struct ast_schema *
@@ -502,5 +506,307 @@ newcnode_required(struct arena_info *A, struct ast_string_set *sset)
 
 	return node;
 }
+
+struct jvst_ir_expr *
+newir_expr(struct arena_info *A, enum jvst_ir_expr_type type)
+{
+	size_t i, max;
+	struct jvst_ir_expr *expr;
+
+	i   = A->nexpr++;
+	max = ARRAYLEN(ar_ir_exprs);
+	if (A->nexpr >= max) {
+		fprintf(stderr, "too many IR expr nodes: %zu max\n", max);
+		abort();
+	}
+
+	expr = &ar_ir_exprs[i];
+	memset(expr, 0, sizeof *expr);
+	expr->type = type;
+
+	return expr;
+}
+
+struct jvst_ir_stmt *
+newir_stmt(struct arena_info *A, enum jvst_ir_stmt_type type)
+{
+	size_t i, max;
+	struct jvst_ir_stmt *stmt;
+
+	i   = A->nstmt++;
+	max = ARRAYLEN(ar_ir_stmts);
+	if (A->nstmt >= max) {
+		fprintf(stderr, "too many IR stmt nodes: %zu max\n", max);
+		abort();
+	}
+
+	stmt = &ar_ir_stmts[i];
+	memset(stmt, 0, sizeof *stmt);
+	stmt->type = type;
+
+	return stmt;
+}
+
+struct jvst_ir_stmt *
+newir_invalid(struct arena_info *A, int code, const char *msg)
+{
+	struct jvst_ir_stmt *stmt;
+	stmt = newir_stmt(A,JVST_IR_STMT_INVALID);
+	stmt->u.invalid.code = code;
+	stmt->u.invalid.msg = msg;
+	return stmt;
+}
+
+static void ir_stmt_list(struct jvst_ir_stmt **spp, va_list args)
+{
+	struct jvst_ir_stmt *stmt;
+
+	*spp = NULL;
+	stmt = va_arg(args, struct jvst_ir_stmt *);
+	for(; stmt != NULL; stmt = va_arg(args, struct jvst_ir_stmt *)) {
+		*spp = stmt;
+		spp = &(*spp)->next;
+	}
+}
+
+struct jvst_ir_stmt *
+newir_frame(struct arena_info *A, ...)
+{
+	struct jvst_ir_stmt *fr, **spp, **mpp, **cpp;
+	va_list args;
+
+	fr = newir_stmt(A,JVST_IR_STMT_FRAME);
+	va_start(args, A);
+	ir_stmt_list(&fr->u.frame.stmts, args);
+	va_end(args);
+
+	// filter out initial counters and matchers
+	cpp = &fr->u.frame.counters;
+	mpp = &fr->u.frame.matchers;
+	spp = &fr->u.frame.stmts;
+
+	while (*spp != NULL) {
+		switch ((*spp)->type) {
+		case JVST_IR_STMT_COUNTER:
+			*cpp = *spp;
+			*spp = (*spp)->next;
+
+			cpp = &(*cpp)->next;
+			*cpp = NULL;
+			break;
+
+		case JVST_IR_STMT_MATCHER:
+			*mpp = *spp;
+			*spp = (*spp)->next;
+
+			mpp = &(*mpp)->next;
+			*mpp = NULL;
+			break;
+
+		default:
+			return fr;
+		}
+	}
+
+	assert(fr->u.frame.stmts != NULL);
+	return fr;
+}
+
+struct jvst_ir_stmt *
+newir_seq(struct arena_info *A, ...)
+{
+	struct jvst_ir_stmt *seq;
+	va_list args;
+
+	seq = newir_stmt(A,JVST_IR_STMT_SEQ);
+	va_start(args, A);
+	ir_stmt_list(&seq->u.stmt_list, args);
+	va_end(args);
+
+	return seq;
+}
+
+struct jvst_ir_stmt *
+newir_loop(struct arena_info *A, const char *loopname, size_t ind, ...)
+{
+	struct jvst_ir_stmt *loop;
+	va_list args;
+
+	loop = newir_stmt(A,JVST_IR_STMT_LOOP);
+	loop->u.loop.name = loopname;
+	loop->u.loop.ind  = ind;
+	va_start(args, ind);
+	ir_stmt_list(&loop->u.loop.stmts, args);
+	va_end(args);
+
+	return loop;
+}
+
+struct jvst_ir_stmt *
+newir_break(struct arena_info *A, const char *loopname, size_t ind)
+{
+	struct jvst_ir_stmt *stmt;
+	stmt = newir_stmt(A,JVST_IR_STMT_BREAK);
+	stmt->u.break_.name = loopname;
+	stmt->u.break_.ind  = ind;
+	stmt->u.break_.loop = NULL;
+
+	return stmt;
+}
+
+struct jvst_ir_stmt *
+newir_if(struct arena_info *A, struct jvst_ir_expr *cond,
+	struct jvst_ir_stmt *br_true, struct jvst_ir_stmt *br_false)
+{
+	struct jvst_ir_stmt *br;
+	va_list args;
+
+	br = newir_stmt(A,JVST_IR_STMT_IF);
+	br->u.if_.cond = cond;
+	br->u.if_.br_true = br_true;
+	br->u.if_.br_false = br_false;
+
+	return br;
+}
+
+struct jvst_ir_stmt *
+newir_matcher(struct arena_info *A, size_t ind, const char *name)
+{
+	struct jvst_ir_stmt *stmt;
+
+	stmt = newir_stmt(A,JVST_IR_STMT_MATCHER);
+	stmt->u.matcher.ind = ind;
+	stmt->u.matcher.name = name;
+
+	return stmt;
+}
+
+struct jvst_ir_stmt *
+newir_match(struct arena_info *A, size_t ind, ...)
+{
+	struct jvst_ir_stmt *stmt;
+	struct jvst_ir_mcase *c, **cpp;
+	va_list args;
+
+	stmt = newir_stmt(A,JVST_IR_STMT_MATCH);
+	stmt->u.match.ind = ind;
+	stmt->u.match.cases = NULL;
+
+	cpp = &stmt->u.match.cases;
+	va_start(args, ind);
+	c = va_arg(args, struct jvst_ir_mcase *);
+	for(; c != NULL; c = va_arg(args, struct jvst_ir_mcase *)) {
+		// filter cases for which==0, which we turn into the default
+		// case
+		//
+		// FIXME: should probably give this as an explicit arg...
+		if (c->which == 0) {
+			stmt->u.match.default_case = c->stmt;
+			continue;
+		}
+
+		*cpp = c;
+		cpp = &(*cpp)->next;
+	}
+	va_end(args);
+
+	return stmt;
+}
+
+struct jvst_ir_mcase *
+newir_case(struct arena_info *A, size_t ind, struct jvst_ir_stmt *frame)
+{
+	size_t i, max;
+	struct jvst_ir_mcase *c;
+
+	i = A->nmcases++;
+	max = ARRAYLEN(ar_ir_mcases);
+	if (A->nexpr >= max) {
+		fprintf(stderr, "too many IR expr nodes: %zu max\n", max);
+		abort();
+	}
+
+	c  = &ar_ir_mcases[i];
+	memset(c , 0, sizeof *c );
+	c->which = ind;
+	c->stmt = frame;
+
+	return c;
+}
+
+struct jvst_ir_expr *
+newir_istok(struct arena_info *A, enum SJP_EVENT tt)
+{
+	struct jvst_ir_expr *expr;
+	expr = newir_expr(A,JVST_IR_EXPR_ISTOK);
+	expr->u.istok.tok_type = tt;
+	return expr;
+}
+
+struct jvst_ir_expr *
+newir_isint(struct arena_info *A, struct jvst_ir_expr *arg)
+{
+	struct jvst_ir_expr *expr;
+	expr = newir_expr(A,JVST_IR_EXPR_ISINT);
+	expr->u.isint.arg = arg;
+	return expr;
+}
+
+struct jvst_ir_expr *
+newir_num(struct arena_info *A, double num)
+{
+	struct jvst_ir_expr *expr;
+	expr = newir_expr(A,JVST_IR_EXPR_NUM);
+	expr->u.vnum = num;
+	return expr;
+}
+
+struct jvst_ir_expr *
+newir_op(struct arena_info *A, enum jvst_ir_expr_type op,
+		struct jvst_ir_expr *left,
+		struct jvst_ir_expr *right)
+{
+	struct jvst_ir_expr *expr;
+
+	switch (op) {
+	case JVST_IR_EXPR_AND:
+	case JVST_IR_EXPR_OR:
+		expr = newir_expr(A,op);
+		expr->u.and_or.left = left;
+		expr->u.and_or.right = right;
+		break;
+
+	case JVST_IR_EXPR_NE:
+	case JVST_IR_EXPR_LT:
+	case JVST_IR_EXPR_LE:
+	case JVST_IR_EXPR_EQ:
+	case JVST_IR_EXPR_GE:
+	case JVST_IR_EXPR_GT:
+		expr = newir_expr(A,op);
+		expr->u.cmp.left = left;
+		expr->u.cmp.right = right;
+		break;
+
+	case JVST_IR_EXPR_NONE:
+	case JVST_IR_EXPR_NUM:
+	case JVST_IR_EXPR_SIZE:
+	case JVST_IR_EXPR_BOOL:
+	case JVST_IR_EXPR_TOK_TYPE:
+	case JVST_IR_EXPR_TOK_NUM:
+	case JVST_IR_EXPR_TOK_COMPLETE:
+	case JVST_IR_EXPR_TOK_LEN:
+	case JVST_IR_EXPR_COUNT:
+	case JVST_IR_EXPR_BTEST:
+	case JVST_IR_EXPR_ISTOK:
+	case JVST_IR_EXPR_ISINT:
+	case JVST_IR_EXPR_NOT:
+	case JVST_IR_EXPR_SPLIT:
+		fprintf(stderr, "invalid OP type: %s\n", jvst_ir_expr_type_name(op));
+		abort();
+	}
+
+	return expr;
+}
+
 
 /* vim: set tabstop=8 shiftwidth=8 noexpandtab: */
