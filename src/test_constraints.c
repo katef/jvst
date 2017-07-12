@@ -1015,19 +1015,42 @@ void test_simplify_ored_schema(void)
         // optimized
         newcnode_switch(&A, 0,
           SJP_OBJECT_BEG, newcnode_bool(&A, JVST_CNODE_OR,
-                            newcnode_propset(&A, 
-                              newcnode_prop_match(&A, RE_LITERAL, "foo",
-                                newcnode_switch(&A, 0, SJP_NUMBER, newcnode_valid(), SJP_NONE)),
-                              newcnode_prop_match(&A, RE_LITERAL, "bar",
-                                newcnode_switch(&A, 0, SJP_STRING, newcnode_valid(), SJP_NONE)),
-                              NULL),
-                            newcnode_propset(&A,
-                              newcnode_prop_match(&A, RE_LITERAL, "foo",
-                                newcnode_switch(&A, 0, SJP_STRING, newcnode_valid(), SJP_NONE)),
-                              newcnode_prop_match(&A, RE_LITERAL, "bar",
-                                newcnode_switch(&A, 0, SJP_NUMBER, newcnode_valid(), SJP_NONE)),
-                              NULL),
-                            NULL),
+                            newcnode_mswitch(&A, 
+                              // default case
+                              newcnode_valid(),
+
+                              newcnode_mcase(&A,
+                                newmatchset(&A, RE_LITERAL, "bar", -1),
+                                newcnode_switch(&A, 0, SJP_STRING, newcnode_valid(), SJP_NONE)
+                              ),
+
+                              newcnode_mcase(&A,
+                                newmatchset(&A, RE_LITERAL, "foo", -1),
+                                newcnode_switch(&A, 0, SJP_NUMBER, newcnode_valid(), SJP_NONE)
+                              ),
+
+                              NULL
+                            ),
+
+                            newcnode_mswitch(&A, 
+                              // default case
+                              newcnode_valid(),
+
+                              newcnode_mcase(&A,
+                                newmatchset(&A, RE_LITERAL, "bar", -1),
+                                newcnode_switch(&A, 0, SJP_NUMBER, newcnode_valid(), SJP_NONE)
+                              ),
+
+                              newcnode_mcase(&A,
+                                newmatchset(&A, RE_LITERAL, "foo", -1),
+                                newcnode_switch(&A, 0, SJP_STRING, newcnode_valid(), SJP_NONE)
+                              ),
+
+                              NULL
+                            ),
+
+                            NULL
+                          ),
           SJP_NONE),
     },
 
@@ -1082,25 +1105,105 @@ void test_simplify_ored_schema(void)
           SJP_OBJECT_BEG, newcnode_bool(&A, JVST_CNODE_OR,
                             newcnode_bool(&A, JVST_CNODE_AND,
                               newcnode_required(&A, stringset(&A, "bar", NULL)),
-                              newcnode_propset(&A,
-                                newcnode_prop_match(&A, RE_LITERAL, "foo", 
+                              newcnode_mswitch(&A,
+                                // default case
+                                newcnode_valid(),
+
+                                newcnode_mcase(&A,
+                                  newmatchset(&A, RE_LITERAL, "foo", -1),
                                   newcnode_switch(&A, 0, 
                                     SJP_NUMBER, newcnode(&A,JVST_CNODE_NUM_INTEGER),
-                                    SJP_NONE)),
-                                newcnode_prop_match(&A, RE_LITERAL, "bar", 
+                                    SJP_NONE)
+                                ),
+
+                                newcnode_mcase(&A,
+                                  newmatchset(&A, RE_LITERAL, "bar", -1),
                                   newcnode_switch(&A, 0, 
                                     SJP_NUMBER, newcnode(&A,JVST_CNODE_NUM_INTEGER),
-                                    SJP_NONE)),
-                                NULL),
-                              NULL),
-                            newcnode_propset(&A,
-                              newcnode_prop_match(&A, RE_LITERAL, "bar", newcnode_invalid()),
-                              NULL),
+                                    SJP_NONE)
+                                ),
+
+                                NULL
+                              ),
+                              NULL
+                            ),
+
+                            newcnode_mswitch(&A,
+                              // default case
+                              newcnode_valid(),
+
+                              newcnode_mcase(&A,
+                                newmatchset(&A, RE_LITERAL, "bar", -1),
+                                newcnode_invalid()
+                              ),
+
+                              NULL
+                            ),
+
+                            NULL
+                          ),
+          SJP_NONE),
+    },
+
+    { STOP },
+  };
+
+  RUNTESTS(tests);
+}
+
+
+void test_simplify_propsets(void)
+{
+  struct arena_info A = {0};
+  const struct cnode_test tests[] = {
+    {
+      OPTIMIZE, NULL, 
+
+        // initial tree
+        newcnode_switch(&A, 0,
+          SJP_OBJECT_BEG, newcnode_propset(&A, 
+                            newcnode_prop_match(&A, RE_NATIVE, "ba.",
+                              newcnode_switch(&A, 0, SJP_NUMBER, newcnode_valid(), SJP_NONE)),
+
+                            newcnode_prop_match(&A, RE_LITERAL, "bar",
+                              newcnode_switch(&A, 0, SJP_STRING, newcnode_valid(), SJP_NONE)),
+                            NULL),
+          SJP_NONE),
+
+        // optimized
+        newcnode_switch(&A, 0,
+          SJP_OBJECT_BEG, newcnode_mswitch(&A, 
+                            // default case
+                            newcnode_valid(),
+
+                            newcnode_mcase(&A,
+                              newmatchset(&A,
+                                RE_NATIVE,  "ba.",
+                                -1),
+                              newcnode_switch(&A, 0, SJP_NUMBER, newcnode_valid(), SJP_NONE)
+                            ),
+
+                            newcnode_mcase(&A,
+                              newmatchset(&A,
+                                RE_LITERAL, "bar",
+                                RE_NATIVE,  "ba.",
+                                -1),
+                              newcnode_switch(&A, 0, SJP_NONE)
+                            ),
+
                             NULL),
           SJP_NONE),
     },
+
     { STOP },
   };
+
+#if 0
+  jvst_cnode_print(tests[0].expected);
+  fprintf(stderr, "\n\n");
+  jvst_cnode_print(tests[1].expected);
+  fprintf(stderr, "\n\n");
+#endif /* 0 */
 
   RUNTESTS(tests);
 }
@@ -1133,6 +1236,8 @@ int main(void)
 
   test_simplify_ands();
   test_simplify_ored_schema();
+
+  test_simplify_propsets();
 
   return report_tests();
 }

@@ -18,7 +18,10 @@ struct arena_info {
 	size_t nstr;
 	size_t npnames;
 	size_t nset;
+
+	/* cnode related */
 	size_t ncnode;
+	size_t nmatchsets;
 
         /* IR related */
         size_t nstmt;
@@ -84,6 +87,18 @@ newcnode_invalid(void);
 struct jvst_cnode *
 newcnode_required(struct arena_info *A, struct ast_string_set *sset);
 
+struct jvst_cnode *
+newcnode_mswitch(struct arena_info *A, struct jvst_cnode *dft, ...);
+
+struct jvst_cnode *
+newcnode_mcase(struct arena_info *A, struct jvst_cnode_matchset *mset,
+	struct jvst_cnode *constraint);
+
+struct jvst_cnode_matchset *
+newmatchset(struct arena_info *A, ...);
+
+
+/* IR-related */
 struct jvst_ir_stmt *
 newir_stmt(struct arena_info *A, enum jvst_ir_stmt_type type);
 

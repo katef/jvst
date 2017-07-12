@@ -58,11 +58,28 @@ enum jvst_cnode_type {
 
 	JVST_CNODE_OBJ_PROP_SET,
 	JVST_CNODE_OBJ_PROP_MATCH,
+
 	JVST_CNODE_OBJ_REQUIRED,
+	// JVST_CNODE_OBJ_REQMASK,
+	// JVST_CNODE_OBJ_REQBIT,
 
 	JVST_CNODE_ARR_ITEM,
 	JVST_CNODE_ARR_ADDITIONAL,
 	JVST_CNODE_ARR_UNIQUE,
+
+	// Nodes used in optimization/simplification to reduce the
+	// complexity of matching.
+	//
+	// After a DFA is created, MATCH_SWITCH holds the overall
+	// matching, while MATCH_CASE holds the unique matching
+	// endstates
+	JVST_CNODE_MATCH_SWITCH,
+	JVST_CNODE_MATCH_CASE,
+};
+
+struct jvst_cnode_matchset {
+	struct jvst_cnode_matchset *next;
+	struct ast_regexp match;
 };
 
 struct jvst_cnode {
@@ -95,7 +112,7 @@ struct jvst_cnode {
 			double max;
 		} num_range;
 
-		/* object required property */
+		/* support for required properties */
 		struct ast_string_set *required;
 
 		struct jvst_cnode *prop_set;
@@ -108,6 +125,34 @@ struct jvst_cnode {
 
 		// for array item and additional_item constraints
 		struct jvst_cnode *arr_item;
+
+		/* Nodes used for simplifying property matching */
+		struct {
+			struct jvst_cnode *default_case;
+			struct jvst_cnode *cases;
+			struct fsm *dfa;
+			struct fsm_options *opts;
+		} mswitch;
+
+		struct {
+			struct jvst_cnode_matchset *matchset;
+			struct jvst_cnode *constraint;
+
+			// temp storage used in duplication
+			struct jvst_cnode *tmp;
+		} mcase;
+
+		/* Nodes used for simplifying required properties */
+		/*
+		struct {
+			size_t nbits;
+		} reqmask;
+
+		struct {
+			size_t bit;
+		} reqbit;
+		*/
+
 	} u;
 };
 

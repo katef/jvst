@@ -21,7 +21,10 @@ static struct ast_property_schema ar_props[NUM_TEST_THINGS];
 static struct ast_string_set ar_stringsets[NUM_TEST_THINGS];
 static struct ast_property_names ar_propnames[NUM_TEST_THINGS];
 static struct ast_schema_set ar_schemasets[NUM_TEST_THINGS];
+
 static struct jvst_cnode ar_cnodes[NUM_TEST_THINGS];
+static struct jvst_cnode_matchset ar_cnode_matchsets[NUM_TEST_THINGS];
+
 static struct jvst_ir_stmt ar_ir_stmts[NUM_TEST_THINGS];
 static struct jvst_ir_expr ar_ir_exprs[NUM_TEST_THINGS];
 static struct jvst_ir_mcase ar_ir_mcases[NUM_TEST_THINGS];
@@ -505,6 +508,95 @@ newcnode_required(struct arena_info *A, struct ast_string_set *sset)
 	node->u.required = sset;
 
 	return node;
+}
+
+struct jvst_cnode *
+newcnode_mswitch(struct arena_info *A, struct jvst_cnode *dft, ...)
+{
+	struct jvst_cnode *node, **cpp;
+	va_list args;
+
+	node = newcnode(A, JVST_CNODE_MATCH_SWITCH);
+	node->u.mswitch.default_case = dft;
+	cpp = &node->u.mswitch.cases;
+
+	va_start(args, dft);
+	for(;;) {
+		struct jvst_cnode *c;
+		c = va_arg(args, struct jvst_cnode *);
+		if (c == NULL) {
+			break;
+		}
+
+		*cpp = c;
+		cpp = &(*cpp)->next;
+	}
+	va_end(args);
+
+	return node;
+}
+
+struct jvst_cnode *
+newcnode_mcase(struct arena_info *A, struct jvst_cnode_matchset *mset,
+	struct jvst_cnode *constraint)
+{
+	struct jvst_cnode *node;
+	node = newcnode(A, JVST_CNODE_MATCH_CASE);
+	node->u.mcase.matchset = mset;
+	node->u.mcase.constraint = constraint;
+
+	return node;
+}
+
+static struct jvst_cnode_matchset *
+newmatchset_alloc(struct arena_info *A)
+{
+	size_t i, max;
+	struct jvst_cnode_matchset *mset;
+
+	i   = A->nmatchsets++;
+	max = ARRAYLEN(ar_cnode_matchsets);
+	if (i >= max) {
+		fprintf(stderr, "too many cnode matchsets: %zu max\n", max);
+		abort();
+	}
+
+	mset = &ar_cnode_matchsets[i];
+	memset(mset, 0, sizeof *mset);
+	return mset;
+}
+
+struct jvst_cnode_matchset *
+newmatchset(struct arena_info *A, ...)
+{
+	struct jvst_cnode_matchset *head, **mspp;
+	va_list args;
+
+	head = NULL;
+	mspp = &head;
+
+	va_start(args, A);
+	for (;;) {
+		struct jvst_cnode_matchset *mset;
+		int dialect;
+		const char *pat;
+
+		dialect = va_arg(args, int);
+		if (dialect == -1) {
+			break;
+		}
+		pat = va_arg(args, const char *);
+
+		mset = newmatchset_alloc(A);
+		mset->match.dialect = dialect;
+		mset->match.str = newstr(pat);
+
+		*mspp = mset;
+		mspp = &(*mspp)->next;
+	}
+	va_end(args);
+
+	return head;
 }
 
 struct jvst_ir_expr *
