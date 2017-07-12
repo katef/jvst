@@ -90,6 +90,8 @@ enum jvst_invalid_code {
 	JVST_INVALID_UNEXPECTED_TOKEN = 0x0001,
 	JVST_INVALID_NOT_INTEGER      = 0x0002,
 	JVST_INVALID_NUMBER           = 0x0003,
+	JVST_INVALID_TOO_FEW_PROPS    = 0x0004,
+	JVST_INVALID_TOO_MANY_PROPS   = 0x0005,
 };
 
 const char *
@@ -111,6 +113,7 @@ struct jvst_ir_frame {
 	struct jvst_ir_stmt *stmts;
 	size_t nloops;
 	size_t nmatchers;
+	size_t ncounters;
 };
 
 struct jvst_ir_stmt {
@@ -148,10 +151,17 @@ struct jvst_ir_stmt {
 		struct jvst_ir_frame frame;
 
 		struct {
-			struct jvst_ir_label *label;
-			struct jvst_ir_frame *frame;
+			const char *label;
+			struct jvst_ir_stmt *frame;
 			size_t ind;
 		} counter;
+
+		// for INCR/DECR statements
+		struct {
+			const char *label;
+			size_t ind;
+			struct jvst_ir_stmt *counter;
+		} counter_op;
 
 		struct {
 			struct fsm *dfa;
@@ -187,11 +197,15 @@ struct jvst_ir_expr {
 		int vbool;
 
 		struct {
-			size_t counter;
+			struct jvst_ir_stmt *counter;
+			const char *label;
+			size_t ind;
 		} count;
 
 		struct {
-			size_t bvec;
+			struct jvst_ir_stmt *frame;
+			const char *label;
+			size_t ind;
 			size_t bit_index;
 		} btest;
 

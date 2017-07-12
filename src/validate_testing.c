@@ -694,6 +694,7 @@ newir_frame(struct arena_info *A, ...)
 		switch ((*spp)->type) {
 		case JVST_IR_STMT_COUNTER:
 			*cpp = *spp;
+			(*spp)->u.counter.frame = fr;
 			*spp = (*spp)->next;
 
 			cpp = &(*cpp)->next;
@@ -775,6 +776,18 @@ newir_if(struct arena_info *A, struct jvst_ir_expr *cond,
 }
 
 struct jvst_ir_stmt *
+newir_counter(struct arena_info *A, size_t ind, const char *label)
+{
+	struct jvst_ir_stmt *stmt;
+
+	stmt = newir_stmt(A,JVST_IR_STMT_COUNTER);
+	stmt->u.counter.ind = ind;
+	stmt->u.counter.label = label;
+
+	return stmt;
+}
+
+struct jvst_ir_stmt *
 newir_matcher(struct arena_info *A, size_t ind, const char *name)
 {
 	struct jvst_ir_stmt *stmt;
@@ -814,6 +827,18 @@ newir_match(struct arena_info *A, size_t ind, ...)
 		cpp = &(*cpp)->next;
 	}
 	va_end(args);
+
+	return stmt;
+}
+
+struct jvst_ir_stmt *
+newir_incr(struct arena_info *A, size_t ind, const char *label)
+{
+	struct jvst_ir_stmt *stmt;
+
+	stmt = newir_stmt(A,JVST_IR_STMT_INCR);
+	stmt->u.counter_op.ind = ind;
+	stmt->u.counter_op.label = label;
 
 	return stmt;
 }
@@ -864,6 +889,25 @@ newir_num(struct arena_info *A, double num)
 	struct jvst_ir_expr *expr;
 	expr = newir_expr(A,JVST_IR_EXPR_NUM);
 	expr->u.vnum = num;
+	return expr;
+}
+
+struct jvst_ir_expr *
+newir_size(struct arena_info *A, size_t sz)
+{
+	struct jvst_ir_expr *expr;
+	expr = newir_expr(A,JVST_IR_EXPR_SIZE);
+	expr->u.vsize = sz;
+	return expr;
+}
+
+struct jvst_ir_expr *
+newir_count(struct arena_info *A, size_t ind, const char *label)
+{
+	struct jvst_ir_expr *expr;
+	expr = newir_expr(A,JVST_IR_EXPR_COUNT);
+	expr->u.count.label = label;
+	expr->u.count.ind = ind;
 	return expr;
 }
 
