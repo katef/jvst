@@ -11,6 +11,7 @@
 
 extern int ntest;
 extern int nfail;
+extern int nskipped;
 
 struct arena_info {
 	size_t nschema;
@@ -150,15 +151,8 @@ newir_num(struct arena_info *A, double num);
 const char *
 jvst_ret2name(int ret);
 
-static inline int
-report_tests(void)
-{
-	printf("%d tests, %d failures\n", ntest, nfail);
-	if (nfail == 0 && ntest > 0) {
-		return EXIT_SUCCESS;
-	}
-	return EXIT_FAILURE;
-}
+int
+report_tests(void);
 
 #endif /* TESTING_H */
 

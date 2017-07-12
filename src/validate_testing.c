@@ -12,6 +12,19 @@
 
 int ntest;
 int nfail;
+int nskipped;
+
+int
+report_tests(void)
+{
+	if (nskipped > 0) {
+		printf("%d tests, %d failures, %d skipped\n", ntest, nfail, nskipped);
+	} else {
+		printf("%d tests, %d failures\n", ntest, nfail);
+	}
+
+	return ((nfail == 0) && (ntest > 0)) ?  EXIT_SUCCESS : EXIT_FAILURE;
+}
 
 enum { NUM_TEST_THINGS = 1024 };
 
