@@ -88,8 +88,8 @@ cnode_strset_alloc(void)
 
 new_pool:
 	// fall back to allocating a new pool
-	p		 = xmalloc(sizeof *p);
-	p->next		 = strset_pool.head;
+	p = xmalloc(sizeof *p);
+	p->next = strset_pool.head;
 	strset_pool.head = p;
 	strset_pool.top  = 1;
 	return &p->items[0];
@@ -99,7 +99,7 @@ static struct ast_string_set *
 cnode_strset(struct json_string str, struct ast_string_set *next)
 {
 	struct ast_string_set *sset;
-	sset       = cnode_strset_alloc();
+	sset = cnode_strset_alloc();
 	sset->str  = str;
 	sset->next = next;
 	return sset;
@@ -202,9 +202,9 @@ cnode_new(void)
 
 new_pool:
 	// fall back to allocating a new pool
-	p	 = xmalloc(sizeof *p);
-	p->next   = pool;
-	pool      = p;
+	p = xmalloc(sizeof *p);
+	p->next = pool;
+	pool = p;
 	pool_item = 1;
 	return &p->items[0];
 }
@@ -213,7 +213,7 @@ struct jvst_cnode *
 jvst_cnode_alloc(enum jvst_cnode_type type)
 {
 	struct jvst_cnode *n;
-	n       = cnode_new();
+	n = cnode_new();
 	n->type = type;
 	n->next = NULL;
 	return n;
@@ -315,9 +315,12 @@ jvst_cnode_free_tree(struct jvst_cnode *root)
 			jvst_cnode_free_tree(node->u.prop_match.constraint);
 			break;
 
-		case JVST_CNODE_OBJ_REQUIRED:
+#if 0
+		case JVST_CNODE_OBJ_REQMASK:
+		case JVST_CNODE_OBJ_REQBIT:
 			// XXX - finalize the string set?
 			break;
+#endif /* 0 */
 
 		case JVST_CNODE_ARR_ITEM:
 		case JVST_CNODE_ARR_ADDITIONAL:
@@ -378,6 +381,49 @@ jvst_cnode_type_name(enum jvst_cnode_type type)
 		fprintf(stderr, "unknown cnode type %d\n", type);
 		abort();
 	}
+}
+
+void
+jvst_cnode_matchset_dump(struct jvst_cnode_matchset *ms, struct sbuf *buf, int indent)
+{
+	char str[256] = {0};
+	size_t n;
+
+	sbuf_indent(buf, indent);
+	sbuf_snprintf(buf, "P[");
+	switch (ms->match.dialect) {
+	case RE_LIKE:
+		sbuf_snprintf(buf, "LIKE");
+		break;
+
+	case RE_LITERAL:
+		sbuf_snprintf(buf, "LITERAL");
+		break;
+
+	case RE_GLOB:
+		sbuf_snprintf(buf, "GLOB");
+		break;
+
+	case RE_NATIVE:
+		sbuf_snprintf(buf, "NATIVE");
+		break;
+
+	default:
+		// avoid ??( trigraph by splitting
+		// "???(..." into "???" and "(..."
+		sbuf_snprintf(buf, "???" "(%d)", ms->match.dialect);
+		break;
+	}
+
+	n = ms->match.str.len;
+	if (n < sizeof str) {
+		memcpy(str, ms->match.str.s, n);
+	} else {
+		memcpy(str, ms->match.str.s, sizeof str - 4);
+		memcpy(str + sizeof str - 4, "...", 4);
+	}
+
+	sbuf_snprintf(buf, ", \"%s\"]", str);
 }
 
 // returns number of bytes written
@@ -552,7 +598,15 @@ and_or_xor:
 		sbuf_snprintf(buf, ")");
 		break;
 
+#if 0
+	case JVST_CNODE_OBJ_REQMASK:
+		sbuf_snprintf(buf, "REQMASK(nbits=%zu)", node->u.reqmask.nbits);
 		break;
+
+	case JVST_CNODE_OBJ_REQBIT:
+		sbuf_snprintf(buf, "REQBIT(bit=%zu)", node->u.reqbit.bit);
+		break;
+#endif /* 0 */
 
 	case JVST_CNODE_OBJ_REQUIRED:
 		{
@@ -623,44 +677,8 @@ and_or_xor:
 			assert(node->u.mcase.matchset != NULL);
 
 			for (ms = node->u.mcase.matchset; ms != NULL; ms = ms->next) {
-				char str[256] = {0};
-				size_t n;
-
-				sbuf_indent(buf, indent+2);
-				sbuf_snprintf(buf, "P[");
-				switch (ms->match.dialect) {
-				case RE_LIKE:
-					sbuf_snprintf(buf, "LIKE");
-					break;
-
-				case RE_LITERAL:
-					sbuf_snprintf(buf, "LITERAL");
-					break;
-
-				case RE_GLOB:
-					sbuf_snprintf(buf, "GLOB");
-					break;
-
-				case RE_NATIVE:
-					sbuf_snprintf(buf, "NATIVE");
-					break;
-
-				default:
-					// avoid ??( trigraph by splitting
-					// "???(..." into "???" and "(..."
-					sbuf_snprintf(buf, "???" "(%d)", ms->match.dialect);
-					break;
-				}
-
-				n = ms->match.str.len;
-				if (n < sizeof str) {
-					memcpy(str, ms->match.str.s, n);
-				} else {
-					memcpy(str, ms->match.str.s, sizeof str - 4);
-					memcpy(str + sizeof str - 4, "...", 4);
-				}
-
-				sbuf_snprintf(buf, ", \"%s\"],\n", str);
+				jvst_cnode_matchset_dump(ms, buf, indent+2);
+				sbuf_snprintf(buf, ",\n");
 			}
 
 			sbuf_indent(buf, indent+2);
@@ -1453,7 +1471,7 @@ cnode_optimize_propset(struct jvst_cnode *top)
 	struct fsm *matches;
 
 	// FIXME: this is a leak...
-	opts = malloc(sizeof *opts);
+	opts = xmalloc(sizeof *opts);
 	*opts = (struct fsm_options) {
 		.tidy = false,
 		.anonymous_states = false,

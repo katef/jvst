@@ -131,7 +131,7 @@ struct jvst_ir_stmt *
 newir_match(struct arena_info *A, size_t ind, ...);
 
 struct jvst_ir_mcase *
-newir_case(struct arena_info *A, size_t ind, struct jvst_ir_stmt *frame);
+newir_case(struct arena_info *A, size_t ind, struct jvst_cnode_matchset *mset, struct jvst_ir_stmt *frame);
 
 struct jvst_ir_expr *
 newir_istok(struct arena_info *A, enum SJP_EVENT tt);

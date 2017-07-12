@@ -18,12 +18,14 @@ static int ir_trees_equal(const char *fname, struct jvst_ir_stmt *n1, struct jvs
 
 static int run_test(const char *fname, const struct ir_test *t)
 {
+  struct jvst_cnode *opt;
   struct jvst_ir_stmt *result;
 
   assert(t->ctree != NULL);
   assert(t->ir != NULL);
 
-  result = jvst_ir_translate(t->ctree);
+  opt = jvst_cnode_optimize(t->ctree);
+  result = jvst_ir_translate(opt);
 
   return ir_trees_equal(fname, result, t->ir);
 }
@@ -353,6 +355,7 @@ void test_ir_properties(void)
                     newir_match(&A, 0,
                       // no match
                       newir_case(&A, 0, 
+                        NULL,
                         newir_frame(&A,
                           newir_stmt(&A, JVST_IR_STMT_TOKEN),
                           newir_stmt(&A, JVST_IR_STMT_VALID),
@@ -360,11 +363,12 @@ void test_ir_properties(void)
                         )
                       ),
 
-                      // match "foo"
+                      // match "bar"
                       newir_case(&A, 1,
+                        newmatchset(&A, RE_LITERAL,  "bar", -1),
                         newir_frame(&A,
                           newir_stmt(&A, JVST_IR_STMT_TOKEN),
-                          newir_if(&A, newir_istok(&A, SJP_NUMBER),
+                          newir_if(&A, newir_istok(&A, SJP_STRING),
                             newir_stmt(&A, JVST_IR_STMT_VALID),
                             newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token")
                           ),
@@ -372,11 +376,12 @@ void test_ir_properties(void)
                         )
                       ),
 
-                      // match "bar"
+                      // match "foo"
                       newir_case(&A, 2,
+                        newmatchset(&A, RE_LITERAL,  "foo", -1),
                         newir_frame(&A,
                           newir_stmt(&A, JVST_IR_STMT_TOKEN),
-                          newir_if(&A, newir_istok(&A, SJP_STRING),
+                          newir_if(&A, newir_istok(&A, SJP_NUMBER),
                             newir_stmt(&A, JVST_IR_STMT_VALID),
                             newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token")
                           ),
@@ -407,7 +412,6 @@ void test_ir_properties(void)
       )
     },
 
-#if 0  // reveals a problem in constructing the matcher at this stage!  also, 
     {
       newcnode_switch(&A, 1,
         SJP_OBJECT_BEG, newcnode_propset(&A,
@@ -431,6 +435,7 @@ void test_ir_properties(void)
                     newir_match(&A, 0,
                       // no match
                       newir_case(&A, 0, 
+                        NULL,
                         newir_frame(&A,
                           newir_stmt(&A, JVST_IR_STMT_TOKEN),
                           newir_stmt(&A, JVST_IR_STMT_VALID),
@@ -438,8 +443,9 @@ void test_ir_properties(void)
                         )
                       ),
 
-                      // match "for"
+                      // match /ba./
                       newir_case(&A, 1,
+                        newmatchset(&A, RE_NATIVE,  "ba.", -1),
                         newir_frame(&A,
                           newir_stmt(&A, JVST_IR_STMT_TOKEN),
                           newir_if(&A, newir_istok(&A, SJP_NUMBER),
@@ -450,14 +456,12 @@ void test_ir_properties(void)
                         )
                       ),
 
-                      // match "bar"
+                      // match "bar" AND "ba."
                       newir_case(&A, 2,
+                        newmatchset(&A, RE_LITERAL, "bar", RE_NATIVE,  "ba.", -1),
                         newir_frame(&A,
-                          newir_stmt(&A, JVST_IR_STMT_TOKEN),
-                          newir_if(&A, newir_istok(&A, SJP_STRING),
-                            newir_stmt(&A, JVST_IR_STMT_VALID),
-                            newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token")
-                          ),
+                          newir_stmt(&A, JVST_IR_STMT_TOKEN),   // XXX - is this necessary?
+                          newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token"),
                           NULL
                         )
                       ),
@@ -484,7 +488,6 @@ void test_ir_properties(void)
           NULL
       )
     },
-#endif /* 0 */
 
     { NULL },
   };

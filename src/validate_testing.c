@@ -806,7 +806,7 @@ newir_match(struct arena_info *A, size_t ind, ...)
 }
 
 struct jvst_ir_mcase *
-newir_case(struct arena_info *A, size_t ind, struct jvst_ir_stmt *frame)
+newir_case(struct arena_info *A, size_t ind, struct jvst_cnode_matchset *mset, struct jvst_ir_stmt *frame)
 {
 	size_t i, max;
 	struct jvst_ir_mcase *c;
@@ -821,6 +821,7 @@ newir_case(struct arena_info *A, size_t ind, struct jvst_ir_stmt *frame)
 	c  = &ar_ir_mcases[i];
 	memset(c , 0, sizeof *c );
 	c->which = ind;
+	c->matchset = mset;
 	c->stmt = frame;
 
 	return c;

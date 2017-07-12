@@ -139,7 +139,7 @@ struct jvst_cnode {
 			struct jvst_cnode *constraint;
 
 			// temp storage used in duplication
-			struct jvst_cnode *tmp;
+			void *tmp;
 		} mcase;
 
 		/* Nodes used for simplifying required properties */
