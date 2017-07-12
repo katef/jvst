@@ -167,6 +167,7 @@ cnode_matchset_new(struct ast_regexp match, struct jvst_cnode_matchset *next)
 {
 	struct jvst_cnode_matchset *ms;
 	ms = cnode_matchset_alloc();
+	memset(ms, 0, sizeof *ms);
 	ms->match = match;
 	ms->next = next;
 	return ms;

@@ -40,6 +40,12 @@ jvst_invalid_msg(enum jvst_invalid_code code)
 	case JVST_INVALID_NUMBER:
 		return "number not valid";
 
+	case JVST_INVALID_TOO_FEW_PROPS:
+		return "too few properties";
+
+	case JVST_INVALID_TOO_MANY_PROPS:
+		return "too many properties";
+
 	default:
 		return "Unknown error";
 	}
@@ -186,6 +192,27 @@ ir_stmt_break(struct jvst_ir_stmt *loop)
 }
 
 static inline struct jvst_ir_stmt *
+ir_stmt_counter(struct jvst_ir_stmt *frame, const char *label)
+{
+	struct jvst_ir_stmt *counter;
+
+	assert(label != NULL);
+	assert(frame != NULL);
+	assert(frame->type == JVST_IR_STMT_FRAME);
+
+	counter = ir_stmt_new(JVST_IR_STMT_COUNTER);
+
+	counter->u.counter.label = label;
+	counter->u.counter.ind   = frame->u.frame.ncounters++;
+	counter->u.counter.frame = frame;
+
+	counter->next = frame->u.frame.counters;
+	frame->u.frame.counters = counter;
+
+	return counter;
+}
+
+static inline struct jvst_ir_stmt *
 ir_stmt_matcher(struct jvst_ir_stmt *frame, const char *name, struct fsm *dfa)
 {
 	struct jvst_ir_stmt *matcher;
@@ -204,6 +231,24 @@ ir_stmt_matcher(struct jvst_ir_stmt *frame, const char *name, struct fsm *dfa)
 	frame->u.frame.matchers = matcher;
 
 	return matcher;
+}
+
+static inline struct jvst_ir_stmt *
+ir_stmt_counter_op(enum jvst_ir_stmt_type op, struct jvst_ir_stmt *counter)
+{
+	struct jvst_ir_stmt *opstmt;
+
+	assert(counter->type == JVST_IR_STMT_COUNTER);
+	assert((op == JVST_IR_STMT_INCR) || (op == JVST_IR_STMT_DECR));
+	assert(counter != NULL);
+
+	opstmt = ir_stmt_new(op);
+
+	opstmt->u.counter_op.label = counter->u.counter.label;
+	opstmt->u.counter_op.ind   = counter->u.counter.ind;
+	opstmt->u.counter_op.counter = counter;
+
+	return opstmt;
 }
 
 union expr_pool_item {
@@ -350,6 +395,22 @@ ir_expr_istok(enum SJP_EVENT tt)
 
 	return expr;
 }
+
+static struct jvst_ir_expr *
+ir_expr_count(struct jvst_ir_stmt *counter)
+{
+	struct jvst_ir_expr *expr;
+
+	assert(counter->type == JVST_IR_STMT_COUNTER);
+
+	expr = ir_expr_new(JVST_IR_EXPR_COUNT);
+	expr->u.count.counter = counter;
+	expr->u.count.label = counter->u.counter.label;
+	expr->u.count.ind   = counter->u.counter.ind;
+
+	return expr;
+}
+
 
 
 /** mcase pooling **/
@@ -626,6 +687,7 @@ jvst_ir_dump_expr(struct sbuf *buf, struct jvst_ir_expr *expr, int indent)
 			jvst_ir_dump_expr(buf,expr->u.and_or.left,indent+2);
 			sbuf_snprintf(buf, ",\n");
 			jvst_ir_dump_expr(buf,expr->u.and_or.right,indent+2);
+			sbuf_snprintf(buf, "\n");
 			sbuf_indent(buf, indent);
 			sbuf_snprintf(buf, ")");
 		}
@@ -662,6 +724,12 @@ jvst_ir_dump_expr(struct sbuf *buf, struct jvst_ir_expr *expr, int indent)
 		break;
 
 	case JVST_IR_EXPR_COUNT:
+		sbuf_snprintf(buf, "COUNT(%zu, \"%s_%zu\")",
+			expr->u.count.ind,
+			expr->u.count.label,
+			expr->u.count.ind);
+		break;
+
 	case JVST_IR_EXPR_BTEST:
 		fprintf(stderr, "IR expression %s not yet implemented\n", jvst_ir_expr_type_name(expr->type));
 		abort();
@@ -811,11 +879,22 @@ jvst_ir_dump_inner(struct sbuf *buf, struct jvst_ir_stmt *ir, int indent)
 		break;
 
 	case JVST_IR_STMT_COUNTER:		
+		sbuf_snprintf(buf, "COUNTER(%zu, \"%s_%zu\")",
+			ir->u.counter.ind, ir->u.counter.label, ir->u.counter.ind);
+		break;
+
+	case JVST_IR_STMT_INCR:		
+	case JVST_IR_STMT_DECR:		
+		sbuf_snprintf(buf, "%s(%zu, \"%s_%zu\")",
+			jvst_ir_stmt_type_name(ir->type),
+			ir->u.counter_op.ind,
+			ir->u.counter_op.label,
+			ir->u.counter_op.ind);
+		break;
+
 	case JVST_IR_STMT_BITVECTOR:		
 	case JVST_IR_STMT_BSET:		
 	case JVST_IR_STMT_BCLEAR:		
-	case JVST_IR_STMT_INCR:		
-	case JVST_IR_STMT_DECR:		
 		fprintf(stderr, "%s:%d  IR statement %s not yet implemented\n",
 			__FILE__, __LINE__, jvst_ir_stmt_type_name(ir->type));
 		abort();
@@ -1041,52 +1120,35 @@ mcase_builder(const struct fsm *dfa, const struct fsm_state *st)
 	return 1;
 }
 
-static struct jvst_ir_stmt *
-ir_translate_object(struct jvst_cnode *top, struct jvst_ir_stmt *frame)
-{
-	struct jvst_ir_stmt *stmt, *match, *oloop, *pseq, **spp, **pre_loop, **post_loop, **pseqpp;
-	struct jvst_cnode *pmatch;
-	struct fsm *matcher;
-	struct fsm_options *opts;
-	const char *loopname;
+struct ir_object_builder {
+	struct jvst_ir_stmt *frame;
+	struct jvst_ir_stmt *oloop;
+	struct jvst_ir_stmt *match;
+	struct jvst_ir_stmt **pre_loop;
+	struct jvst_ir_stmt **post_loop;
+	struct jvst_ir_stmt **pre_match;
+	struct jvst_ir_stmt **post_match;
 	struct jvst_ir_mcase **mcpp;
-	size_t nreqs;
+	struct fsm *matcher;
+};
 
-	stmt = ir_stmt_new(JVST_IR_STMT_SEQ);
-	spp = &stmt->u.stmt_list;
-	pre_loop = spp;
+struct jvst_ir_stmt *
+obj_default_case(void)
+{
+	struct jvst_ir_stmt *frame, **spp;
 
-	oloop = ir_stmt_loop(frame,"L_OBJ");
-	*spp = oloop;
-	post_loop = &oloop->next;
-
-	spp = &(*spp)->u.loop.stmts;
-
+	frame = ir_stmt_frame();
+	spp = &frame->u.frame.stmts;
 	*spp = ir_stmt_new(JVST_IR_STMT_TOKEN);
 	spp = &(*spp)->next;
+	*spp = ir_stmt_new(JVST_IR_STMT_VALID);
+	return frame;
+}
 
-	pseq = ir_stmt_new(JVST_IR_STMT_SEQ);
-	*spp = ir_stmt_if(
-		ir_expr_istok(SJP_OBJECT_END),
-		ir_stmt_break(oloop),
-		pseq);
-
-	pseqpp = &pseq->u.stmt_list;
-
-	match = ir_stmt_new(JVST_IR_STMT_MATCH);
-	mcpp = &match->u.match.cases;
-
-	matcher = NULL;
-
-	// construct on-property events
-	//
-	// TODO: this needs to descend the cnode tree and handle AND and
-	// OR cases
-	//
-	// *** FIXME ***
-	// Really, this should be in one or more separate functions and
-	// accumulate various info.
-	//
+static void
+ir_translate_obj_inner(struct jvst_cnode *top, struct ir_object_builder *builder)
+{
+	// descend the cnode tree and handle various events
 	switch (top->type) {
 	case JVST_CNODE_VALID:
 	case JVST_CNODE_INVALID:
@@ -1105,14 +1167,13 @@ ir_translate_object(struct jvst_cnode *top, struct jvst_ir_stmt *frame)
 		{
 			size_t which;
 			struct jvst_cnode *caselist;
-			struct jvst_ir_stmt *frame, **spp;
+			struct jvst_ir_stmt *frame, **spp, *matcher_stmt;
 
 			// duplicate DFA.
-			matcher = fsm_clone(top->u.mswitch.dfa);
-			match->u.match.dfa = matcher;
+			builder->matcher = fsm_clone(top->u.mswitch.dfa);
 
 			// replace MATCH_CASE opaque entries in copy with jvst_ir_mcase nodes
-			fsm_all(matcher, mcase_builder);
+			fsm_all(builder->matcher, mcase_builder);
 
 			// assemble jvst_ir_mcase nodes into list for an MATCH_SWITCH node and number the cases
 			which = 0;
@@ -1125,29 +1186,82 @@ ir_translate_object(struct jvst_cnode *top, struct jvst_ir_stmt *frame)
 				assert(mc->next == NULL);
 
 				mc->which = ++which;
-				*mcpp = mc;
-				mcpp = &mc->next;
+				*builder->mcpp = mc;
+				builder->mcpp = &mc->next;
 			}
 
 			// 4. translate the default case
 			//
-			// FIXME: either default_case is always VALID or
-			// we need to do something more sophisticated
-			// here.
-			frame = ir_stmt_frame();
-			match->u.match.default_case = frame;
-			spp = &frame->u.frame.stmts;
-			*spp = ir_stmt_new(JVST_IR_STMT_TOKEN);
-			spp = &(*spp)->next;
-			*spp = ir_stmt_new(JVST_IR_STMT_VALID);
+			// Currently we do nothing, because the
+			// default_case is always VALID.
+			//
+			// FIXME: is default_case always VALID?  in that
+			// case we can eliminate it.  Otherwise, we need
+			// to do something more sophisticated here.
 
-			// match->u.match.default_case = jvst_ir_translate(top->u.mswitch.default_case);
+			// 5. Add matcher statement to frame and fixup refs
+			matcher_stmt = ir_stmt_matcher(builder->frame, "dfa", builder->matcher);
+			builder->match->u.match.dfa = builder->matcher;
+			builder->match->u.match.name = matcher_stmt->u.matcher.name;
+			builder->match->u.match.ind  = matcher_stmt->u.matcher.ind;
+		}
+		break;
+
+	case JVST_CNODE_COUNT_RANGE:
+		{
+			struct jvst_ir_stmt *counter, *check, **checkpp;
+			struct jvst_ir_expr *check_expr;
+			// 1. allocate a counter to keep track of the
+			//    number of properties
+
+			counter = ir_stmt_counter(builder->frame, "num_props");
+
+			// 2. post-match, increment the counter
+			assert(builder->post_match != NULL);
+			assert(*builder->post_match == NULL);
+			*builder->post_match = ir_stmt_counter_op(JVST_IR_STMT_INCR, counter);
+			builder->post_match = &(*builder->post_match)->next;
+
+			// 3. post-loop check that the counter is within
+			// range
+			assert(builder->post_loop != NULL);
+			assert(*builder->post_loop == NULL);
+
+			checkpp = builder->post_loop;
+			if (top->u.counts.min > 0) {
+				*checkpp = ir_stmt_if(
+					ir_expr_op(JVST_IR_EXPR_GE,
+						ir_expr_count(counter),
+						ir_expr_size(top->u.counts.min)),
+					NULL,
+					ir_stmt_invalid(JVST_INVALID_TOO_FEW_PROPS));
+				checkpp = &(*checkpp)->u.if_.br_true;
+			}
+
+			if (top->u.counts.max > 0) {
+				*checkpp = ir_stmt_if(
+					ir_expr_op(JVST_IR_EXPR_LE,
+						ir_expr_count(counter),
+						ir_expr_size(top->u.counts.max)),
+					NULL,
+					ir_stmt_invalid(JVST_INVALID_TOO_MANY_PROPS));
+				checkpp = &(*checkpp)->u.if_.br_true;
+			}
+
+			builder->post_loop = checkpp;
+		}
+		break;
+
+	case JVST_CNODE_AND:
+		{
+			struct jvst_cnode *n;
+			for (n = top->u.ctrl; n != NULL; n = n->next) {
+				ir_translate_obj_inner(n, builder);
+			}
 		}
 		break;
 
 	case JVST_CNODE_OBJ_REQUIRED:
-	case JVST_CNODE_COUNT_RANGE:
-	case JVST_CNODE_AND:
 	case JVST_CNODE_OR:
 	case JVST_CNODE_NOT:
 	case JVST_CNODE_XOR:
@@ -1157,73 +1271,69 @@ ir_translate_object(struct jvst_cnode *top, struct jvst_ir_stmt *frame)
 		abort();
 
 	default:
-		fprintf(stderr, "[%s:%d] invalid cnode type %s for $NUMBER\n",
+		fprintf(stderr, "[%s:%d] invalid cnode type %s for OBJECT\n",
 				__FILE__, __LINE__, 
 				jvst_cnode_type_name(top->type));
 		abort();
 	}
 
-	if (matcher) {
-		struct jvst_ir_stmt *matcher_stmt;
-		struct jvst_ir_mcase *mcase;
-		size_t case_ind;
+}
 
-		if (!fsm_determinise(matcher)) {
-			perror("cannot determinise fsm");
-			abort();
-		}
+static struct jvst_ir_stmt *
+ir_translate_object(struct jvst_cnode *top, struct jvst_ir_stmt *frame)
+{
+	struct jvst_ir_stmt *stmt, *pseq, **spp, **pseqpp;
+	struct jvst_cnode *pmatch;
+	struct fsm_options *opts;
+	const char *loopname;
+	size_t nreqs;
+	
+	struct ir_object_builder builder = { 0 };
+	builder.frame = frame;
 
-		// remove cases with stmt==NULL
-		for (mcpp = &match->u.match.cases; (*mcpp) != NULL;) {
-			if ((*mcpp)->stmt != NULL) {
-				mcpp = &(*mcpp)->next;
-				continue;
-			}
+	stmt = ir_stmt_new(JVST_IR_STMT_SEQ);
+	spp = &stmt->u.stmt_list;
+	builder.pre_loop = spp;
 
-			if ((*mcpp)->next == NULL) {
-				*mcpp = NULL;
-				continue;
-			}
+	builder.oloop = ir_stmt_loop(frame,"L_OBJ");
+	*spp = builder.oloop;
+	builder.post_loop = &builder.oloop->next;
 
-			mcpp = &(*mcpp)->next;
-		}
+	spp = &(*spp)->u.loop.stmts;
 
-		matcher_stmt = ir_stmt_matcher(frame, "dfa", matcher);
+	*spp = ir_stmt_new(JVST_IR_STMT_TOKEN);
+	spp = &(*spp)->next;
 
-		match->u.match.dfa  = matcher;
-		match->u.match.name = matcher_stmt->u.matcher.name;
-		match->u.match.ind  = matcher_stmt->u.matcher.ind;
+	pseq = ir_stmt_new(JVST_IR_STMT_SEQ);
+	*spp = ir_stmt_if(
+		ir_expr_istok(SJP_OBJECT_END),
+		ir_stmt_break(builder.oloop),
+		pseq);
 
-		if (match->u.match.default_case == NULL) {
-			struct jvst_ir_stmt *dft, **spp;
-			dft = ir_stmt_frame();
-			spp = &dft->u.frame.stmts;
+	builder.pre_match = &pseq->u.stmt_list;
+	pseqpp = &pseq->u.stmt_list;
 
-			*spp = ir_stmt_new(JVST_IR_STMT_TOKEN);
-			spp = &(*spp)->next;
+	builder.match = ir_stmt_new(JVST_IR_STMT_MATCH);
+	builder.mcpp = &builder.match->u.match.cases;
 
-			*spp = ir_stmt_new(JVST_IR_STMT_VALID);
-			spp = &(*spp)->next;
+	*pseqpp = builder.match;
+	builder.match->u.match.default_case = obj_default_case();
+	pseqpp = &(*pseqpp)->next;
+	builder.post_match = pseqpp;
+	assert(pseqpp != NULL);
+	assert(*pseqpp == NULL);
 
-			match->u.match.default_case = dft;
-		}
+	builder.matcher = NULL;
 
-		// number cases...
-		assert(match->u.match.cases != NULL); // matcher != NULL, should have at least one case!
-		for (case_ind=1, mcase=match->u.match.cases; mcase != NULL; case_ind++, mcase = mcase->next) {
-			mcase->which = case_ind;
-		}
+	ir_translate_obj_inner(top, &builder);
 
-		// XXX - should we iterate through the matcher end
-		// states and replace the pointers with numbers?
-
-		*pseqpp = match;
-		pseqpp = &(*pseqpp)->next;
+	if (builder.match->u.match.default_case == NULL) {
+		builder.match->u.match.default_case = obj_default_case();
 	}
 
 	// handle post-loop constraints
-	if (*post_loop == NULL) {
-		*post_loop = ir_stmt_new(JVST_IR_STMT_VALID);
+	if (*builder.post_loop == NULL) {
+		*builder.post_loop = ir_stmt_new(JVST_IR_STMT_VALID);
 	}
 
 	return stmt;
