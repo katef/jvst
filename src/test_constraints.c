@@ -1046,6 +1046,36 @@ void test_simplify_propsets(void)
   RUNTESTS(tests);
 }
 
+void test_simplify_required(void)
+{
+  struct arena_info A = {0};
+
+  // initial schema is not reduced (additional constraints are ANDed
+  // together).  Reduction will occur on a later pass.
+  const struct cnode_test tests[] = {
+    {
+      SIMPLIFY, NULL,
+
+      newcnode_bool(&A,JVST_CNODE_AND,
+        newcnode_switch(&A, 1,
+          SJP_OBJECT_BEG, newcnode_required(&A, stringset(&A, "foo", NULL)),
+          SJP_NONE),
+        newcnode_switch(&A, 1,
+          SJP_OBJECT_BEG, newcnode_required(&A, stringset(&A, "bar", NULL)),
+          SJP_NONE),
+        NULL),
+
+      newcnode_switch(&A, 1,
+        SJP_OBJECT_BEG, newcnode_required(&A, stringset(&A, "foo", "bar", NULL)),
+        SJP_NONE),
+
+    },
+    { STOP },
+  };
+
+  RUNTESTS(tests);
+}
+
 void test_simplify_ored_schema(void)
 {
   struct arena_info A = {0};
@@ -1426,6 +1456,7 @@ int main(void)
   test_simplify_ands();
   test_simplify_ored_schema();
   test_simplify_propsets();
+  test_simplify_required();
 
   test_canonify_ored_schema();
   test_canonify_propsets();

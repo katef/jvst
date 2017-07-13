@@ -100,6 +100,7 @@ cnode_strset(struct json_string str, struct ast_string_set *next)
 {
 	struct ast_string_set *sset;
 	sset = cnode_strset_alloc();
+	memset(sset, 0, sizeof *sset);
 	sset->str  = str;
 	sset->next = next;
 	return sset;
@@ -1288,6 +1289,68 @@ cnode_simplify_and_propsets(struct jvst_cnode *top)
 	return top;
 }
 
+static struct jvst_cnode *
+cnode_simplify_and_required(struct jvst_cnode *top)
+{
+	// merges any children that are REQUIRED nodes into a single
+	// REQUIRED that contains all of the required elements.
+	//
+	// XXX - Currently does not eliminate duplicated required names.
+	//       The DFA construction will do this, but we could also do
+	//       this here if it helped with performance.
+	struct jvst_cnode *node, *reqs, **rpp, **npp, *comb;
+	struct ast_string_set **sspp;
+	size_t nreqs;
+
+	// check how many REQUIRED children we have... if less than two,
+	// no simplification is necessary
+	for (nreqs = 0, node = top->u.ctrl; node != NULL; node= node->next) {
+		if (node->type == JVST_CNODE_OBJ_REQUIRED) {
+			nreqs++;
+		}
+	}
+
+	if (nreqs < 2) {
+		return top;
+	}
+
+	// collect all REQUIRED children
+	reqs = NULL;
+	rpp = &reqs;
+	for (npp = &top->u.ctrl; *npp != NULL; ) {
+		if ((*npp)->type != JVST_CNODE_OBJ_REQUIRED) {
+			npp = &(*npp)->next;
+			continue;
+		}
+
+		*rpp = *npp;
+		*npp = (*npp)->next;
+
+		rpp = &(*rpp)->next;
+		*rpp = NULL;
+	}
+
+	// merge all REQUIRED cases into one REQUIRED set
+	comb = jvst_cnode_alloc(JVST_CNODE_OBJ_REQUIRED);
+	sspp = &comb->u.required;
+	for (node=reqs; node != NULL; node = node->next) {
+		*sspp = cnode_strset_copy(node->u.required);
+		for (; *sspp != NULL; sspp = &(*sspp)->next) {
+			continue;
+		}
+	}
+
+	// all children are PROPSETs... return the combined PROPSET
+	if (top->u.ctrl == NULL) {
+		return comb;
+	}
+
+	// add the combined PROPSET to the AND node and return the AND
+	// node
+	*npp = comb;
+	return top;
+}
+
 void
 cnode_simplify_ctrl_children(struct jvst_cnode *top)
 {
@@ -1388,7 +1451,15 @@ cnode_simplify_andor(struct jvst_cnode *top)
 	if (top->type == JVST_CNODE_AND) {
 		top = cnode_simplify_and_propsets(top);
 	}
-	return cnode_simplify_andor_switches(top);
+	if (top->type == JVST_CNODE_AND) {
+		top = cnode_simplify_and_required(top);
+	}
+
+	if ((top->type == JVST_CNODE_AND) || (top->type == JVST_CNODE_OR)) {
+		top = cnode_simplify_andor_switches(top);
+	}
+
+	return top;
 }
 
 static struct jvst_cnode *
