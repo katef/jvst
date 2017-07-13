@@ -1450,117 +1450,17 @@ mcase_collector(const struct fsm *dfa, const struct fsm_state *st)
 }
 
 static struct jvst_cnode *
-cnode_simplify_propset(struct jvst_cnode *top)
+cnode_simplify_propset(struct jvst_cnode *tree)
 {
-	struct jvst_cnode *pm, *mcases, *msw, **mcpp;
-	struct fsm_options *opts;
-	struct fsm *matches;
-
-	// FIXME: this is a leak...
-	opts = xmalloc(sizeof *opts);
-	*opts = (struct fsm_options) {
-		.tidy = false,
-		.anonymous_states = false,
-		.consolidate_edges = true,
-		.fragment = true,
-		.comments = true,
-		.case_ranges = true,
-
-		.io = FSM_IO_GETC,
-		.prefix = NULL,
-		.carryopaque = merge_mcases,
-	};
-
-	assert(top->type == JVST_CNODE_OBJ_PROP_SET);
-	assert(top->u.prop_set != NULL);
+	struct jvst_cnode *pm;
 
 	// step 1: iterate over PROP_MATCH nodes and simplify each
 	// constraint individually
-	// 
-	// step 2: construct a FSM from all PROP_MATCH nodes.
-	//
-	// This involves:
-	//
-	//  a. create an FSM for each PROP_MATCH node
-	//  b. create a MATCH_CASE for each PROP_MATCH node
-	//  c. Set the MATCH_CASE as the opaque value for all end states
-	//     in the FSM
-	//  d. Union the FSM with the previous FSMs.
-	matches = NULL;
-	for (pm = top->u.prop_set; pm != NULL; pm=pm->next) {
-		struct jvst_cnode *cons, *mcase;
-		struct jvst_cnode_matchset *mset;
-		struct fsm *pat;
-		struct json_str_iter siter;
-		struct re_err err = { 0 };
-
-		cons = jvst_cnode_simplify(pm->u.prop_match.constraint);
-		mset = cnode_matchset_new(pm->u.prop_match.match, NULL);
-		mcase = cnode_new_mcase(mset, cons);
-
-		siter.str = pm->u.prop_match.match.str;
-		siter.off = 0;
-
-		pat = re_comp(
-			pm->u.prop_match.match.dialect,
-			json_str_getc,
-			&siter,
-			opts,
-			(enum re_flags)0,
-			&err);
-
-		// errors should be checked in parsing
-		assert(pat != NULL);
-
-		fsm_setendopaque(pat, mcase);
-
-		if (matches == NULL) {
-			matches = pat;
-		} else {
-			matches = fsm_union(matches, pat);
-
-			// XXX - we can't handle failure states right
-			// now...
-			assert(matches != NULL);
-		}
+	for (pm = tree->u.prop_set; pm != NULL; pm=pm->next) {
+		pm->u.prop_match.constraint = jvst_cnode_simplify(pm->u.prop_match.constraint);
 	}
 
-	// step 3: convert the FSM from an NFA to a DFA.
-	//
-	// This may involve merging MATCH_CASE nodes.  The rules are
-	// fairly simple: combine pattern sets, combine constraints with
-	// an AND condition.
-	//
-	// NB: combining requires copying because different end states
-	// may still have the original MATCH_CASE node.
-
-	if (!fsm_determinise(matches)) {
-		perror("cannot determinise fsm");
-		abort();
-	}
-
-	// step 4: collect all MATCH_CASE nodes from the DFA by
-	// iterating over the DFA end states.  All MATCH_CASE nodes must
-	// be placed into a linked list.
-	mcases = NULL;
-	mcase_collector_head = &mcases; // XXX - ugly global variable
-
-	fsm_all(matches, mcase_collector);
-
-	// step 5: build the MATCH_SWITCH container to hold the cases
-	// and the DFA.  The default case should be VALID.
-	msw = jvst_cnode_alloc(JVST_CNODE_MATCH_SWITCH);
-	msw->u.mswitch.dfa = matches;
-	msw->u.mswitch.opts = opts;
-	msw->u.mswitch.cases = mcases;
-	msw->u.mswitch.default_case = jvst_cnode_alloc(JVST_CNODE_VALID);
-
-	// step 6: simplify the constraint of each MATCH_CASE node
-	for (; mcases != NULL; mcases = mcases->next) {
-		mcases->u.mcase.constraint = jvst_cnode_simplify(mcases->u.mcase.constraint);
-	}
-
-	return msw;
+	return tree;
 }
 
 struct jvst_cnode *
@@ -1620,17 +1520,182 @@ jvst_cnode_simplify(struct jvst_cnode *tree)
 	SHOULD_NOT_REACH();
 }
 
+static struct jvst_cnode *
+cnode_canonify_propset(struct jvst_cnode *top)
+{
+	struct jvst_cnode *pm, *mcases, *msw, **mcpp;
+	struct fsm_options *opts;
+	struct fsm *matches;
+
+	// FIXME: this is a leak...
+	opts = xmalloc(sizeof *opts);
+	*opts = (struct fsm_options) {
+		.tidy = false,
+		.anonymous_states = false,
+		.consolidate_edges = true,
+		.fragment = true,
+		.comments = true,
+		.case_ranges = true,
+
+		.io = FSM_IO_GETC,
+		.prefix = NULL,
+		.carryopaque = merge_mcases,
+	};
+
+	assert(top->type == JVST_CNODE_OBJ_PROP_SET);
+	assert(top->u.prop_set != NULL);
+
+	// step 1: construct a FSM from all PROP_MATCH nodes.
+	//
+	// This involves:
+	//
+	//  a. create an FSM for each PROP_MATCH node
+	//  b. create a MATCH_CASE for each PROP_MATCH node
+	//  c. Set the MATCH_CASE as the opaque value for all end states
+	//     in the FSM
+	//  d. Union the FSM with the previous FSMs.
+	matches = NULL;
+	for (pm = top->u.prop_set; pm != NULL; pm=pm->next) {
+		struct jvst_cnode *cons, *mcase;
+		struct jvst_cnode_matchset *mset;
+		struct fsm *pat;
+		struct json_str_iter siter;
+		struct re_err err = { 0 };
+
+		cons = pm->u.prop_match.constraint;
+		mset = cnode_matchset_new(pm->u.prop_match.match, NULL);
+		mcase = cnode_new_mcase(mset, cons);
+
+		siter.str = pm->u.prop_match.match.str;
+		siter.off = 0;
+
+		pat = re_comp(
+			pm->u.prop_match.match.dialect,
+			json_str_getc,
+			&siter,
+			opts,
+			(enum re_flags)0,
+			&err);
+
+		// errors should be checked in parsing
+		assert(pat != NULL);
+
+		fsm_setendopaque(pat, mcase);
+
+		if (matches == NULL) {
+			matches = pat;
+		} else {
+			matches = fsm_union(matches, pat);
+
+			// XXX - we can't handle failure states right
+			// now...
+			assert(matches != NULL);
+		}
+	}
+
+	// step 2: convert the FSM from an NFA to a DFA.
+	//
+	// This may involve merging MATCH_CASE nodes.  The rules are
+	// fairly simple: combine pattern sets, combine constraints with
+	// an AND condition.
+	//
+	// NB: combining requires copying because different end states
+	// may still have the original MATCH_CASE node.
+
+	if (!fsm_determinise(matches)) {
+		perror("cannot determinise fsm");
+		abort();
+	}
+
+	// step 3: collect all MATCH_CASE nodes from the DFA by
+	// iterating over the DFA end states.  All MATCH_CASE nodes must
+	// be placed into a linked list.
+	mcases = NULL;
+	mcase_collector_head = &mcases; // XXX - ugly global variable
+
+	fsm_all(matches, mcase_collector);
+
+	// step 5: build the MATCH_SWITCH container to hold the cases
+	// and the DFA.  The default case should be VALID.
+	msw = jvst_cnode_alloc(JVST_CNODE_MATCH_SWITCH);
+	msw->u.mswitch.dfa = matches;
+	msw->u.mswitch.opts = opts;
+	msw->u.mswitch.cases = mcases;
+	msw->u.mswitch.default_case = jvst_cnode_alloc(JVST_CNODE_VALID);
+
+	// step 4: simplify and canonify the constraint of each MATCH_CASE node.
+	// 	   We re-simplify the constraints because multiple
+	// 	   constraints can be merged.
+	for (; mcases != NULL; mcases = mcases->next) {
+		struct jvst_cnode *cons;
+		cons = jvst_cnode_simplify(mcases->u.mcase.constraint);
+		mcases->u.mcase.constraint = jvst_cnode_canonify(cons);
+	}
+
+	return msw;
+}
+
 struct jvst_cnode *
 jvst_cnode_canonify(struct jvst_cnode *tree)
 {
 	struct jvst_cnode *node;
 
-	// make a copy
+	// this also makes a copy...
 	tree = cnode_deep_copy(tree);
 
-	// currently do nothing.  the semantics specify a new tree, so
-	// we create a new tree.
-	return tree;
+	switch (tree->type) {
+	case JVST_CNODE_INVALID:
+	case JVST_CNODE_VALID:
+	case JVST_CNODE_ARR_UNIQUE:
+	case JVST_CNODE_NUM_RANGE:
+	case JVST_CNODE_COUNT_RANGE:
+		return tree;
+
+	case JVST_CNODE_AND:
+	case JVST_CNODE_OR:
+	case JVST_CNODE_XOR:
+	case JVST_CNODE_NOT:
+		{
+			struct jvst_cnode *xform = NULL;
+			struct jvst_cnode **xpp = &xform;
+
+			for (node = tree->u.ctrl; node != NULL; node = node->next) {
+				*xpp = jvst_cnode_canonify(node);
+				xpp = &(*xpp)->next;
+			}
+
+			tree->u.ctrl = xform;
+
+		}
+		return tree;
+
+	case JVST_CNODE_SWITCH:
+		{
+			size_t i, n;
+			for (i = 0, n = ARRAYLEN(tree->u.sw); i < n; i++) {
+				tree->u.sw[i] = jvst_cnode_canonify(tree->u.sw[i]);
+			}
+		}
+		return tree;
+
+	case JVST_CNODE_OBJ_PROP_SET:
+		return cnode_canonify_propset(tree);
+
+	case JVST_CNODE_NUM_INTEGER:
+	case JVST_CNODE_STR_MATCH:
+	case JVST_CNODE_OBJ_PROP_MATCH:
+	case JVST_CNODE_OBJ_REQUIRED:
+	case JVST_CNODE_ARR_ITEM:
+	case JVST_CNODE_ARR_ADDITIONAL:
+	case JVST_CNODE_MATCH_SWITCH:
+	case JVST_CNODE_MATCH_CASE:
+		// TODO: basic optimization for these nodes
+		return tree;
+	}
+
+	// avoid default case in switch so the compiler can complain if
+	// we add new cnode types
+	SHOULD_NOT_REACH();
 }
 
 /* vim: set tabstop=8 shiftwidth=8 noexpandtab: */

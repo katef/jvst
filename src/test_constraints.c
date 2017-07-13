@@ -42,21 +42,25 @@ static int run_test(const char *fname, const struct cnode_test *t)
 
     case TRANSLATE:
       assert(t->ast != NULL);
+      assert(t->expected != NULL);
       result = jvst_cnode_translate_ast(t->ast);
       break;
 
     case SIMPLIFY:
+      assert(t->cnode != NULL);
+      assert(t->expected != NULL);
       result = jvst_cnode_simplify(t->cnode);
       break;
 
     case CANONIFY:
-      assert(t->ast != NULL);
-      // result = jvst_cnode_from_ast(t->ast);
-      fprintf(stderr, "CANONIFY pass not implemented\n");
-      abort();
+      assert(t->cnode != NULL);
+      assert(t->expected != NULL);
+      result = jvst_cnode_canonify(t->cnode);
+      break;
 
     case ALL:
       assert(t->ast != NULL);
+      assert(t->expected != NULL);
       // result = jvst_cnode_from_ast(t->ast);
       fprintf(stderr, "ALL passes not implemented\n");
       abort();
@@ -1020,41 +1024,22 @@ void test_simplify_ored_schema(void)
           NULL),
 
         // optimized
+
         newcnode_switch(&A, 0,
           SJP_OBJECT_BEG, newcnode_bool(&A, JVST_CNODE_OR,
-                            newcnode_mswitch(&A, 
-                              // default case
-                              newcnode_valid(),
+                            newcnode_propset(&A, 
+                              newcnode_prop_match(&A, RE_LITERAL, "foo",
+                                newcnode_switch(&A, 0, SJP_NUMBER, newcnode_valid(), SJP_NONE)),
+                              newcnode_prop_match(&A, RE_LITERAL, "bar",
+                                newcnode_switch(&A, 0, SJP_STRING, newcnode_valid(), SJP_NONE)),
+                              NULL),
 
-                              newcnode_mcase(&A,
-                                newmatchset(&A, RE_LITERAL, "bar", -1),
-                                newcnode_switch(&A, 0, SJP_STRING, newcnode_valid(), SJP_NONE)
-                              ),
-
-                              newcnode_mcase(&A,
-                                newmatchset(&A, RE_LITERAL, "foo", -1),
-                                newcnode_switch(&A, 0, SJP_NUMBER, newcnode_valid(), SJP_NONE)
-                              ),
-
-                              NULL
-                            ),
-
-                            newcnode_mswitch(&A, 
-                              // default case
-                              newcnode_valid(),
-
-                              newcnode_mcase(&A,
-                                newmatchset(&A, RE_LITERAL, "bar", -1),
-                                newcnode_switch(&A, 0, SJP_NUMBER, newcnode_valid(), SJP_NONE)
-                              ),
-
-                              newcnode_mcase(&A,
-                                newmatchset(&A, RE_LITERAL, "foo", -1),
-                                newcnode_switch(&A, 0, SJP_STRING, newcnode_valid(), SJP_NONE)
-                              ),
-
-                              NULL
-                            ),
+                            newcnode_propset(&A,
+                              newcnode_prop_match(&A, RE_LITERAL, "foo",
+                                newcnode_switch(&A, 0, SJP_STRING, newcnode_valid(), SJP_NONE)),
+                              newcnode_prop_match(&A, RE_LITERAL, "bar",
+                                newcnode_switch(&A, 0, SJP_NUMBER, newcnode_valid(), SJP_NONE)),
+                              NULL),
 
                             NULL
                           ),
@@ -1112,6 +1097,151 @@ void test_simplify_ored_schema(void)
           SJP_OBJECT_BEG, newcnode_bool(&A, JVST_CNODE_OR,
                             newcnode_bool(&A, JVST_CNODE_AND,
                               newcnode_required(&A, stringset(&A, "bar", NULL)),
+                              newcnode_propset(&A,
+                                newcnode_prop_match(&A, RE_LITERAL, "foo", 
+                                  newcnode_switch(&A, 0, 
+                                    SJP_NUMBER, newcnode(&A,JVST_CNODE_NUM_INTEGER),
+                                    SJP_NONE)),
+                                newcnode_prop_match(&A, RE_LITERAL, "bar", 
+                                  newcnode_switch(&A, 0, 
+                                    SJP_NUMBER, newcnode(&A,JVST_CNODE_NUM_INTEGER),
+                                    SJP_NONE)),
+                                NULL),
+                              NULL
+                            ),
+                            
+                            newcnode_propset(&A,
+                              newcnode_prop_match(&A, RE_LITERAL, "bar",
+                                newcnode_invalid()),
+                              NULL),
+
+                            NULL
+                          ),
+          SJP_NONE),
+    },
+
+    { STOP },
+  };
+
+  RUNTESTS(tests);
+}
+
+void test_canonify_ored_schema(void)
+{
+  struct arena_info A = {0};
+  const struct cnode_test tests[] = {
+    {
+      CANONIFY, NULL, 
+
+      // simplified tree
+      newcnode_switch(&A, 0,
+        SJP_OBJECT_BEG, newcnode_bool(&A, JVST_CNODE_OR,
+                          newcnode_propset(&A, 
+                            newcnode_prop_match(&A, RE_LITERAL, "foo",
+                              newcnode_switch(&A, 0, SJP_NUMBER, newcnode_valid(), SJP_NONE)),
+                            newcnode_prop_match(&A, RE_LITERAL, "bar",
+                              newcnode_switch(&A, 0, SJP_STRING, newcnode_valid(), SJP_NONE)),
+                            NULL),
+
+                          newcnode_propset(&A,
+                            newcnode_prop_match(&A, RE_LITERAL, "foo",
+                              newcnode_switch(&A, 0, SJP_STRING, newcnode_valid(), SJP_NONE)),
+                            newcnode_prop_match(&A, RE_LITERAL, "bar",
+                              newcnode_switch(&A, 0, SJP_NUMBER, newcnode_valid(), SJP_NONE)),
+                            NULL),
+
+                          NULL
+                        ),
+        SJP_NONE),
+
+        // canonified tree
+        newcnode_switch(&A, 0,
+          SJP_OBJECT_BEG, newcnode_bool(&A, JVST_CNODE_OR,
+                            newcnode_mswitch(&A, 
+                              // default case
+                              newcnode_valid(),
+
+                              newcnode_mcase(&A,
+                                newmatchset(&A, RE_LITERAL, "bar", -1),
+                                newcnode_switch(&A, 0, SJP_STRING, newcnode_valid(), SJP_NONE)
+                              ),
+
+                              newcnode_mcase(&A,
+                                newmatchset(&A, RE_LITERAL, "foo", -1),
+                                newcnode_switch(&A, 0, SJP_NUMBER, newcnode_valid(), SJP_NONE)
+                              ),
+
+                              NULL
+                            ),
+
+                            newcnode_mswitch(&A, 
+                              // default case
+                              newcnode_valid(),
+
+                              newcnode_mcase(&A,
+                                newmatchset(&A, RE_LITERAL, "bar", -1),
+                                newcnode_switch(&A, 0, SJP_NUMBER, newcnode_valid(), SJP_NONE)
+                              ),
+
+                              newcnode_mcase(&A,
+                                newmatchset(&A, RE_LITERAL, "foo", -1),
+                                newcnode_switch(&A, 0, SJP_STRING, newcnode_valid(), SJP_NONE)
+                              ),
+
+                              NULL
+                            ),
+
+                            NULL
+                          ),
+          SJP_NONE),
+    },
+
+    {
+      CANONIFY, 
+      // schema: {
+      //   "dependencies": {
+      //     "bar": {
+      //       "properties": {
+      //         "foo": {"type": "integer"},
+      //         "bar": {"type": "integer"}
+      //       }
+      //     }
+      //   }
+      // },
+      NULL,
+
+      // simplified tree
+      newcnode_switch(&A, 1, 
+          SJP_OBJECT_BEG, newcnode_bool(&A, JVST_CNODE_OR,
+                            newcnode_bool(&A, JVST_CNODE_AND,
+                              newcnode_required(&A, stringset(&A, "bar", NULL)),
+                              newcnode_propset(&A,
+                                newcnode_prop_match(&A, RE_LITERAL, "foo", 
+                                  newcnode_switch(&A, 0, 
+                                    SJP_NUMBER, newcnode(&A,JVST_CNODE_NUM_INTEGER),
+                                    SJP_NONE)),
+                                newcnode_prop_match(&A, RE_LITERAL, "bar", 
+                                  newcnode_switch(&A, 0, 
+                                    SJP_NUMBER, newcnode(&A,JVST_CNODE_NUM_INTEGER),
+                                    SJP_NONE)),
+                                NULL),
+                              NULL
+                            ),
+                            
+                            newcnode_propset(&A,
+                              newcnode_prop_match(&A, RE_LITERAL, "bar",
+                                newcnode_invalid()),
+                              NULL),
+
+                            NULL
+                          ),
+          SJP_NONE),
+
+      // canonified tree
+      newcnode_switch(&A, 1, 
+          SJP_OBJECT_BEG, newcnode_bool(&A, JVST_CNODE_OR,
+                            newcnode_bool(&A, JVST_CNODE_AND,
+                              newcnode_required(&A, stringset(&A, "bar", NULL)),
                               newcnode_mswitch(&A,
                                 // default case
                                 newcnode_valid(),
@@ -1159,12 +1289,12 @@ void test_simplify_ored_schema(void)
 }
 
 
-void test_simplify_propsets(void)
+void test_canonify_propsets(void)
 {
   struct arena_info A = {0};
   const struct cnode_test tests[] = {
     {
-      SIMPLIFY, NULL, 
+      CANONIFY, NULL, 
 
         // initial tree
         newcnode_switch(&A, 0,
@@ -1237,7 +1367,8 @@ int main(void)
   test_simplify_ands();
   test_simplify_ored_schema();
 
-  test_simplify_propsets();
+  test_canonify_ored_schema();
+  test_canonify_propsets();
 
   return report_tests();
 }
