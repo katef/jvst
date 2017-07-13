@@ -168,8 +168,8 @@ jvst_cnode_free_tree(struct jvst_cnode *n);
 const char *
 jvst_cnode_type_name(enum jvst_cnode_type type);
 
-// Translates the AST into a contraint tree and optimizes the constraint
-// tree
+// Translates the AST into a contraint tree, first simplifying and
+// canonifying the constraint tree
 struct jvst_cnode *
 jvst_cnode_from_ast(struct ast_schema *ast);
 
@@ -178,9 +178,13 @@ jvst_cnode_from_ast(struct ast_schema *ast);
 struct jvst_cnode *
 jvst_cnode_translate_ast(struct ast_schema *ast);
 
-// Optimize the cnode tree.  Returns a new tree.
+// Simplfies the cnode tree.  Returns a new tree.
 struct jvst_cnode *
-jvst_cnode_optimize(struct jvst_cnode *tree);
+jvst_cnode_simplify(struct jvst_cnode *tree);
+
+// Canonifies the cnode tree.  Returns a new tree.
+struct jvst_cnode *
+jvst_cnode_canonify(struct jvst_cnode *tree);
 
 // Writes a textual represetnation of the cnode into the buffer,
 // returns 0 if the representation fit, non-zero otherwise

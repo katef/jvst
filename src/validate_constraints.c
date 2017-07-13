@@ -215,6 +215,7 @@ jvst_cnode_alloc(enum jvst_cnode_type type)
 {
 	struct jvst_cnode *n;
 	n = cnode_new();
+	memset(n, 0, sizeof *n);
 	n->type = type;
 	n->next = NULL;
 	return n;
@@ -708,7 +709,7 @@ jvst_cnode_dump(struct jvst_cnode *node, char *buf, size_t nb)
 	return (b.len < b.cap) ? 0 : -1;
 }
 
-// Translates the AST into a contraint tree and optimizes the constraint
+// Translates the AST into a contraint tree and simplifys the constraint
 // tree
 struct jvst_cnode *
 jvst_cnode_from_ast(struct ast_schema *ast);
@@ -1194,7 +1195,7 @@ cnode_find_type(struct jvst_cnode *node, enum jvst_cnode_type type)
 }
 
 static struct jvst_cnode *
-cnode_optimize_andor_switches(struct jvst_cnode *top)
+cnode_simplify_andor_switches(struct jvst_cnode *top)
 {
 	// check if all nodes are SWITCH nodes.  If they are, combine
 	// the switch clauses and simplify
@@ -1224,14 +1225,14 @@ cnode_optimize_andor_switches(struct jvst_cnode *top)
 			cpp = &(*cpp)->next;
 		}
 
-		sw->u.sw[i] = jvst_cnode_optimize(jxn);
+		sw->u.sw[i] = jvst_cnode_simplify(jxn);
 	}
 
 	return sw;
 }
 
 void
-cnode_optimize_ctrl_children(struct jvst_cnode *top)
+cnode_simplify_ctrl_children(struct jvst_cnode *top)
 {
 	struct jvst_cnode *node, *next, **pp;
 	pp = &top->u.ctrl;
@@ -1239,13 +1240,13 @@ cnode_optimize_ctrl_children(struct jvst_cnode *top)
 	// first optimize child nodes...
 	for (node = top->u.ctrl; node != NULL; node = next) {
 		next = node->next;
-		*pp  = jvst_cnode_optimize(node);
+		*pp  = jvst_cnode_simplify(node);
 		pp   = &(*pp)->next;
 	}
 }
 
 void
-cnode_optimize_ctrl_combine_like(struct jvst_cnode *top)
+cnode_simplify_ctrl_combine_like(struct jvst_cnode *top)
 {
 	struct jvst_cnode *node, *next, **pp;
 
@@ -1274,13 +1275,13 @@ cnode_optimize_ctrl_combine_like(struct jvst_cnode *top)
 }
 
 static struct jvst_cnode *
-cnode_optimize_andor(struct jvst_cnode *top)
+cnode_simplify_andor(struct jvst_cnode *top)
 {
 	struct jvst_cnode *node, *next, **pp;
 	enum jvst_cnode_type snt; // short circuit node type
 	enum jvst_cnode_type rnt; // remove node type
 
-	cnode_optimize_ctrl_children(top);
+	cnode_simplify_ctrl_children(top);
 
 	// pass 1: remove VALID/INVALID nodes
 	switch (top->type) {
@@ -1325,9 +1326,9 @@ cnode_optimize_andor(struct jvst_cnode *top)
 		return top->u.ctrl;
 	}
 
-	cnode_optimize_ctrl_combine_like(top);
+	cnode_simplify_ctrl_combine_like(top);
 
-	return cnode_optimize_andor_switches(top);
+	return cnode_simplify_andor_switches(top);
 }
 
 struct json_str_iter {
@@ -1449,7 +1450,7 @@ mcase_collector(const struct fsm *dfa, const struct fsm_state *st)
 }
 
 static struct jvst_cnode *
-cnode_optimize_propset(struct jvst_cnode *top)
+cnode_simplify_propset(struct jvst_cnode *top)
 {
 	struct jvst_cnode *pm, *mcases, *msw, **mcpp;
 	struct fsm_options *opts;
@@ -1473,7 +1474,7 @@ cnode_optimize_propset(struct jvst_cnode *top)
 	assert(top->type == JVST_CNODE_OBJ_PROP_SET);
 	assert(top->u.prop_set != NULL);
 
-	// step 1: iterate over PROP_MATCH nodes and optimize each
+	// step 1: iterate over PROP_MATCH nodes and simplify each
 	// constraint individually
 	// 
 	// step 2: construct a FSM from all PROP_MATCH nodes.
@@ -1493,7 +1494,7 @@ cnode_optimize_propset(struct jvst_cnode *top)
 		struct json_str_iter siter;
 		struct re_err err = { 0 };
 
-		cons = jvst_cnode_optimize(pm->u.prop_match.constraint);
+		cons = jvst_cnode_simplify(pm->u.prop_match.constraint);
 		mset = cnode_matchset_new(pm->u.prop_match.match, NULL);
 		mcase = cnode_new_mcase(mset, cons);
 
@@ -1554,16 +1555,16 @@ cnode_optimize_propset(struct jvst_cnode *top)
 	msw->u.mswitch.cases = mcases;
 	msw->u.mswitch.default_case = jvst_cnode_alloc(JVST_CNODE_VALID);
 
-	// step 6: optimize the constraint of each MATCH_CASE node
+	// step 6: simplify the constraint of each MATCH_CASE node
 	for (; mcases != NULL; mcases = mcases->next) {
-		mcases->u.mcase.constraint = jvst_cnode_optimize(mcases->u.mcase.constraint);
+		mcases->u.mcase.constraint = jvst_cnode_simplify(mcases->u.mcase.constraint);
 	}
 
 	return msw;
 }
 
 struct jvst_cnode *
-jvst_cnode_optimize(struct jvst_cnode *tree)
+jvst_cnode_simplify(struct jvst_cnode *tree)
 {
 	struct jvst_cnode *node;
 
@@ -1579,7 +1580,7 @@ jvst_cnode_optimize(struct jvst_cnode *tree)
 
 	case JVST_CNODE_AND:
 	case JVST_CNODE_OR:
-		return cnode_optimize_andor(tree);
+		return cnode_simplify_andor(tree);
 
 	case JVST_CNODE_XOR:
 		// TODO: basic optimization for XOR
@@ -1593,13 +1594,13 @@ jvst_cnode_optimize(struct jvst_cnode *tree)
 		{
 			size_t i, n;
 			for (i = 0, n = ARRAYLEN(tree->u.sw); i < n; i++) {
-				tree->u.sw[i] = jvst_cnode_optimize(tree->u.sw[i]);
+				tree->u.sw[i] = jvst_cnode_simplify(tree->u.sw[i]);
 			}
 		}
 		return tree;
 
 	case JVST_CNODE_OBJ_PROP_SET:
-		return cnode_optimize_propset(tree);
+		return cnode_simplify_propset(tree);
 
 	case JVST_CNODE_NUM_RANGE:
 	case JVST_CNODE_COUNT_RANGE:
@@ -1617,6 +1618,19 @@ jvst_cnode_optimize(struct jvst_cnode *tree)
 	// avoid default case in switch so the compiler can complain if
 	// we add new cnode types
 	SHOULD_NOT_REACH();
+}
+
+struct jvst_cnode *
+jvst_cnode_canonify(struct jvst_cnode *tree)
+{
+	struct jvst_cnode *node;
+
+	// make a copy
+	tree = cnode_deep_copy(tree);
+
+	// currently do nothing.  the semantics specify a new tree, so
+	// we create a new tree.
+	return tree;
 }
 
 /* vim: set tabstop=8 shiftwidth=8 noexpandtab: */

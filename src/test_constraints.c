@@ -10,8 +10,9 @@
 enum TEST_OP {
   STOP = 0,
   TRANSLATE,
-  OPTIMIZE,
-  BOTH,
+  SIMPLIFY,
+  CANONIFY,
+  ALL,
 
   // add specific optimization stages...
   //
@@ -44,15 +45,21 @@ static int run_test(const char *fname, const struct cnode_test *t)
       result = jvst_cnode_translate_ast(t->ast);
       break;
 
-    case BOTH:
-      assert(t->ast != NULL);
-      // result = jvst_cnode_from_ast(t->ast);
-      fprintf(stderr, "BOTH pass not implemented\n");
-      abort();
+    case SIMPLIFY:
+      result = jvst_cnode_simplify(t->cnode);
       break;
 
-    case OPTIMIZE:
-      result = jvst_cnode_optimize(t->cnode);
+    case CANONIFY:
+      assert(t->ast != NULL);
+      // result = jvst_cnode_from_ast(t->ast);
+      fprintf(stderr, "CANONIFY pass not implemented\n");
+      abort();
+
+    case ALL:
+      assert(t->ast != NULL);
+      // result = jvst_cnode_from_ast(t->ast);
+      fprintf(stderr, "ALL passes not implemented\n");
+      abort();
       break;
   }
 
@@ -901,7 +908,7 @@ static void test_simplify_ands(void)
   const struct cnode_test tests[] = {
     // handle AND with only one level...
     {
-      OPTIMIZE,
+      SIMPLIFY,
 
       NULL,
 
@@ -919,7 +926,7 @@ static void test_simplify_ands(void)
 
     // handle nested ANDs
     {
-      OPTIMIZE,
+      SIMPLIFY,
 
       NULL,
 
@@ -943,7 +950,7 @@ static void test_simplify_ands(void)
 
     // handle more complex nested ANDs
     {
-      OPTIMIZE,
+      SIMPLIFY,
       
       NULL,
 
@@ -980,7 +987,7 @@ void test_simplify_ored_schema(void)
   struct arena_info A = {0};
   const struct cnode_test tests[] = {
     {
-      OPTIMIZE, NULL, 
+      SIMPLIFY, NULL, 
 
         // initial tree
         newcnode_bool(&A, JVST_CNODE_AND,
@@ -1055,7 +1062,7 @@ void test_simplify_ored_schema(void)
     },
 
     {
-      OPTIMIZE, 
+      SIMPLIFY, 
       // schema: {
       //   "dependencies": {
       //     "bar": {
@@ -1157,7 +1164,7 @@ void test_simplify_propsets(void)
   struct arena_info A = {0};
   const struct cnode_test tests[] = {
     {
-      OPTIMIZE, NULL, 
+      SIMPLIFY, NULL, 
 
         // initial tree
         newcnode_switch(&A, 0,

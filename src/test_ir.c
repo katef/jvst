@@ -18,14 +18,15 @@ static int ir_trees_equal(const char *fname, struct jvst_ir_stmt *n1, struct jvs
 
 static int run_test(const char *fname, const struct ir_test *t)
 {
-  struct jvst_cnode *opt;
+  struct jvst_cnode *simplified, *canonified;
   struct jvst_ir_stmt *result;
 
   assert(t->ctree != NULL);
   assert(t->ir != NULL);
 
-  opt = jvst_cnode_optimize(t->ctree);
-  result = jvst_ir_translate(opt);
+  simplified = jvst_cnode_simplify(t->ctree);
+  canonified = jvst_cnode_canonify(simplified);
+  result = jvst_ir_translate(canonified);
 
   return ir_trees_equal(fname, result, t->ir);
 }
@@ -785,12 +786,12 @@ void test_ir_minproperties_2(void)
                         )
                       ),
 
-                      // match "foo"
+                      // match "bar"
                       newir_case(&A, 1,
-                        newmatchset(&A, RE_LITERAL,  "foo", -1),
+                        newmatchset(&A, RE_LITERAL,  "bar", -1),
                         newir_frame(&A,
                           newir_stmt(&A, JVST_IR_STMT_TOKEN),
-                          newir_if(&A, newir_istok(&A, SJP_NUMBER),
+                          newir_if(&A, newir_istok(&A, SJP_STRING),
                             newir_stmt(&A, JVST_IR_STMT_VALID),
                             newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token")
                           ),
@@ -798,12 +799,12 @@ void test_ir_minproperties_2(void)
                         )
                       ),
 
-                      // match "bar"
+                      // match "foo"
                       newir_case(&A, 2,
-                        newmatchset(&A, RE_LITERAL,  "bar", -1),
+                        newmatchset(&A, RE_LITERAL,  "foo", -1),
                         newir_frame(&A,
                           newir_stmt(&A, JVST_IR_STMT_TOKEN),
-                          newir_if(&A, newir_istok(&A, SJP_STRING),
+                          newir_if(&A, newir_istok(&A, SJP_NUMBER),
                             newir_stmt(&A, JVST_IR_STMT_VALID),
                             newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token")
                           ),
