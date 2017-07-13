@@ -1213,48 +1213,6 @@ cnode_find_type(struct jvst_cnode *node, enum jvst_cnode_type type)
 	return NULL;
 }
 
-// replaces REQUIRED nodes with REQMASK and REQBIT nodes
-//
-// XXX - should this be in the translation phase?
-static struct jvst_cnode *
-cnode_simplify_required(struct jvst_cnode *req)
-{
-	struct jvst_cnode *jxn, **npp, *mask, *pset;
-	struct ast_string_set *rcases;
-	size_t nbits;
-
-	assert(req->type == JVST_CNODE_OBJ_REQUIRED);
-	assert(req->u.required != NULL);
-
-	jxn = jvst_cnode_alloc(JVST_CNODE_AND);
-	npp = &jxn->u.ctrl;
-
-	mask = jvst_cnode_alloc(JVST_CNODE_OBJ_REQMASK);
-	*npp = mask;
-	npp = &(*npp)->next;
-
-	pset = jvst_cnode_alloc(JVST_CNODE_OBJ_PROP_SET);
-	*npp = pset;
-	npp = &pset->u.prop_set;
-
-	for (nbits=0, rcases = req->u.required; rcases != NULL; nbits++, rcases = rcases->next) {
-		struct jvst_cnode *pm, *reqbit;
-		pm = jvst_cnode_alloc(JVST_CNODE_OBJ_PROP_MATCH);
-		pm->u.prop_match.match.dialect = RE_LITERAL;
-		pm->u.prop_match.match.str = rcases->str;
-
-		reqbit = jvst_cnode_alloc(JVST_CNODE_OBJ_REQBIT);
-		reqbit->u.reqbit.bit = nbits;
-		pm->u.prop_match.constraint = reqbit;
-
-		*npp = pm;
-		npp = &pm->next;
-	}
-
-	mask->u.reqmask.nbits = nbits;
-	return jxn;
-}
-
 static struct jvst_cnode *
 cnode_simplify_andor_switches(struct jvst_cnode *top)
 {
@@ -1828,8 +1786,127 @@ cnode_canonify_propset(struct jvst_cnode *top)
 	return msw;
 }
 
-struct jvst_cnode *
-jvst_cnode_canonify(struct jvst_cnode *tree)
+// replaces REQUIRED nodes with REQMASK and REQBIT nodes
+//
+// XXX - should this be in the translation phase?
+static struct jvst_cnode *
+cnode_canonify_required(struct jvst_cnode *req)
+{
+	struct jvst_cnode *jxn, **npp, *mask, *pset;
+	struct ast_string_set *rcases;
+	size_t nbits;
+
+	assert(req->type == JVST_CNODE_OBJ_REQUIRED);
+	assert(req->u.required != NULL);
+
+	jxn = jvst_cnode_alloc(JVST_CNODE_AND);
+	npp = &jxn->u.ctrl;
+
+	mask = jvst_cnode_alloc(JVST_CNODE_OBJ_REQMASK);
+	*npp = mask;
+	npp = &(*npp)->next;
+
+	pset = jvst_cnode_alloc(JVST_CNODE_OBJ_PROP_SET);
+	*npp = pset;
+	npp = &pset->u.prop_set;
+
+	for (nbits=0, rcases = req->u.required; rcases != NULL; nbits++, rcases = rcases->next) {
+		struct jvst_cnode *pm, *reqbit;
+		pm = jvst_cnode_alloc(JVST_CNODE_OBJ_PROP_MATCH);
+		pm->u.prop_match.match.dialect = RE_LITERAL;
+		pm->u.prop_match.match.str = rcases->str;
+
+		reqbit = jvst_cnode_alloc(JVST_CNODE_OBJ_REQBIT);
+		reqbit->u.reqbit.bit = nbits;
+		pm->u.prop_match.constraint = reqbit;
+
+		*npp = pm;
+		npp = &pm->next;
+	}
+
+	mask->u.reqmask.nbits = nbits;
+	return jxn;
+}
+
+// Initial canonification before DFAs are constructed
+static struct jvst_cnode *
+cnode_canonify_pass1(struct jvst_cnode *tree)
+{
+	struct jvst_cnode *node;
+
+	// this also makes a copy...
+	tree = cnode_deep_copy(tree);
+
+	switch (tree->type) {
+	case JVST_CNODE_INVALID:
+	case JVST_CNODE_VALID:
+	case JVST_CNODE_ARR_UNIQUE:
+	case JVST_CNODE_NUM_RANGE:
+	case JVST_CNODE_COUNT_RANGE:
+		return tree;
+
+	case JVST_CNODE_AND:
+	case JVST_CNODE_OR:
+	case JVST_CNODE_XOR:
+	case JVST_CNODE_NOT:
+		{
+			struct jvst_cnode *xform = NULL;
+			struct jvst_cnode **xpp = &xform;
+
+			for (node = tree->u.ctrl; node != NULL; node = node->next) {
+				*xpp = cnode_canonify_pass1(node);
+				xpp = &(*xpp)->next;
+			}
+
+			tree->u.ctrl = xform;
+
+		}
+		return tree;
+
+	case JVST_CNODE_SWITCH:
+		{
+			size_t i, n;
+			for (i = 0, n = ARRAYLEN(tree->u.sw); i < n; i++) {
+				tree->u.sw[i] = cnode_canonify_pass1(tree->u.sw[i]);
+			}
+		}
+		return tree;
+
+	case JVST_CNODE_OBJ_PROP_SET:
+		{
+			for (node=tree->u.prop_set; node != NULL; node = node->next) {
+				struct jvst_cnode *cons;
+
+				assert(node->type == JVST_CNODE_OBJ_PROP_MATCH);
+				cons = cnode_canonify_pass1(node->u.prop_match.constraint);
+				node->u.prop_match.constraint = cons;
+			}
+			return tree;
+		}
+
+	case JVST_CNODE_OBJ_REQUIRED:
+		return cnode_canonify_required(tree);
+
+	case JVST_CNODE_NUM_INTEGER:
+	case JVST_CNODE_STR_MATCH:
+	case JVST_CNODE_OBJ_PROP_MATCH:
+	case JVST_CNODE_ARR_ITEM:
+	case JVST_CNODE_ARR_ADDITIONAL:
+	case JVST_CNODE_OBJ_REQMASK:
+	case JVST_CNODE_OBJ_REQBIT:
+	case JVST_CNODE_MATCH_SWITCH:
+	case JVST_CNODE_MATCH_CASE:
+		// TODO: basic optimization for these nodes
+		return tree;
+	}
+
+	// avoid default case in switch so the compiler can complain if
+	// we add new cnode types
+	SHOULD_NOT_REACH();
+}
+
+static struct jvst_cnode *
+cnode_canonify_pass2(struct jvst_cnode *tree)
 {
 	struct jvst_cnode *node;
 
@@ -1891,6 +1968,15 @@ jvst_cnode_canonify(struct jvst_cnode *tree)
 	// avoid default case in switch so the compiler can complain if
 	// we add new cnode types
 	SHOULD_NOT_REACH();
+}
+
+struct jvst_cnode *
+jvst_cnode_canonify(struct jvst_cnode *tree)
+{
+	tree = cnode_canonify_pass1(tree);
+	tree = jvst_cnode_simplify(tree);
+	tree = cnode_canonify_pass2(tree);
+	return tree;
 }
 
 /* vim: set tabstop=8 shiftwidth=8 noexpandtab: */

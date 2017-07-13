@@ -1331,23 +1331,26 @@ void test_canonify_ored_schema(void)
       newcnode_switch(&A, 1, 
           SJP_OBJECT_BEG, newcnode_bool(&A, JVST_CNODE_OR,
                             newcnode_bool(&A, JVST_CNODE_AND,
-                              newcnode_required(&A, stringset(&A, "bar", NULL)),
+                              newcnode_reqmask(&A, 1),
                               newcnode_mswitch(&A,
                                 // default case
                                 newcnode_valid(),
 
                                 newcnode_mcase(&A,
                                   newmatchset(&A, RE_LITERAL, "foo", -1),
-                                  newcnode_switch(&A, 0, 
-                                    SJP_NUMBER, newcnode(&A,JVST_CNODE_NUM_INTEGER),
-                                    SJP_NONE)
+                                    newcnode_switch(&A, 0, 
+                                      SJP_NUMBER, newcnode(&A,JVST_CNODE_NUM_INTEGER),
+                                      SJP_NONE)
                                 ),
 
                                 newcnode_mcase(&A,
-                                  newmatchset(&A, RE_LITERAL, "bar", -1),
-                                  newcnode_switch(&A, 0, 
-                                    SJP_NUMBER, newcnode(&A,JVST_CNODE_NUM_INTEGER),
-                                    SJP_NONE)
+                                  newmatchset(&A, RE_LITERAL, "bar", RE_LITERAL, "bar", -1),
+                                  newcnode_bool(&A, JVST_CNODE_AND,
+                                    newcnode_switch(&A, 0, 
+                                      SJP_NUMBER, newcnode(&A,JVST_CNODE_NUM_INTEGER),
+                                      SJP_NONE),
+                                    newcnode_reqbit(&A, 0),
+                                    NULL)
                                 ),
 
                                 NULL
@@ -1427,6 +1430,49 @@ void test_canonify_propsets(void)
   RUNTESTS(tests);
 }
 
+void test_canonify_required(void)
+{
+  struct arena_info A = {0};
+
+  // initial schema is not reduced (additional constraints are ANDed
+  // together).  Reduction will occur on a later pass.
+  const struct cnode_test tests[] = {
+    {
+      CANONIFY, NULL,
+
+      newcnode_switch(&A, 1,
+        SJP_OBJECT_BEG, newcnode_required(&A, stringset(&A, "foo", "bar", NULL)),
+        SJP_NONE),
+
+      // optimized
+      newcnode_switch(&A, 1,
+        SJP_OBJECT_BEG, newcnode_bool(&A, JVST_CNODE_AND,
+                          newcnode_reqmask(&A, 2),
+                          newcnode_mswitch(&A, 
+                            // default case
+                            newcnode_valid(),
+
+                            newcnode_mcase(&A,
+                              newmatchset(&A, RE_LITERAL, "bar", -1),
+                              newcnode_reqbit(&A, 1)
+                            ),
+
+                            newcnode_mcase(&A,
+                              newmatchset(&A, RE_LITERAL,  "foo", -1),
+                              newcnode_reqbit(&A, 0)
+                            ),
+
+                          NULL),
+                        NULL),
+        SJP_NONE),
+    },
+
+    { STOP },
+  };
+
+  RUNTESTS(tests);
+}
+
 int main(void)
 {
   test_xlate_empty_schema();
@@ -1460,6 +1506,7 @@ int main(void)
 
   test_canonify_ored_schema();
   test_canonify_propsets();
+  test_canonify_required();
 
   return report_tests();
 }

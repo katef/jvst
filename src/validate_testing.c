@@ -524,6 +524,28 @@ newcnode_required(struct arena_info *A, struct ast_string_set *sset)
 }
 
 struct jvst_cnode *
+newcnode_reqmask(struct arena_info *A, size_t nbits)
+{
+	struct jvst_cnode *node;
+
+	node = newcnode(A, JVST_CNODE_OBJ_REQMASK);
+	node->u.reqmask.nbits = nbits;
+
+	return node;
+}
+
+struct jvst_cnode *
+newcnode_reqbit(struct arena_info *A, size_t bit)
+{
+	struct jvst_cnode *node;
+
+	node = newcnode(A, JVST_CNODE_OBJ_REQBIT);
+	node->u.reqbit.bit = bit;
+
+	return node;
+}
+
+struct jvst_cnode *
 newcnode_mswitch(struct arena_info *A, struct jvst_cnode *dft, ...)
 {
 	struct jvst_cnode *node, **cpp;

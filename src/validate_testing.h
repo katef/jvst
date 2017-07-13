@@ -89,6 +89,12 @@ struct jvst_cnode *
 newcnode_required(struct arena_info *A, struct ast_string_set *sset);
 
 struct jvst_cnode *
+newcnode_reqmask(struct arena_info *A, size_t nbits);
+
+struct jvst_cnode *
+newcnode_reqbit(struct arena_info *A, size_t bit);
+
+struct jvst_cnode *
 newcnode_mswitch(struct arena_info *A, struct jvst_cnode *dft, ...);
 
 struct jvst_cnode *
