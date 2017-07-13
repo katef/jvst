@@ -619,6 +619,14 @@ and_or_xor:
 		}
 		break;
 
+	case JVST_CNODE_OBJ_REQMASK:
+		sbuf_snprintf(buf, "REQMASK(nbits=%zu)", node->u.reqmask.nbits);
+		break;
+
+	case JVST_CNODE_OBJ_REQBIT:
+		sbuf_snprintf(buf, "REQBIT(bits=%zu)", node->u.reqbit.bit);
+		break;
+
 	case JVST_CNODE_MATCH_SWITCH:
 		{
 			struct jvst_cnode *c;
@@ -1126,6 +1134,16 @@ cnode_deep_copy(struct jvst_cnode *node)
 		tree->u.arr_item = cnode_deep_copy(node->u.arr_item);
 		return tree;
 
+	case JVST_CNODE_OBJ_REQMASK:
+		tree = jvst_cnode_alloc(JVST_CNODE_OBJ_REQMASK);
+		tree->u.reqmask = node->u.reqmask;
+		return tree;
+
+	case JVST_CNODE_OBJ_REQBIT:
+		tree = jvst_cnode_alloc(JVST_CNODE_OBJ_REQBIT);
+		tree->u.reqbit = node->u.reqbit;
+		return tree;
+
 	case JVST_CNODE_MATCH_SWITCH:
 		return cnode_mswitch_copy(node);
 
@@ -1193,6 +1211,48 @@ cnode_find_type(struct jvst_cnode *node, enum jvst_cnode_type type)
 	}
 
 	return NULL;
+}
+
+// replaces REQUIRED nodes with REQMASK and REQBIT nodes
+//
+// XXX - should this be in the translation phase?
+static struct jvst_cnode *
+cnode_simplify_required(struct jvst_cnode *req)
+{
+	struct jvst_cnode *jxn, **npp, *mask, *pset;
+	struct ast_string_set *rcases;
+	size_t nbits;
+
+	assert(req->type == JVST_CNODE_OBJ_REQUIRED);
+	assert(req->u.required != NULL);
+
+	jxn = jvst_cnode_alloc(JVST_CNODE_AND);
+	npp = &jxn->u.ctrl;
+
+	mask = jvst_cnode_alloc(JVST_CNODE_OBJ_REQMASK);
+	*npp = mask;
+	npp = &(*npp)->next;
+
+	pset = jvst_cnode_alloc(JVST_CNODE_OBJ_PROP_SET);
+	*npp = pset;
+	npp = &pset->u.prop_set;
+
+	for (nbits=0, rcases = req->u.required; rcases != NULL; nbits++, rcases = rcases->next) {
+		struct jvst_cnode *pm, *reqbit;
+		pm = jvst_cnode_alloc(JVST_CNODE_OBJ_PROP_MATCH);
+		pm->u.prop_match.match.dialect = RE_LITERAL;
+		pm->u.prop_match.match.str = rcases->str;
+
+		reqbit = jvst_cnode_alloc(JVST_CNODE_OBJ_REQBIT);
+		reqbit->u.reqbit.bit = nbits;
+		pm->u.prop_match.constraint = reqbit;
+
+		*npp = pm;
+		npp = &pm->next;
+	}
+
+	mask->u.reqmask.nbits = nbits;
+	return jxn;
 }
 
 static struct jvst_cnode *
@@ -1524,6 +1584,8 @@ jvst_cnode_simplify(struct jvst_cnode *tree)
 	case JVST_CNODE_ARR_ADDITIONAL:
 	case JVST_CNODE_MATCH_SWITCH:
 	case JVST_CNODE_MATCH_CASE:
+	case JVST_CNODE_OBJ_REQMASK:
+	case JVST_CNODE_OBJ_REQBIT:
 		// TODO: basic optimization for these nodes
 		return tree;
 	}
@@ -1818,6 +1880,8 @@ jvst_cnode_canonify(struct jvst_cnode *tree)
 	case JVST_CNODE_OBJ_REQUIRED:
 	case JVST_CNODE_ARR_ITEM:
 	case JVST_CNODE_ARR_ADDITIONAL:
+	case JVST_CNODE_OBJ_REQMASK:
+	case JVST_CNODE_OBJ_REQBIT:
 	case JVST_CNODE_MATCH_SWITCH:
 	case JVST_CNODE_MATCH_CASE:
 		// TODO: basic optimization for these nodes
