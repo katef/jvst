@@ -1231,6 +1231,63 @@ cnode_simplify_andor_switches(struct jvst_cnode *top)
 	return sw;
 }
 
+static struct jvst_cnode *
+cnode_simplify_and_propsets(struct jvst_cnode *top)
+{
+	// merges any children that are PROPSET nodes into a single
+	// PROPSET that contains all of the PROP_MATCHes.
+	struct jvst_cnode *node, *psets, **pspp, **npp, **pmpp, *comb;
+	size_t npsets;
+
+	// check how many PROPSET children we have... if less than two,
+	// no simplification is necessary
+	for (npsets = 0, node = top->u.ctrl; node != NULL; node= node->next) {
+		if (node->type == JVST_CNODE_OBJ_PROP_SET) {
+			npsets++;
+		}
+	}
+
+	if (npsets < 2) {
+		return top;
+	}
+
+	// collect all PROPSET children
+	psets = NULL;
+	pspp = &psets;
+	for (npp = &top->u.ctrl; *npp != NULL; ) {
+		if ((*npp)->type != JVST_CNODE_OBJ_PROP_SET) {
+			npp = &(*npp)->next;
+			continue;
+		}
+
+		*pspp = *npp;
+		*npp = (*npp)->next;
+
+		pspp = &(*pspp)->next;
+		*pspp = NULL;
+	}
+
+	// merge all PROP_MATCH cases into one PROPSET
+	comb = jvst_cnode_alloc(JVST_CNODE_OBJ_PROP_SET);
+	pmpp = &comb->u.prop_set;
+	for (node=psets; node != NULL; node = node->next) {
+		*pmpp = node->u.prop_set;
+		for (; *pmpp != NULL; pmpp = &(*pmpp)->next) {
+			continue;
+		}
+	}
+
+	// all children are PROPSETs... return the combined PROPSET
+	if (top->u.ctrl == NULL) {
+		return comb;
+	}
+
+	// add the combined PROPSET to the AND node and return the AND
+	// node
+	*npp = comb;
+	return top;
+}
+
 void
 cnode_simplify_ctrl_children(struct jvst_cnode *top)
 {
@@ -1328,6 +1385,9 @@ cnode_simplify_andor(struct jvst_cnode *top)
 
 	cnode_simplify_ctrl_combine_like(top);
 
+	if (top->type == JVST_CNODE_AND) {
+		top = cnode_simplify_and_propsets(top);
+	}
 	return cnode_simplify_andor_switches(top);
 }
 

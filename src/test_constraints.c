@@ -986,6 +986,66 @@ static void test_simplify_ands(void)
   RUNTESTS(tests);
 }
 
+void test_simplify_propsets(void)
+{
+  struct arena_info A = {0};
+  const struct cnode_test tests[] = {
+    {
+      SIMPLIFY, NULL, 
+
+      // initial tree
+      newcnode_switch(&A, 0,
+        SJP_OBJECT_BEG, newcnode_bool(&A, JVST_CNODE_AND,
+                          newcnode_propset(&A, 
+                            newcnode_prop_match(&A, RE_NATIVE, "foo",
+                              newcnode_switch(&A, 0, SJP_NUMBER, newcnode_valid(), SJP_NONE)),
+
+                            newcnode_prop_match(&A, RE_LITERAL, "bar",
+                              newcnode_switch(&A, 0, SJP_STRING, newcnode_valid(), SJP_NONE)),
+                            NULL),
+
+                          newcnode_propset(&A, 
+                            newcnode_prop_match(&A, RE_NATIVE, "this",
+                              newcnode_switch(&A, 0,
+                                SJP_TRUE, newcnode_valid(),
+                                SJP_FALSE, newcnode_valid(),
+                                SJP_NONE)),
+
+                            newcnode_prop_match(&A, RE_LITERAL, "bar",
+                              newcnode_switch(&A, 0, SJP_NUMBER, newcnode_valid(), SJP_NONE)),
+                            NULL),
+                          NULL
+                        ),
+        SJP_NONE),
+
+      // optimized
+      newcnode_switch(&A, 0,
+        SJP_OBJECT_BEG, newcnode_propset(&A, 
+                          newcnode_prop_match(&A, RE_NATIVE, "foo",
+                            newcnode_switch(&A, 0, SJP_NUMBER, newcnode_valid(), SJP_NONE)),
+
+                          newcnode_prop_match(&A, RE_LITERAL, "bar",
+                            newcnode_switch(&A, 0, SJP_STRING, newcnode_valid(), SJP_NONE)),
+
+                          newcnode_prop_match(&A, RE_NATIVE, "this",
+                            newcnode_switch(&A, 0,
+                              SJP_TRUE, newcnode_valid(),
+                              SJP_FALSE, newcnode_valid(),
+                              SJP_NONE)),
+
+                          newcnode_prop_match(&A, RE_LITERAL, "bar",
+                            newcnode_switch(&A, 0, SJP_NUMBER, newcnode_valid(), SJP_NONE)),
+                          NULL),
+        SJP_NONE),
+
+    },
+
+    { STOP },
+  };
+
+  RUNTESTS(tests);
+}
+
 void test_simplify_ored_schema(void)
 {
   struct arena_info A = {0};
@@ -1288,7 +1348,6 @@ void test_canonify_ored_schema(void)
   RUNTESTS(tests);
 }
 
-
 void test_canonify_propsets(void)
 {
   struct arena_info A = {0};
@@ -1366,6 +1425,7 @@ int main(void)
 
   test_simplify_ands();
   test_simplify_ored_schema();
+  test_simplify_propsets();
 
   test_canonify_ored_schema();
   test_canonify_propsets();
