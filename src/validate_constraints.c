@@ -1391,6 +1391,77 @@ cnode_simplify_andor(struct jvst_cnode *top)
 	return cnode_simplify_andor_switches(top);
 }
 
+static struct jvst_cnode *
+cnode_simplify_propset(struct jvst_cnode *tree)
+{
+	struct jvst_cnode *pm;
+
+	// step 1: iterate over PROP_MATCH nodes and simplify each
+	// constraint individually
+	for (pm = tree->u.prop_set; pm != NULL; pm=pm->next) {
+		pm->u.prop_match.constraint = jvst_cnode_simplify(pm->u.prop_match.constraint);
+	}
+
+	return tree;
+}
+
+struct jvst_cnode *
+jvst_cnode_simplify(struct jvst_cnode *tree)
+{
+	struct jvst_cnode *node;
+
+	// make a copy
+	tree = cnode_deep_copy(tree);
+
+	switch (tree->type) {
+	case JVST_CNODE_INVALID:
+	case JVST_CNODE_VALID:
+	case JVST_CNODE_NUM_INTEGER:
+	case JVST_CNODE_ARR_UNIQUE:
+		return tree;
+
+	case JVST_CNODE_AND:
+	case JVST_CNODE_OR:
+		return cnode_simplify_andor(tree);
+
+	case JVST_CNODE_XOR:
+		// TODO: basic optimization for XOR
+		return tree;
+
+	case JVST_CNODE_NOT:
+		// TODO: basic optimizations for NOT
+		return tree;
+
+	case JVST_CNODE_SWITCH:
+		{
+			size_t i, n;
+			for (i = 0, n = ARRAYLEN(tree->u.sw); i < n; i++) {
+				tree->u.sw[i] = jvst_cnode_simplify(tree->u.sw[i]);
+			}
+		}
+		return tree;
+
+	case JVST_CNODE_OBJ_PROP_SET:
+		return cnode_simplify_propset(tree);
+
+	case JVST_CNODE_NUM_RANGE:
+	case JVST_CNODE_COUNT_RANGE:
+	case JVST_CNODE_STR_MATCH:
+	case JVST_CNODE_OBJ_PROP_MATCH:
+	case JVST_CNODE_OBJ_REQUIRED:
+	case JVST_CNODE_ARR_ITEM:
+	case JVST_CNODE_ARR_ADDITIONAL:
+	case JVST_CNODE_MATCH_SWITCH:
+	case JVST_CNODE_MATCH_CASE:
+		// TODO: basic optimization for these nodes
+		return tree;
+	}
+
+	// avoid default case in switch so the compiler can complain if
+	// we add new cnode types
+	SHOULD_NOT_REACH();
+}
+
 struct json_str_iter {
 	struct json_string str;
 	size_t off;
@@ -1507,77 +1578,6 @@ mcase_collector(const struct fsm *dfa, const struct fsm_state *st)
 	mcase_collector_head = &node->next;
 
 	return 1;
-}
-
-static struct jvst_cnode *
-cnode_simplify_propset(struct jvst_cnode *tree)
-{
-	struct jvst_cnode *pm;
-
-	// step 1: iterate over PROP_MATCH nodes and simplify each
-	// constraint individually
-	for (pm = tree->u.prop_set; pm != NULL; pm=pm->next) {
-		pm->u.prop_match.constraint = jvst_cnode_simplify(pm->u.prop_match.constraint);
-	}
-
-	return tree;
-}
-
-struct jvst_cnode *
-jvst_cnode_simplify(struct jvst_cnode *tree)
-{
-	struct jvst_cnode *node;
-
-	// make a copy
-	tree = cnode_deep_copy(tree);
-
-	switch (tree->type) {
-	case JVST_CNODE_INVALID:
-	case JVST_CNODE_VALID:
-	case JVST_CNODE_NUM_INTEGER:
-	case JVST_CNODE_ARR_UNIQUE:
-		return tree;
-
-	case JVST_CNODE_AND:
-	case JVST_CNODE_OR:
-		return cnode_simplify_andor(tree);
-
-	case JVST_CNODE_XOR:
-		// TODO: basic optimization for XOR
-		return tree;
-
-	case JVST_CNODE_NOT:
-		// TODO: basic optimizations for NOT
-		return tree;
-
-	case JVST_CNODE_SWITCH:
-		{
-			size_t i, n;
-			for (i = 0, n = ARRAYLEN(tree->u.sw); i < n; i++) {
-				tree->u.sw[i] = jvst_cnode_simplify(tree->u.sw[i]);
-			}
-		}
-		return tree;
-
-	case JVST_CNODE_OBJ_PROP_SET:
-		return cnode_simplify_propset(tree);
-
-	case JVST_CNODE_NUM_RANGE:
-	case JVST_CNODE_COUNT_RANGE:
-	case JVST_CNODE_STR_MATCH:
-	case JVST_CNODE_OBJ_PROP_MATCH:
-	case JVST_CNODE_OBJ_REQUIRED:
-	case JVST_CNODE_ARR_ITEM:
-	case JVST_CNODE_ARR_ADDITIONAL:
-	case JVST_CNODE_MATCH_SWITCH:
-	case JVST_CNODE_MATCH_CASE:
-		// TODO: basic optimization for these nodes
-		return tree;
-	}
-
-	// avoid default case in switch so the compiler can complain if
-	// we add new cnode types
-	SHOULD_NOT_REACH();
 }
 
 static struct jvst_cnode *
