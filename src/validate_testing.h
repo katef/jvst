@@ -138,10 +138,16 @@ struct jvst_ir_stmt *
 newir_matcher(struct arena_info *A, size_t ind, const char *name);
 
 struct jvst_ir_stmt *
+newir_bitvec(struct arena_info *A, size_t ind, const char *label, size_t nbits);
+
+struct jvst_ir_stmt *
 newir_match(struct arena_info *A, size_t ind, ...);
 
 struct jvst_ir_stmt *
 newir_incr(struct arena_info *A, size_t ind, const char *label);
+
+struct jvst_ir_stmt *
+newir_bitop(struct arena_info *A, enum jvst_ir_stmt_type op, size_t ind, const char *label, size_t bit);
 
 struct jvst_ir_mcase *
 newir_case(struct arena_info *A, size_t ind, struct jvst_cnode_matchset *mset, struct jvst_ir_stmt *frame);
@@ -165,6 +171,9 @@ newir_size(struct arena_info *A, size_t sz);
 
 struct jvst_ir_expr *
 newir_count(struct arena_info *A, size_t ind, const char *label);
+
+struct jvst_ir_expr *
+newir_btestall(struct arena_info *A, size_t ind, const char *label);
 
 const char *
 jvst_ret2name(int ret);

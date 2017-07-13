@@ -60,6 +60,7 @@ enum jvst_ir_expr_type {
 
 	JVST_IR_EXPR_COUNT, 		// counter value.  args: index; result: size
 	JVST_IR_EXPR_BTEST,		// tests if a bit is set.  args: (bvec<index>,bit<index>); result: bool
+	JVST_IR_EXPR_BTESTALL,		// true if all bits in the bit vector are set.  args(bvec<index>), result: bool
 
 	JVST_IR_EXPR_ISTOK,		// tests curernt token type.  args: tok_type; result: bool
 
@@ -92,6 +93,7 @@ enum jvst_invalid_code {
 	JVST_INVALID_NUMBER           = 0x0003,
 	JVST_INVALID_TOO_FEW_PROPS    = 0x0004,
 	JVST_INVALID_TOO_MANY_PROPS   = 0x0005,
+	JVST_INVALID_MISSING_REQUIRED_PROPERTIES = 0x0006,
 };
 
 const char *
@@ -110,10 +112,12 @@ struct jvst_ir_mcase {
 struct jvst_ir_frame {
 	struct jvst_ir_stmt *counters;
 	struct jvst_ir_stmt *matchers;
+	struct jvst_ir_stmt *bitvecs;
 	struct jvst_ir_stmt *stmts;
 	size_t nloops;
 	size_t nmatchers;
 	size_t ncounters;
+	size_t nbitvecs;
 };
 
 struct jvst_ir_stmt {
@@ -170,10 +174,18 @@ struct jvst_ir_stmt {
 		} matcher;
 
 		struct {
-			struct jvst_ir_label *label;
-			struct jvst_ir_frame *frame;
+			struct jvst_ir_stmt *frame;
+			const char *label;
 			size_t ind;
-		} bitvector;
+			size_t nbits;
+		} bitvec;
+
+		struct {
+			struct jvst_ir_stmt *frame;
+			const char *label;
+			size_t ind;
+			size_t bit;
+		} bitop;
 
 		size_t index;
 

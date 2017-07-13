@@ -372,11 +372,18 @@ jvst_cnode_type_name(enum jvst_cnode_type type)
 		return "ARR_ADDITIONAL";
 	case JVST_CNODE_ARR_UNIQUE:
 		return "ARR_UNIQUE";
-
-	default:
-		fprintf(stderr, "unknown cnode type %d\n", type);
-		abort();
+	case JVST_CNODE_OBJ_REQMASK:
+		return "OBJ_REQMASK";
+	case JVST_CNODE_OBJ_REQBIT:
+		return "OBJ_REQBIT";
+	case JVST_CNODE_MATCH_SWITCH:
+		return "MATCH_SWITCH";
+	case JVST_CNODE_MATCH_CASE:
+		return "MATCH_CASE";
 	}
+
+	fprintf(stderr, "unknown cnode type %d\n", type);
+	abort();
 }
 
 void

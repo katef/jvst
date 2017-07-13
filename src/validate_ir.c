@@ -46,9 +46,11 @@ jvst_invalid_msg(enum jvst_invalid_code code)
 	case JVST_INVALID_TOO_MANY_PROPS:
 		return "too many properties";
 
-	default:
-		return "Unknown error";
+	case JVST_INVALID_MISSING_REQUIRED_PROPERTIES:
+		return "missing required properties";
 	}
+
+	return "Unknown error";
 }
 
 enum {
@@ -210,6 +212,28 @@ ir_stmt_counter(struct jvst_ir_stmt *frame, const char *label)
 	frame->u.frame.counters = counter;
 
 	return counter;
+}
+
+static inline struct jvst_ir_stmt *
+ir_stmt_bitvec(struct jvst_ir_stmt *frame, const char *label, size_t nbits)
+{
+	struct jvst_ir_stmt *bitvec;
+
+	assert(label != NULL);
+	assert(frame != NULL);
+	assert(frame->type == JVST_IR_STMT_FRAME);
+
+	bitvec = ir_stmt_new(JVST_IR_STMT_BITVECTOR);
+
+	bitvec->u.bitvec.label = label;
+	bitvec->u.bitvec.ind   = frame->u.frame.nbitvecs++;
+	bitvec->u.bitvec.frame = frame;
+	bitvec->u.bitvec.nbits = nbits;
+
+	bitvec->next = frame->u.frame.bitvecs;
+	frame->u.frame.bitvecs = bitvec;
+
+	return bitvec;
 }
 
 static inline struct jvst_ir_stmt *
@@ -375,6 +399,7 @@ ir_expr_op(enum jvst_ir_expr_type op,
 	case JVST_IR_EXPR_TOK_LEN:
 	case JVST_IR_EXPR_COUNT:
 	case JVST_IR_EXPR_BTEST:
+	case JVST_IR_EXPR_BTESTALL:
 	case JVST_IR_EXPR_ISTOK:
 	case JVST_IR_EXPR_ISINT:
 	case JVST_IR_EXPR_NOT:
@@ -546,6 +571,9 @@ jvst_ir_expr_type_name(enum jvst_ir_expr_type type)
 
 	case JVST_IR_EXPR_BTEST:
 		return "BTEST";
+
+	case JVST_IR_EXPR_BTESTALL:
+		return "BTESTALL";
 
 	case JVST_IR_EXPR_ISTOK:
 		return "ISTOK";
@@ -731,8 +759,19 @@ jvst_ir_dump_expr(struct sbuf *buf, struct jvst_ir_expr *expr, int indent)
 		break;
 
 	case JVST_IR_EXPR_BTEST:
-		fprintf(stderr, "IR expression %s not yet implemented\n", jvst_ir_expr_type_name(expr->type));
-		abort();
+		sbuf_snprintf(buf, "BTEST(%zu, \"%s_%zu\", bit=%zu)",
+			expr->u.btest.ind,
+			expr->u.btest.label,
+			expr->u.btest.ind,
+			expr->u.btest.bit_index);
+		break;
+
+	case JVST_IR_EXPR_BTESTALL:
+		sbuf_snprintf(buf, "BTESTALL(%zu, \"%s_%zu\")",
+			expr->u.btest.ind,
+			expr->u.btest.label,
+			expr->u.btest.ind);
+		break;
 
 	default:
 		fprintf(stderr, "unknown IR expression type %d\n", expr->type);
@@ -788,6 +827,14 @@ jvst_ir_dump_inner(struct sbuf *buf, struct jvst_ir_stmt *ir, int indent)
 				sbuf_indent(buf, indent+2);
 				sbuf_snprintf(buf, "MATCHERS[\n");
 				dump_stmt_list_inner(buf, ir->u.frame.matchers, indent+2);
+				sbuf_indent(buf, indent+2);
+				sbuf_snprintf(buf, "],\n");
+			}
+
+			if (ir->u.frame.bitvecs) {
+				sbuf_indent(buf, indent+2);
+				sbuf_snprintf(buf, "BITVECS[\n");
+				dump_stmt_list_inner(buf, ir->u.frame.bitvecs, indent+2);
 				sbuf_indent(buf, indent+2);
 				sbuf_snprintf(buf, "],\n");
 			}
@@ -892,12 +939,24 @@ jvst_ir_dump_inner(struct sbuf *buf, struct jvst_ir_stmt *ir, int indent)
 			ir->u.counter_op.ind);
 		break;
 
+	case JVST_IR_STMT_BSET:
+	case JVST_IR_STMT_BCLEAR:
+		sbuf_snprintf(buf, "%s(%zu, \"%s_%zu\", bit=%zu)",
+			jvst_ir_stmt_type_name(ir->type),
+			ir->u.bitop.ind,
+			ir->u.bitop.label,
+			ir->u.bitop.ind,
+			ir->u.bitop.bit);
+		break;
+
 	case JVST_IR_STMT_BITVECTOR:		
-	case JVST_IR_STMT_BSET:		
-	case JVST_IR_STMT_BCLEAR:		
-		fprintf(stderr, "%s:%d  IR statement %s not yet implemented\n",
-			__FILE__, __LINE__, jvst_ir_stmt_type_name(ir->type));
-		abort();
+		sbuf_snprintf(buf, "%s(%zu, \"%s_%zu\", nbits=%zu)",
+			jvst_ir_stmt_type_name(ir->type),
+			ir->u.bitvec.ind,
+			ir->u.bitvec.label,
+			ir->u.bitvec.ind,
+			ir->u.bitvec.nbits);
+		break;
 
 	default:
 		fprintf(stderr, "unknown IR statement type %d\n", ir->type);
@@ -1095,8 +1154,69 @@ static void merge_constraints(struct set *orig, struct fsm *dfa, struct fsm_stat
 
 #define UNASSIGNED_MATCH  (~(size_t)0)
 
+struct ir_object_builder {
+	struct jvst_ir_stmt *frame;
+	struct jvst_ir_stmt *oloop;
+	struct jvst_ir_stmt *match;
+	struct jvst_ir_stmt **pre_loop;
+	struct jvst_ir_stmt **post_loop;
+	struct jvst_ir_stmt **pre_match;
+	struct jvst_ir_stmt **post_match;
+	struct jvst_ir_mcase **mcpp;
+	struct jvst_ir_stmt *reqmask;
+	struct fsm *matcher;
+};
+
+static struct jvst_ir_stmt *
+obj_mcase_translate_inner(struct jvst_cnode *ctree, struct ir_object_builder *builder)
+{
+	(void)builder;
+
+	switch (ctree->type) {
+	case JVST_CNODE_OBJ_REQBIT:
+		{
+			struct jvst_ir_stmt *setbit;
+
+			assert(builder->reqmask != NULL);
+
+			setbit = ir_stmt_new(JVST_IR_STMT_BSET);
+			setbit->u.bitop.frame = builder->reqmask->u.bitvec.frame;
+			setbit->u.bitop.label = builder->reqmask->u.bitvec.label;
+			setbit->u.bitop.ind   = builder->reqmask->u.bitvec.ind;
+			setbit->u.bitop.bit   = ctree->u.reqbit.bit;
+
+			return setbit;
+		}
+
+	default:
+		return jvst_ir_translate(ctree);
+	}
+}
+
+static struct jvst_ir_stmt *
+obj_mcase_translate(struct jvst_cnode *ctree, struct ir_object_builder *builder)
+{
+	struct jvst_ir_stmt *stmt, **spp;
+	struct jvst_cnode *n;
+
+	if (ctree->type != JVST_CNODE_AND) {
+		return obj_mcase_translate_inner(ctree,builder);
+	}
+
+	stmt = ir_stmt_new(JVST_IR_STMT_SEQ);
+	spp = &stmt->u.stmt_list;
+	for(n=ctree->u.ctrl; n != NULL; n=n->next) {
+		*spp = obj_mcase_translate_inner(n,builder);
+		spp = &(*spp)->next;
+	}
+
+	return stmt;
+}
+
+static struct ir_object_builder *obj_mcase_builder_state;
+
 static int
-mcase_builder(const struct fsm *dfa, const struct fsm_state *st)
+obj_mcase_builder(const struct fsm *dfa, const struct fsm_state *st)
 {
 	struct jvst_cnode *node;
 	struct jvst_ir_mcase *mcase;
@@ -1110,7 +1230,7 @@ mcase_builder(const struct fsm *dfa, const struct fsm_state *st)
 	assert(node->type == JVST_CNODE_MATCH_CASE);
 	assert(node->u.mcase.tmp == NULL);
 
-	stmt = jvst_ir_translate(node->u.mcase.constraint);
+	stmt = obj_mcase_translate(node->u.mcase.constraint, obj_mcase_builder_state);
 	mcase = ir_mcase_new(UNASSIGNED_MATCH, stmt);
 	mcase->matchset = node->u.mcase.matchset;
 
@@ -1119,18 +1239,6 @@ mcase_builder(const struct fsm *dfa, const struct fsm_state *st)
 
 	return 1;
 }
-
-struct ir_object_builder {
-	struct jvst_ir_stmt *frame;
-	struct jvst_ir_stmt *oloop;
-	struct jvst_ir_stmt *match;
-	struct jvst_ir_stmt **pre_loop;
-	struct jvst_ir_stmt **post_loop;
-	struct jvst_ir_stmt **pre_match;
-	struct jvst_ir_stmt **post_match;
-	struct jvst_ir_mcase **mcpp;
-	struct fsm *matcher;
-};
 
 struct jvst_ir_stmt *
 obj_default_case(void)
@@ -1156,12 +1264,14 @@ ir_translate_obj_inner(struct jvst_cnode *top, struct ir_object_builder *builder
 		// various cases...
 		fprintf(stderr, "top node should not be VALID or INVALID\n");
 		abort();
-		break;
+		return;
 
+	case JVST_CNODE_OBJ_REQUIRED:
 	case JVST_CNODE_OBJ_PROP_SET:
-		fprintf(stderr, "simplified cnode trees should not have PROP_SET nodes\n");
+		fprintf(stderr, "canonified cnode trees should not have %s nodes\n",
+			jvst_cnode_type_name(top->type));
 		abort();
-		break;
+		return;
 
 	case JVST_CNODE_MATCH_SWITCH:
 		{
@@ -1173,7 +1283,9 @@ ir_translate_obj_inner(struct jvst_cnode *top, struct ir_object_builder *builder
 			builder->matcher = fsm_clone(top->u.mswitch.dfa);
 
 			// replace MATCH_CASE opaque entries in copy with jvst_ir_mcase nodes
-			fsm_all(builder->matcher, mcase_builder);
+			obj_mcase_builder_state = builder;
+			fsm_all(builder->matcher, obj_mcase_builder);
+			obj_mcase_builder_state = NULL;
 
 			// assemble jvst_ir_mcase nodes into list for an MATCH_SWITCH node and number the cases
 			which = 0;
@@ -1205,7 +1317,7 @@ ir_translate_obj_inner(struct jvst_cnode *top, struct ir_object_builder *builder
 			builder->match->u.match.name = matcher_stmt->u.matcher.name;
 			builder->match->u.match.ind  = matcher_stmt->u.matcher.ind;
 		}
-		break;
+		return;
 
 	case JVST_CNODE_COUNT_RANGE:
 		{
@@ -1250,7 +1362,39 @@ ir_translate_obj_inner(struct jvst_cnode *top, struct ir_object_builder *builder
 
 			builder->post_loop = checkpp;
 		}
-		break;
+		return;
+
+	case JVST_CNODE_OBJ_REQMASK:
+		{
+			struct jvst_ir_stmt *bitvec, **checkpp;
+			struct jvst_ir_expr *allbits;
+
+			// cnode simplification should ensure that we
+			// have only one reqmask per object!
+			assert(builder->reqmask == NULL);
+
+			// 1. allocate bitvector
+			bitvec = ir_stmt_bitvec(builder->frame, "reqmask", top->u.reqmask.nbits);
+			builder->reqmask = bitvec;
+
+			// 2. post-loop check that all bits of bitvector
+			//    are set
+
+			allbits = ir_expr_new(JVST_IR_EXPR_BTESTALL);
+			allbits->u.btest.frame = bitvec->u.bitvec.frame;
+			allbits->u.btest.label = bitvec->u.bitvec.label;
+			allbits->u.btest.ind   = bitvec->u.bitvec.ind;
+			allbits->u.btest.bit_index = 0;
+
+			checkpp = builder->post_loop;
+			*checkpp = ir_stmt_if(allbits,
+					NULL,
+					ir_stmt_invalid(JVST_INVALID_MISSING_REQUIRED_PROPERTIES));
+			checkpp = &(*checkpp)->u.if_.br_true;
+
+			builder->post_loop = checkpp;
+		}
+		return;
 
 	case JVST_CNODE_AND:
 		{
@@ -1259,9 +1403,8 @@ ir_translate_obj_inner(struct jvst_cnode *top, struct ir_object_builder *builder
 				ir_translate_obj_inner(n, builder);
 			}
 		}
-		break;
+		return;
 
-	case JVST_CNODE_OBJ_REQUIRED:
 	case JVST_CNODE_OR:
 	case JVST_CNODE_NOT:
 	case JVST_CNODE_XOR:
@@ -1269,14 +1412,32 @@ ir_translate_obj_inner(struct jvst_cnode *top, struct ir_object_builder *builder
 				__FILE__, __LINE__, 
 				jvst_cnode_type_name(top->type));
 		abort();
+		return;
 
-	default:
+	case JVST_CNODE_SWITCH:
+	case JVST_CNODE_OBJ_PROP_MATCH:
+	case JVST_CNODE_MATCH_CASE:
+	case JVST_CNODE_OBJ_REQBIT:
+		fprintf(stderr, "[%s:%d] invalid cnode type %s: should not be at the top-level of an OBJECT\n",
+				__FILE__, __LINE__, 
+				jvst_cnode_type_name(top->type));
+		abort();
+
+	case JVST_CNODE_ARR_ITEM:
+	case JVST_CNODE_ARR_ADDITIONAL:
+	case JVST_CNODE_ARR_UNIQUE:
+	case JVST_CNODE_STR_MATCH:
+	case JVST_CNODE_NUM_RANGE:
+	case JVST_CNODE_NUM_INTEGER:
 		fprintf(stderr, "[%s:%d] invalid cnode type %s for OBJECT\n",
 				__FILE__, __LINE__, 
 				jvst_cnode_type_name(top->type));
 		abort();
 	}
 
+	fprintf(stderr, "[%s:%d] unknown cnode type %d\n",
+			__FILE__, __LINE__, top->type);
+	abort();
 }
 
 static struct jvst_ir_stmt *
@@ -1379,7 +1540,8 @@ jvst_ir_translate(struct jvst_cnode *ctree)
 	size_t i;
 
 	if (ctree->type != JVST_CNODE_SWITCH) {
-		fprintf(stderr, "translation must start at a SWITCH node\n");
+		fprintf(stderr, "%s:%d translation must start at a SWITCH node\n",
+			__FILE__, __LINE__);
 		abort();
 	}
 

@@ -699,7 +699,7 @@ static void ir_stmt_list(struct jvst_ir_stmt **spp, va_list args)
 struct jvst_ir_stmt *
 newir_frame(struct arena_info *A, ...)
 {
-	struct jvst_ir_stmt *fr, **spp, **mpp, **cpp;
+	struct jvst_ir_stmt *fr, **spp, **mpp, **cpp, **bvpp;
 	va_list args;
 
 	fr = newir_stmt(A,JVST_IR_STMT_FRAME);
@@ -710,6 +710,7 @@ newir_frame(struct arena_info *A, ...)
 	// filter out initial counters and matchers
 	cpp = &fr->u.frame.counters;
 	mpp = &fr->u.frame.matchers;
+	bvpp = &fr->u.frame.bitvecs;
 	spp = &fr->u.frame.stmts;
 
 	while (*spp != NULL) {
@@ -729,6 +730,14 @@ newir_frame(struct arena_info *A, ...)
 
 			mpp = &(*mpp)->next;
 			*mpp = NULL;
+			break;
+
+		case JVST_IR_STMT_BITVECTOR:
+			*bvpp = *spp;
+			*spp = (*spp)->next;
+
+			bvpp = &(*bvpp)->next;
+			*bvpp = NULL;
 			break;
 
 		default:
@@ -822,6 +831,19 @@ newir_matcher(struct arena_info *A, size_t ind, const char *name)
 }
 
 struct jvst_ir_stmt *
+newir_bitvec(struct arena_info *A, size_t ind, const char *label, size_t nbits)
+{
+	struct jvst_ir_stmt *stmt;
+
+	stmt = newir_stmt(A,JVST_IR_STMT_BITVECTOR);
+	stmt->u.bitvec.ind = ind;
+	stmt->u.bitvec.label = label;
+	stmt->u.bitvec.nbits = nbits;
+
+	return stmt;
+}
+
+struct jvst_ir_stmt *
 newir_match(struct arena_info *A, size_t ind, ...)
 {
 	struct jvst_ir_stmt *stmt;
@@ -861,6 +883,21 @@ newir_incr(struct arena_info *A, size_t ind, const char *label)
 	stmt = newir_stmt(A,JVST_IR_STMT_INCR);
 	stmt->u.counter_op.ind = ind;
 	stmt->u.counter_op.label = label;
+
+	return stmt;
+}
+
+struct jvst_ir_stmt *
+newir_bitop(struct arena_info *A, enum jvst_ir_stmt_type op, size_t ind, const char *label, size_t bit)
+{
+	struct jvst_ir_stmt *stmt;
+
+	assert((op == JVST_IR_STMT_BSET) || (op == JVST_IR_STMT_BCLEAR));
+
+	stmt = newir_stmt(A,op);
+	stmt->u.bitop.label = label;
+	stmt->u.bitop.ind = ind;
+	stmt->u.bitop.bit = bit;
 
 	return stmt;
 }
@@ -934,6 +971,17 @@ newir_count(struct arena_info *A, size_t ind, const char *label)
 }
 
 struct jvst_ir_expr *
+newir_btestall(struct arena_info *A, size_t ind, const char *label)
+{
+	struct jvst_ir_expr *expr;
+	expr = newir_expr(A,JVST_IR_EXPR_BTESTALL);
+	expr->u.btest.label = label;
+	expr->u.btest.ind = ind;
+	expr->u.btest.bit_index = 0;
+	return expr;
+}
+
+struct jvst_ir_expr *
 newir_op(struct arena_info *A, enum jvst_ir_expr_type op,
 		struct jvst_ir_expr *left,
 		struct jvst_ir_expr *right)
@@ -969,6 +1017,7 @@ newir_op(struct arena_info *A, enum jvst_ir_expr_type op,
 	case JVST_IR_EXPR_TOK_LEN:
 	case JVST_IR_EXPR_COUNT:
 	case JVST_IR_EXPR_BTEST:
+	case JVST_IR_EXPR_BTESTALL:
 	case JVST_IR_EXPR_ISTOK:
 	case JVST_IR_EXPR_ISINT:
 	case JVST_IR_EXPR_NOT:
