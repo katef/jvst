@@ -18,14 +18,15 @@ static int ir_trees_equal(const char *fname, struct jvst_ir_stmt *n1, struct jvs
 
 static int run_test(const char *fname, const struct ir_test *t)
 {
-  struct jvst_cnode *opt;
+  struct jvst_cnode *simplified, *canonified;
   struct jvst_ir_stmt *result;
 
   assert(t->ctree != NULL);
   assert(t->ir != NULL);
 
-  opt = jvst_cnode_optimize(t->ctree);
-  result = jvst_ir_translate(opt);
+  simplified = jvst_cnode_simplify(t->ctree);
+  canonified = jvst_cnode_canonify(simplified);
+  result = jvst_ir_translate(canonified);
 
   return ir_trees_equal(fname, result, t->ir);
 }
@@ -171,7 +172,7 @@ static void runtests(const char *testname, const struct ir_test tests[])
     ntest++;
 
     if (!run_test(testname, &tests[i])) {
-      printf("%s_%d: failed\n", testname, i+1);
+      printf("%s[%d]: failed\n", testname, i+1);
       nfail++;
     }
   }
@@ -850,13 +851,130 @@ void test_ir_minproperties_2(void)
   RUNTESTS(tests);
 }
 
+void test_ir_required(void)
+{
+  struct arena_info A = {0};
+
+  // initial schema is not reduced (additional constraints are ANDed
+  // together).  Reduction will occur on a later pass.
+  const struct ir_test tests[] = {
+    {
+      // schema:
+      // {
+      //   "properties" : {
+      //     "foo" : { "type" : "number" },
+      //     "foo" : { "type" : "string" }
+      //   },
+      //   "required" : [ "foo" ]
+      // }
+      newcnode_switch(&A, 1,
+        SJP_OBJECT_BEG, newcnode_bool(&A,JVST_CNODE_AND,
+                          newcnode_required(&A, stringset(&A, "foo", NULL)),
+                          newcnode_propset(&A,
+                            newcnode_prop_match(&A, RE_LITERAL, "foo",
+                              newcnode_switch(&A, 0,
+                                SJP_NUMBER, newcnode_valid(),
+                                SJP_NONE)),
+                            newcnode_prop_match(&A, RE_LITERAL, "bar",
+                              newcnode_switch(&A, 0,
+                                SJP_STRING, newcnode_valid(),
+                                SJP_NONE)),
+                            NULL),
+                          NULL),
+        SJP_NONE),
+
+      newir_frame(&A,
+          newir_bitvec(&A, 0, "reqmask", 1),
+          newir_matcher(&A, 0, "dfa"),
+          newir_stmt(&A, JVST_IR_STMT_TOKEN),
+          newir_if(&A, newir_istok(&A, SJP_OBJECT_BEG),
+            newir_seq(&A,
+              newir_loop(&A, "L_OBJ", 0,
+                newir_stmt(&A, JVST_IR_STMT_TOKEN),
+                newir_if(&A, newir_istok(&A, SJP_OBJECT_END),
+                  newir_break(&A, "L_OBJ", 0),
+                  newir_seq(&A,                                 // unnecessary SEQ should be removed in the future
+                    newir_match(&A, 0,
+                      // no match
+                      newir_case(&A, 0, 
+                        NULL,
+                        newir_frame(&A,
+                          newir_stmt(&A, JVST_IR_STMT_TOKEN),
+                          newir_stmt(&A, JVST_IR_STMT_VALID),
+                          NULL
+                        )
+                      ),
+
+                      // match "bar"
+                      newir_case(&A, 1,
+                        newmatchset(&A, RE_LITERAL,  "bar", -1),
+                        newir_frame(&A,
+                          newir_stmt(&A, JVST_IR_STMT_TOKEN),
+                          newir_if(&A, newir_istok(&A, SJP_STRING),
+                            newir_stmt(&A, JVST_IR_STMT_VALID),
+                            newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token")
+                          ),
+                          NULL
+                        )
+                      ),
+
+                      // match "foo"
+                      newir_case(&A, 2,
+                        newmatchset(&A, RE_LITERAL,  "foo", RE_LITERAL, "foo", -1),
+                        newir_seq(&A,
+                          newir_frame(&A,
+                            newir_stmt(&A, JVST_IR_STMT_TOKEN),
+                            newir_if(&A, newir_istok(&A, SJP_NUMBER),
+                              newir_stmt(&A, JVST_IR_STMT_VALID),
+                              newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token")
+                            ),
+                            NULL
+                          ),
+                          newir_bitop(&A, JVST_IR_STMT_BSET, 0, "reqmask", 0),
+                          NULL
+                        )
+                      ),
+
+                      NULL
+                    ),
+                    NULL
+                  )
+                ),
+                NULL
+              ),
+              newir_if(&A,
+                  newir_btestall(&A, 0, "reqmask"),
+                  newir_stmt(&A, JVST_IR_STMT_VALID),
+                  newir_invalid(&A, JVST_INVALID_MISSING_REQUIRED_PROPERTIES,
+                    "missing required properties")
+              ),
+              NULL
+            ),
+
+            newir_if(&A, newir_istok(&A, SJP_OBJECT_END),
+              newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token"),
+              newir_if(&A, newir_istok(&A, SJP_ARRAY_END),
+                newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token"),
+                newir_stmt(&A, JVST_IR_STMT_VALID)
+              )
+            )
+          ),
+          NULL
+      )
+    },
+
+    { NULL },
+  };
+
+  RUNTESTS(tests);
+}
+
 /* incomplete tests... placeholders for conversion from cnode tests */
 static void test_ir_minproperties_3(void);
 static void test_ir_maxproperties_1(void);
 static void test_ir_maxproperties_2(void);
 static void test_ir_minmax_properties_2(void);
 
-static void test_ir_required(void);
 static void test_ir_dependencies(void);
 
 static void test_ir_anyof_allof_oneof_1(void);
@@ -878,13 +996,14 @@ int main(void)
   test_ir_minmax_properties_1();
   test_ir_minproperties_2();
 
+  test_ir_required();
+
   /* incomplete tests... placeholders for conversion from cnode tests */
   test_ir_minproperties_3();
   test_ir_maxproperties_1();
   test_ir_maxproperties_2();
   test_ir_minmax_properties_2();
 
-  test_ir_required();
   test_ir_dependencies();
 
   test_ir_anyof_allof_oneof_1();
@@ -1056,41 +1175,6 @@ void test_ir_minmax_properties_2(void)
         SJP_NONE),
 
       NULL
-    },
-
-    { NULL },
-  };
-
-  UNIMPLEMENTED(tests);
-}
-
-void test_ir_required(void)
-{
-  struct arena_info A = {0};
-  struct ast_schema *schema = newschema_p(&A, 0,
-      "properties", newprops(&A,
-        "foo", empty_schema(),
-        "bar", empty_schema(),
-        NULL),
-      "required", stringset(&A, "foo", NULL),
-      NULL);
-
-  // initial schema is not reduced (additional constraints are ANDed
-  // together).  Reduction will occur on a later pass.
-  const struct ir_test tests[] = {
-    {
-      newcnode_switch(&A, 1,
-        SJP_OBJECT_BEG, newcnode_bool(&A,JVST_CNODE_AND,
-                          newcnode_required(&A, stringset(&A, "foo", NULL)),
-                          newcnode_bool(&A,JVST_CNODE_AND,
-                            newcnode_propset(&A,
-                              newcnode_prop_match(&A, RE_LITERAL, "foo", newcnode_switch(&A, 1, SJP_NONE)),
-                              newcnode_prop_match(&A, RE_LITERAL, "bar", newcnode_switch(&A, 1, SJP_NONE)),
-                              NULL),
-                            newcnode_valid(),
-                            NULL),
-                          NULL),
-        SJP_NONE),
     },
 
     { NULL },
