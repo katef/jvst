@@ -8,6 +8,7 @@ TEST_PROG += test_ir
 TEST_SRC += tests/test_validation.c
 TEST_SRC += tests/test_constraints.c
 TEST_SRC += tests/test_ir.c
+TEST_SRC += tests/validate_testing.c
 
 SRC += ${TEST_SRC}
 
@@ -24,7 +25,7 @@ DFLAGS.${src} += ${CFLAGS.libre} ${CFLAGS.libfsm}
 
 # All the .o files that the tests depend on
 TEST_DEP_OBJS = 
-.for src in ${SRC:Msrc/*.c:Nsrc/main.c:Nsrc/parser.c}
+.for src in ${SRC:Msrc/*.c:Nsrc/main.c:Nsrc/parser.c} ${TEST_SRC:Ntests/test_*.c}
 TEST_DEP_OBJS += ${BUILD}/${src:R}.o
 .endfor
 

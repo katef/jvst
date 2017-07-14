@@ -30,7 +30,7 @@ ${BUILD}/bin/jvst: ${BUILD}/${src:R}.o
 VALID_SRC += src/validate_sbuf.c
 VALID_SRC += src/validate.c
 VALID_SRC += src/validate_constraints.c
-VALID_SRC += src/validate_testing.c
+# VALID_SRC += src/validate_testing.c
 VALID_SRC += src/validate_ir.c
 VALID_SRC += src/sjp_parser.c
 VALID_SRC += src/sjp_testing.c
