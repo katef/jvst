@@ -982,6 +982,26 @@ newir_btestall(struct arena_info *A, size_t ind, const char *label)
 }
 
 struct jvst_ir_expr *
+newir_split(struct arena_info *A, ...)
+{
+	struct jvst_ir_expr *expr;
+	struct jvst_ir_stmt **spp, *fr;
+	va_list args;
+
+	expr = newir_expr(A,JVST_IR_EXPR_SPLIT);
+	spp = &expr->u.split.frames;
+
+	va_start(args, A);
+	while (fr = va_arg(args, struct jvst_ir_stmt *), fr != NULL) {
+		*spp = fr;
+		spp = &(*spp)->next;
+	}
+	va_end(args);
+
+	return expr;
+}
+
+struct jvst_ir_expr *
 newir_op(struct arena_info *A, enum jvst_ir_expr_type op,
 		struct jvst_ir_expr *left,
 		struct jvst_ir_expr *right)

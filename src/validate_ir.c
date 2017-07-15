@@ -48,6 +48,12 @@ jvst_invalid_msg(enum jvst_invalid_code code)
 
 	case JVST_INVALID_MISSING_REQUIRED_PROPERTIES:
 		return "missing required properties";
+
+	case JVST_INVALID_SPLIT_CONDITION:
+		return "invalid split condition";
+
+	case JVST_INVALID_BAD_PROPERTY_NAME:
+		return "bad property name";
 	}
 
 	return "Unknown error";
@@ -1188,6 +1194,13 @@ obj_mcase_translate_inner(struct jvst_cnode *ctree, struct ir_object_builder *bu
 			return setbit;
 		}
 
+	case JVST_CNODE_VALID:
+		return ir_stmt_new(JVST_IR_STMT_VALID);
+
+	case JVST_CNODE_INVALID:
+		// XXX - better error message!
+		return ir_stmt_invalid(JVST_INVALID_BAD_PROPERTY_NAME);
+
 	default:
 		return jvst_ir_translate(ctree);
 	}
@@ -1418,7 +1431,7 @@ ir_translate_obj_inner(struct jvst_cnode *top, struct ir_object_builder *builder
 	case JVST_CNODE_OBJ_PROP_MATCH:
 	case JVST_CNODE_MATCH_CASE:
 	case JVST_CNODE_OBJ_REQBIT:
-		fprintf(stderr, "[%s:%d] invalid cnode type %s: should not be at the top-level of an OBJECT\n",
+		fprintf(stderr, "[%s:%d] invalid cnode type %s while handling properties of an OBJECT\n",
 				__FILE__, __LINE__, 
 				jvst_cnode_type_name(top->type));
 		abort();
@@ -1441,6 +1454,60 @@ ir_translate_obj_inner(struct jvst_cnode *top, struct ir_object_builder *builder
 }
 
 static struct jvst_ir_stmt *
+ir_translate_object(struct jvst_cnode *top, struct jvst_ir_stmt *frame);
+
+static struct jvst_ir_stmt *
+ir_translate_object_split(struct jvst_cnode *top)
+{
+	struct jvst_cnode *node;
+	struct jvst_ir_stmt *cond, **condpp, **splitpp;
+	struct jvst_ir_expr *split, *cmp;
+
+	split = ir_expr_new(JVST_IR_EXPR_SPLIT);
+	splitpp = &split->u.split.frames;
+
+	cmp = NULL;
+	switch (top->type) {
+	case JVST_CNODE_OR:
+		cmp = ir_expr_op(JVST_IR_EXPR_GE,
+				split,
+				ir_expr_size(1));
+		break;
+
+	case JVST_CNODE_NOT:
+		cmp = ir_expr_op(JVST_IR_EXPR_EQ,
+				split,
+				ir_expr_size(0));
+		break;
+
+	case JVST_CNODE_XOR:
+		cmp = ir_expr_op(JVST_IR_EXPR_EQ,
+				split,
+				ir_expr_size(1));
+		break;
+
+	default:
+		fprintf(stderr, "%s:%d invalid cnode type for %s: %s\n",
+			__FILE__, __LINE__, __func__, jvst_cnode_type_name(top->type));
+		abort();
+	}
+
+	for (node=top->u.ctrl; node != NULL; node = node->next) {
+		struct jvst_ir_stmt *fr;
+		fr = ir_stmt_frame();
+		fr->u.frame.stmts = ir_translate_object(node, fr);
+		*splitpp = fr;
+		splitpp = &fr->next;
+	}
+
+	cond = ir_stmt_if(cmp,
+		ir_stmt_new(JVST_IR_STMT_VALID),
+		ir_stmt_invalid(JVST_INVALID_SPLIT_CONDITION));  // XXX - improve error message!
+
+	return cond;
+}
+
+static struct jvst_ir_stmt *
 ir_translate_object(struct jvst_cnode *top, struct jvst_ir_stmt *frame)
 {
 	struct jvst_ir_stmt *stmt, *pseq, **spp, **pseqpp;
@@ -1450,6 +1517,17 @@ ir_translate_object(struct jvst_cnode *top, struct jvst_ir_stmt *frame)
 	size_t nreqs;
 	
 	struct ir_object_builder builder = { 0 };
+
+	switch (top->type) {
+	case JVST_CNODE_OR:
+	case JVST_CNODE_NOT:
+	case JVST_CNODE_XOR:
+		return ir_translate_object_split(top);
+
+	default:
+		break;
+	}
+
 	builder.frame = frame;
 
 	stmt = ir_stmt_new(JVST_IR_STMT_SEQ);

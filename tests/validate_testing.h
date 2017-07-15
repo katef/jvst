@@ -175,6 +175,9 @@ newir_count(struct arena_info *A, size_t ind, const char *label);
 struct jvst_ir_expr *
 newir_btestall(struct arena_info *A, size_t ind, const char *label);
 
+struct jvst_ir_expr *
+newir_split(struct arena_info *A, ...);
+
 const char *
 jvst_ret2name(int ret);
 

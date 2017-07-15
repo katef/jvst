@@ -1076,6 +1076,188 @@ void test_simplify_required(void)
   RUNTESTS(tests);
 }
 
+void test_simplify_dependencies(void)
+{
+  struct arena_info A = {0};
+
+  // initial schema is not reduced (additional constraints are ANDed
+  // together).  Reduction will occur on a later pass.
+  const struct cnode_test tests[] = {
+    {
+      SIMPLIFY, NULL,
+      // schema: { "dependencies": {"bar": ["foo"]} }
+
+      // initial cnode tree
+      newcnode_switch(&A, 1,
+        SJP_OBJECT_BEG, newcnode_bool(&A, JVST_CNODE_AND,
+                          newcnode_bool(&A, JVST_CNODE_OR,
+                            newcnode_required(&A, stringset(&A, "bar", "foo", NULL)),
+                            newcnode_propset(&A,
+                              newcnode_prop_match(&A, RE_LITERAL, "bar", newcnode_invalid()),
+                              NULL),
+                            NULL),
+                          newcnode_valid(),
+                          NULL),
+        SJP_NONE),
+
+      // simplified cnode tree
+      newcnode_switch(&A, 1,
+        SJP_OBJECT_BEG, newcnode_bool(&A, JVST_CNODE_OR,
+                          newcnode_required(&A, stringset(&A, "bar", "foo", NULL)),
+                          newcnode_propset(&A,
+                            newcnode_prop_match(&A, RE_LITERAL, "bar", newcnode_invalid()),
+                            NULL),
+                          NULL),
+        SJP_NONE),
+    },
+
+    {
+      SIMPLIFY, NULL,
+      // schema: { "dependencies": {"quux": ["foo", "bar"]} }
+
+      // original cnode tree
+      newcnode_switch(&A, 1,
+        SJP_OBJECT_BEG, newcnode_bool(&A, JVST_CNODE_AND,
+                          newcnode_bool(&A, JVST_CNODE_OR,
+                            newcnode_required(&A, stringset(&A, "quux", "foo", "bar", NULL)),
+                            newcnode_propset(&A,
+                              newcnode_prop_match(&A, RE_LITERAL, "quux", newcnode_invalid()),
+                              NULL),
+                            NULL),
+                          newcnode_valid(),
+                          NULL),
+        SJP_NONE),
+
+      // simplified cnode tree
+      newcnode_switch(&A, 1,
+        SJP_OBJECT_BEG, newcnode_bool(&A, JVST_CNODE_OR,
+                          newcnode_required(&A, stringset(&A, "quux", "foo", "bar", NULL)),
+                          newcnode_propset(&A,
+                            newcnode_prop_match(&A, RE_LITERAL, "quux", newcnode_invalid()),
+                            NULL),
+                          NULL),
+        SJP_NONE),
+
+    },
+
+    {
+      SIMPLIFY, NULL, 
+      // schema: { "dependencies": {"quux": ["foo", "bar"], "this": ["that"]} }
+
+      // original cnode tree
+      newcnode_switch(&A, 1,
+        SJP_OBJECT_BEG, newcnode_bool(&A, JVST_CNODE_AND,
+                          newcnode_bool(&A, JVST_CNODE_OR,
+                            newcnode_required(&A, stringset(&A, "quux", "foo", "bar", NULL)),
+                            newcnode_propset(&A,
+                              newcnode_prop_match(&A, RE_LITERAL, "quux", newcnode_invalid()),
+                              NULL),
+                            NULL),
+                          newcnode_bool(&A, JVST_CNODE_OR,
+                            newcnode_required(&A, stringset(&A, "this", "that", NULL)),
+                            newcnode_propset(&A,
+                              newcnode_prop_match(&A, RE_LITERAL, "this", newcnode_invalid()),
+                              NULL),
+                            NULL),
+                          newcnode_valid(),
+                          NULL),
+        SJP_NONE),
+
+      // simplified cnode tree
+      newcnode_switch(&A, 1,
+        SJP_OBJECT_BEG, newcnode_bool(&A, JVST_CNODE_AND,
+                          newcnode_bool(&A, JVST_CNODE_OR,
+                            newcnode_required(&A, stringset(&A, "quux", "foo", "bar", NULL)),
+                            newcnode_propset(&A,
+                              newcnode_prop_match(&A, RE_LITERAL, "quux", newcnode_invalid()),
+                              NULL),
+                            NULL),
+                          newcnode_bool(&A, JVST_CNODE_OR,
+                            newcnode_required(&A, stringset(&A, "this", "that", NULL)),
+                            newcnode_propset(&A,
+                              newcnode_prop_match(&A, RE_LITERAL, "this", newcnode_invalid()),
+                              NULL),
+                            NULL),
+                          NULL),
+        SJP_NONE),
+
+    },
+
+    {
+      SIMPLIFY, NULL,
+      // schema: {
+      //   "dependencies": {
+      //     "bar": {
+      //       "properties": {
+      //         "foo": {"type": "integer"},
+      //         "bar": {"type": "integer"}
+      //       }
+      //     }
+      //   }
+      // },
+
+      // original cnode tree
+      newcnode_bool(&A, JVST_CNODE_AND,
+          newcnode_switch(&A, 1, SJP_NONE),
+          newcnode_bool(&A, JVST_CNODE_OR,
+            newcnode_bool(&A, JVST_CNODE_AND,
+              newcnode_switch(&A, 0, 
+                SJP_OBJECT_BEG, newcnode_required(&A, stringset(&A, "bar", NULL)),
+                SJP_NONE),
+              newcnode_switch(&A, 1, 
+                SJP_OBJECT_BEG, newcnode_bool(&A, JVST_CNODE_AND,
+                                  newcnode_propset(&A,
+                                    newcnode_prop_match(&A, RE_LITERAL, "foo", 
+                                      newcnode_switch(&A, 0, 
+                                        SJP_NUMBER, newcnode(&A,JVST_CNODE_NUM_INTEGER),
+                                        SJP_NONE)),
+                                    newcnode_prop_match(&A, RE_LITERAL, "bar", 
+                                      newcnode_switch(&A, 0, 
+                                        SJP_NUMBER, newcnode(&A,JVST_CNODE_NUM_INTEGER),
+                                        SJP_NONE)),
+                                    NULL),
+                                  newcnode_valid(),
+                                  NULL),
+                SJP_NONE),
+              NULL),
+            newcnode_switch(&A, 1, 
+              SJP_OBJECT_BEG, newcnode_propset(&A,
+                                newcnode_prop_match(&A, RE_LITERAL, "bar", newcnode_invalid()),
+                                NULL),
+              SJP_NONE),
+            NULL),
+          NULL),
+
+      // simplified cnode tree
+      newcnode_switch(&A, 1,
+        SJP_OBJECT_BEG, newcnode_bool(&A, JVST_CNODE_OR,
+                          newcnode_bool(&A, JVST_CNODE_AND,
+                            newcnode_required(&A, stringset(&A, "bar", NULL)),
+                            newcnode_propset(&A,
+                              newcnode_prop_match(&A, RE_LITERAL, "foo", 
+                                newcnode_switch(&A, 0, 
+                                  SJP_NUMBER, newcnode(&A,JVST_CNODE_NUM_INTEGER),
+                                  SJP_NONE)),
+                              newcnode_prop_match(&A, RE_LITERAL, "bar", 
+                                newcnode_switch(&A, 0, 
+                                  SJP_NUMBER, newcnode(&A,JVST_CNODE_NUM_INTEGER),
+                                  SJP_NONE)),
+                              NULL),
+                            NULL),
+                          newcnode_propset(&A,
+                            newcnode_prop_match(&A, RE_LITERAL, "bar", newcnode_invalid()),
+                            NULL),
+                          NULL),
+        SJP_NONE),
+
+    },
+
+    { STOP },
+  };
+
+  RUNTESTS(tests);
+}
+
 void test_simplify_ored_schema(void)
 {
   struct arena_info A = {0};
@@ -1503,6 +1685,7 @@ int main(void)
   test_simplify_ored_schema();
   test_simplify_propsets();
   test_simplify_required();
+  test_simplify_dependencies();
 
   test_canonify_ored_schema();
   test_canonify_propsets();
