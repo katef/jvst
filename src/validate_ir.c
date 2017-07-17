@@ -584,6 +584,15 @@ jvst_ir_expr_type_name(enum jvst_ir_expr_type type)
 	case JVST_IR_EXPR_BTESTALL:
 		return "BTESTALL";
 
+	case JVST_IR_EXPR_BTESTANY:
+		return "BTESTANY";
+
+	case JVST_IR_EXPR_BTESTONE:
+		return "BTESTONE";
+
+	case JVST_IR_EXPR_BCOUNT:
+		return "BCOUNT";
+
 	case JVST_IR_EXPR_ISTOK:
 		return "ISTOK";
 
@@ -621,7 +630,8 @@ jvst_ir_expr_type_name(enum jvst_ir_expr_type type)
 		return "SPLIT";
 
 	default:
-		fprintf(stderr, "unknown IR expression node type %d\n", type);
+		fprintf(stderr, "%s:%d unknown IR expression node type %d in %s\n",
+			__FILE__, __LINE__, type, __func__);
 		abort();
 	}
 }
@@ -696,6 +706,7 @@ jvst_ir_dump_expr(struct sbuf *buf, struct jvst_ir_expr *expr, int indent)
 			jvst_ir_dump_expr(buf,expr->u.and_or.left,indent+2);
 			sbuf_snprintf(buf, ",\n");
 			jvst_ir_dump_expr(buf,expr->u.and_or.right,indent+2);
+			sbuf_snprintf(buf, "\n");
 			sbuf_indent(buf, indent);
 			sbuf_snprintf(buf, ")");
 		}
@@ -966,8 +977,23 @@ jvst_ir_dump_inner(struct sbuf *buf, struct jvst_ir_stmt *ir, int indent)
 			ir->u.bitvec.nbits);
 		break;
 
+	case JVST_IR_STMT_SPLITVEC:
+		{
+			sbuf_snprintf(buf, "SPLITVEC(%zu, \"%s_%zu\",\n",
+				ir->u.splitvec.ind,
+				ir->u.splitvec.label,
+				ir->u.splitvec.ind);
+
+			assert(ir->u.splitvec.split_frames != NULL);
+			dump_stmt_list_inner(buf, ir->u.splitvec.split_frames, indent);
+			sbuf_indent(buf, indent);
+			sbuf_snprintf(buf, ")");
+		}
+		break;
+
 	default:
-		fprintf(stderr, "unknown IR statement type %d\n", ir->type);
+		fprintf(stderr, "%s:%d unknown IR statement type %d in %s\n",
+			__FILE__, __LINE__, ir->type, __func__);
 		abort();
 	}
 }
@@ -1401,7 +1427,7 @@ ir_translate_obj_inner(struct jvst_cnode *top, struct ir_object_builder *builder
 			allbits->u.btest.label = bitvec->u.bitvec.label;
 			allbits->u.btest.ind   = bitvec->u.bitvec.ind;
 			allbits->u.btest.b0 = 0;
-			allbits->u.btest.b1 = 0;
+			allbits->u.btest.b1 = -1;
 
 			checkpp = builder->post_loop;
 			*checkpp = ir_stmt_if(allbits,
@@ -1817,12 +1843,13 @@ split_gather(struct jvst_cnode *top, struct split_gather_data *data)
 					*epp = e_ctrl;
 				} else {
 					struct jvst_ir_expr *e_or;
-					e_or = ir_expr_new(JVST_IR_EXPR_AND);
+					e_or = ir_expr_new(JVST_IR_EXPR_OR);
 					e_or->u.and_or.left = e_ctrl;
 					*epp = e_or;
 					epp = &e_or->u.and_or.right;
 				}
 			}
+
 			assert(expr != NULL);
 			return expr;
 		}
