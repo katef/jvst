@@ -884,7 +884,7 @@ void test_ir_required(void)
         SJP_NONE),
 
       newir_frame(&A,
-          newir_bitvec(&A, 0, "reqmask", 1),
+          newir_bitvec(&A, 1, "reqmask", 1),
           newir_matcher(&A, 0, "dfa"),
           newir_stmt(&A, JVST_IR_STMT_TOKEN),
           newir_if(&A, newir_istok(&A, SJP_OBJECT_BEG),
@@ -930,7 +930,7 @@ void test_ir_required(void)
                             ),
                             NULL
                           ),
-                          newir_bitop(&A, JVST_IR_STMT_BSET, 0, "reqmask", 0),
+                          newir_bitop(&A, JVST_IR_STMT_BSET, 1, "reqmask", 0),
                           NULL
                         )
                       ),
@@ -943,7 +943,7 @@ void test_ir_required(void)
                 NULL
               ),
               newir_if(&A,
-                  newir_btestall(&A, 0, "reqmask"),
+                  newir_btestall(&A, 1, "reqmask", 0,-1),
                   newir_stmt(&A, JVST_IR_STMT_VALID),
                   newir_invalid(&A, JVST_INVALID_MISSING_REQUIRED_PROPERTIES,
                     "missing required properties")
@@ -969,13 +969,565 @@ void test_ir_required(void)
   RUNTESTS(tests);
 }
 
+void test_ir_dependencies(void)
+{
+  struct arena_info A = {0};
+
+  // initial schema is not reduced (additional constraints are ANDed
+  // together).  Reduction will occur on a later pass.
+  const struct ir_test tests[] = {
+    {
+      // schema: { "dependencies": {"bar": ["foo"]} }
+      newcnode_switch(&A, 1,
+        SJP_OBJECT_BEG, newcnode_bool(&A, JVST_CNODE_OR,
+                          newcnode_required(&A, stringset(&A, "bar", "foo", NULL)),
+                          newcnode_propset(&A,
+                            newcnode_prop_match(&A, RE_LITERAL, "bar", newcnode_invalid()),
+                            NULL),
+                          NULL),
+        SJP_NONE),
+
+      newir_frame(&A,
+          newir_stmt(&A, JVST_IR_STMT_TOKEN),
+          newir_if(&A, newir_istok(&A, SJP_OBJECT_BEG),
+              newir_if(&A,
+                newir_op(&A, JVST_IR_EXPR_GE, 
+                  newir_split(&A,
+                    newir_frame(&A,
+                      newir_matcher(&A, 0, "dfa"),
+                      newir_seq(&A,
+                        newir_loop(&A, "L_OBJ", 0,
+                          newir_stmt(&A, JVST_IR_STMT_TOKEN),
+                          newir_if(&A, newir_istok(&A, SJP_OBJECT_END),
+                            newir_break(&A, "L_OBJ", 0),
+                            newir_seq(&A,                                 // unnecessary SEQ should be removed in the future
+                              newir_match(&A, 0,
+                                // no match
+                                newir_case(&A, 0, 
+                                  NULL,
+                                  newir_frame(&A,
+                                    newir_stmt(&A, JVST_IR_STMT_TOKEN),
+                                    newir_stmt(&A, JVST_IR_STMT_VALID),
+                                    NULL
+                                  )
+                                ),
+
+                                // match "bar"
+                                newir_case(&A, 1,
+                                  newmatchset(&A, RE_LITERAL,  "bar", -1),
+                                  newir_invalid(&A, JVST_INVALID_BAD_PROPERTY_NAME, "bad property name")
+                                ),
+
+                                NULL
+                              ),
+                              NULL
+                            )
+                          ),
+                          NULL
+                        ),
+                        newir_stmt(&A, JVST_IR_STMT_VALID),
+                        NULL
+                      ),
+                      NULL
+                    ),
+
+                    newir_frame(&A,
+                      newir_bitvec(&A, 0, "reqmask", 2),
+                      newir_matcher(&A, 0, "dfa"),
+                      newir_seq(&A,
+                        newir_loop(&A, "L_OBJ", 0,
+                          newir_stmt(&A, JVST_IR_STMT_TOKEN),
+                          newir_if(&A, newir_istok(&A, SJP_OBJECT_END),
+                            newir_break(&A, "L_OBJ", 0),
+                            newir_seq(&A,
+                              newir_match(&A, 0,
+                                // no match
+                                newir_case(&A, 0, 
+                                  NULL,
+                                  newir_frame(&A,
+                                    newir_stmt(&A, JVST_IR_STMT_TOKEN),
+                                    newir_stmt(&A, JVST_IR_STMT_VALID),
+                                    NULL
+                                  )
+                                ),
+
+                                // match "foo"
+                                newir_case(&A, 1,
+                                  newmatchset(&A, RE_LITERAL,  "foo", -1),
+                                  newir_bitop(&A, JVST_IR_STMT_BSET, 0, "reqmask", 1)
+                                ),
+
+                                // match "bar"
+                                newir_case(&A, 2,
+                                  newmatchset(&A, RE_LITERAL,  "bar", -1),
+                                  newir_bitop(&A, JVST_IR_STMT_BSET, 0, "reqmask", 0)
+                                ),
+
+                                NULL
+                              ),
+                              NULL
+                            )
+                          ),
+                          NULL
+                        ),
+                        newir_if(&A,
+                            newir_btestall(&A, 0, "reqmask", 0, -1),
+                            newir_stmt(&A, JVST_IR_STMT_VALID),
+                            newir_invalid(&A, JVST_INVALID_MISSING_REQUIRED_PROPERTIES,
+                              "missing required properties")
+                        ),
+                        NULL
+                      ),
+                      NULL
+                    ),
+
+                    NULL
+                  ),
+                  newir_size(&A, 1)
+                ),
+                newir_stmt(&A, JVST_IR_STMT_VALID),
+                newir_invalid(&A, JVST_INVALID_SPLIT_CONDITION, "invalid split condition")
+              ),
+              newir_if(&A, newir_istok(&A, SJP_OBJECT_END),
+                newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token"),
+                newir_if(&A, newir_istok(&A, SJP_ARRAY_END),
+                  newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token"),
+                  newir_stmt(&A, JVST_IR_STMT_VALID)
+                )
+              )
+          ),
+          NULL
+      )
+    },
+
+    {
+      // schema: { "dependencies": {"quux": ["foo", "bar"]} }
+      newcnode_switch(&A, 1,
+        SJP_OBJECT_BEG, newcnode_bool(&A, JVST_CNODE_OR,
+                          newcnode_required(&A, stringset(&A, "quux", "foo", "bar", NULL)),
+                          newcnode_propset(&A,
+                            newcnode_prop_match(&A, RE_LITERAL, "quux", newcnode_invalid()),
+                            NULL),
+                          NULL),
+        SJP_NONE),
+
+      newir_frame(&A,
+          newir_stmt(&A, JVST_IR_STMT_TOKEN),
+          newir_if(&A, newir_istok(&A, SJP_OBJECT_BEG),
+              newir_if(&A,
+                newir_op(&A, JVST_IR_EXPR_GE, 
+                  newir_split(&A,
+                    newir_frame(&A,
+                      newir_matcher(&A, 0, "dfa"),
+                      newir_seq(&A,
+                        newir_loop(&A, "L_OBJ", 0,
+                          newir_stmt(&A, JVST_IR_STMT_TOKEN),
+                          newir_if(&A, newir_istok(&A, SJP_OBJECT_END),
+                            newir_break(&A, "L_OBJ", 0),
+                            newir_seq(&A,                                 // unnecessary SEQ should be removed in the future
+                              newir_match(&A, 0,
+                                // no match
+                                newir_case(&A, 0, 
+                                  NULL,
+                                  newir_frame(&A,
+                                    newir_stmt(&A, JVST_IR_STMT_TOKEN),
+                                    newir_stmt(&A, JVST_IR_STMT_VALID),
+                                    NULL
+                                  )
+                                ),
+
+                                // match "bar"
+                                newir_case(&A, 1,
+                                  newmatchset(&A, RE_LITERAL,  "quux", -1),
+                                  newir_invalid(&A, JVST_INVALID_BAD_PROPERTY_NAME, "bad property name")
+                                ),
+
+                                NULL
+                              ),
+                              NULL
+                            )
+                          ),
+                          NULL
+                        ),
+                        newir_stmt(&A, JVST_IR_STMT_VALID),
+                        NULL
+                      ),
+                      NULL
+                    ),
+
+                    newir_frame(&A,
+                      newir_bitvec(&A, 0, "reqmask", 3),
+                      newir_matcher(&A, 0, "dfa"),
+                      newir_seq(&A,
+                        newir_loop(&A, "L_OBJ", 0,
+                          newir_stmt(&A, JVST_IR_STMT_TOKEN),
+                          newir_if(&A, newir_istok(&A, SJP_OBJECT_END),
+                            newir_break(&A, "L_OBJ", 0),
+                            newir_seq(&A,
+                              newir_match(&A, 0,
+                                // no match
+                                newir_case(&A, 0, 
+                                  NULL,
+                                  newir_frame(&A,
+                                    newir_stmt(&A, JVST_IR_STMT_TOKEN),
+                                    newir_stmt(&A, JVST_IR_STMT_VALID),
+                                    NULL
+                                  )
+                                ),
+
+                                // match "bar"
+                                newir_case(&A, 1,
+                                  newmatchset(&A, RE_LITERAL,  "bar", -1),
+                                  newir_bitop(&A, JVST_IR_STMT_BSET, 0, "reqmask", 2)
+                                ),
+
+                                // match "foo"
+                                newir_case(&A, 2,
+                                  newmatchset(&A, RE_LITERAL,  "foo", -1),
+                                  newir_bitop(&A, JVST_IR_STMT_BSET, 0, "reqmask", 1)
+                                ),
+
+                                // match "quux"
+                                newir_case(&A, 3,
+                                  newmatchset(&A, RE_LITERAL,  "quux", -1),
+                                  newir_bitop(&A, JVST_IR_STMT_BSET, 0, "reqmask", 0)
+                                ),
+
+                                NULL
+                              ),
+                              NULL
+                            )
+                          ),
+                          NULL
+                        ),
+                        newir_if(&A,
+                            newir_btestall(&A, 0, "reqmask", 0, -1),
+                            newir_stmt(&A, JVST_IR_STMT_VALID),
+                            newir_invalid(&A, JVST_INVALID_MISSING_REQUIRED_PROPERTIES,
+                              "missing required properties")
+                        ),
+                        NULL
+                      ),
+                      NULL
+                    ),
+
+                    NULL
+                  ),
+                  newir_size(&A, 1)
+                ),
+                newir_stmt(&A, JVST_IR_STMT_VALID),
+                newir_invalid(&A, JVST_INVALID_SPLIT_CONDITION, "invalid split condition")
+              ),
+              newir_if(&A, newir_istok(&A, SJP_OBJECT_END),
+                newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token"),
+                newir_if(&A, newir_istok(&A, SJP_ARRAY_END),
+                  newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token"),
+                  newir_stmt(&A, JVST_IR_STMT_VALID)
+                )
+              )
+          ),
+          NULL
+      )
+    },
+
+    {
+      // schema: { "dependencies": {"quux": ["foo", "bar"], "this": ["that"]} }
+      newcnode_switch(&A, 1,
+        SJP_OBJECT_BEG, newcnode_bool(&A, JVST_CNODE_AND,
+                          newcnode_bool(&A, JVST_CNODE_OR,
+                            newcnode_required(&A, stringset(&A, "quux", "foo", "bar", NULL)),
+                            newcnode_propset(&A,
+                              newcnode_prop_match(&A, RE_LITERAL, "quux", newcnode_invalid()),
+                              NULL),
+                            NULL),
+                          newcnode_bool(&A, JVST_CNODE_OR,
+                            newcnode_required(&A, stringset(&A, "this", "that", NULL)),
+                            newcnode_propset(&A,
+                              newcnode_prop_match(&A, RE_LITERAL, "this", newcnode_invalid()),
+                              NULL),
+                            NULL),
+                          NULL),
+        SJP_NONE),
+
+      newir_frame(&A,
+          newir_bitvec(&A, 0, "splitvec", 4),
+          newir_stmt(&A, JVST_IR_STMT_TOKEN),
+          newir_if(&A, newir_istok(&A, SJP_OBJECT_BEG),
+              newir_seq(&A,
+                newir_splitvec(&A, 0, "splitvec",
+                  newir_frame(&A,
+                    newir_matcher(&A, 0, "dfa"),
+                    newir_seq(&A,
+                      newir_loop(&A, "L_OBJ", 0,
+                        newir_stmt(&A, JVST_IR_STMT_TOKEN),
+                        newir_if(&A, newir_istok(&A, SJP_OBJECT_END),
+                          newir_break(&A, "L_OBJ", 0),
+                          newir_seq(&A,                                 // unnecessary SEQ should be removed in the future
+                            newir_match(&A, 0,
+                              // no match
+                              newir_case(&A, 0, 
+                                NULL,
+                                newir_frame(&A,
+                                  newir_stmt(&A, JVST_IR_STMT_TOKEN),
+                                  newir_stmt(&A, JVST_IR_STMT_VALID),
+                                  NULL
+                                )
+                              ),
+
+                              // match "bar"
+                              newir_case(&A, 1,
+                                newmatchset(&A, RE_LITERAL,  "quux", -1),
+                                newir_invalid(&A, JVST_INVALID_BAD_PROPERTY_NAME, "bad property name")
+                              ),
+
+                              NULL
+                            ),
+                            NULL
+                          )
+                        ),
+                        NULL
+                      ),
+                      newir_stmt(&A, JVST_IR_STMT_VALID),
+                      NULL
+                    ),
+                    NULL
+                  ),
+
+                  newir_frame(&A,
+                    newir_bitvec(&A, 0, "reqmask", 3),
+                    newir_matcher(&A, 0, "dfa"),
+                    newir_seq(&A,
+                      newir_loop(&A, "L_OBJ", 0,
+                        newir_stmt(&A, JVST_IR_STMT_TOKEN),
+                        newir_if(&A, newir_istok(&A, SJP_OBJECT_END),
+                          newir_break(&A, "L_OBJ", 0),
+                          newir_seq(&A,
+                            newir_match(&A, 0,
+                              // no match
+                              newir_case(&A, 0, 
+                                NULL,
+                                newir_frame(&A,
+                                  newir_stmt(&A, JVST_IR_STMT_TOKEN),
+                                  newir_stmt(&A, JVST_IR_STMT_VALID),
+                                  NULL
+                                )
+                              ),
+
+                              // match "bar"
+                              newir_case(&A, 1,
+                                newmatchset(&A, RE_LITERAL,  "bar", -1),
+                                newir_bitop(&A, JVST_IR_STMT_BSET, 0, "reqmask", 2)
+                              ),
+
+                              // match "foo"
+                              newir_case(&A, 2,
+                                newmatchset(&A, RE_LITERAL,  "foo", -1),
+                                newir_bitop(&A, JVST_IR_STMT_BSET, 0, "reqmask", 1)
+                              ),
+
+                              // match "quux"
+                              newir_case(&A, 3,
+                                newmatchset(&A, RE_LITERAL,  "quux", -1),
+                                newir_bitop(&A, JVST_IR_STMT_BSET, 0, "reqmask", 0)
+                              ),
+
+                              NULL
+                            ),
+                            NULL
+                          )
+                        ),
+                        NULL
+                      ),
+                      newir_if(&A,
+                          newir_btestall(&A, 0, "reqmask", 0, -1),
+                          newir_stmt(&A, JVST_IR_STMT_VALID),
+                          newir_invalid(&A, JVST_INVALID_MISSING_REQUIRED_PROPERTIES,
+                            "missing required properties")
+                      ),
+                      NULL
+                    ),
+                    NULL
+                  ),
+
+                  newir_frame(&A,
+                    newir_matcher(&A, 0, "dfa"),
+                    newir_seq(&A,
+                      newir_loop(&A, "L_OBJ", 0,
+                        newir_stmt(&A, JVST_IR_STMT_TOKEN),
+                        newir_if(&A, newir_istok(&A, SJP_OBJECT_END),
+                          newir_break(&A, "L_OBJ", 0),
+                          newir_seq(&A,                                 // unnecessary SEQ should be removed in the future
+                            newir_match(&A, 0,
+                              // no match
+                              newir_case(&A, 0, 
+                                NULL,
+                                newir_frame(&A,
+                                  newir_stmt(&A, JVST_IR_STMT_TOKEN),
+                                  newir_stmt(&A, JVST_IR_STMT_VALID),
+                                  NULL
+                                )
+                              ),
+
+                              // match "bar"
+                              newir_case(&A, 1,
+                                newmatchset(&A, RE_LITERAL,  "this", -1),
+                                newir_invalid(&A, JVST_INVALID_BAD_PROPERTY_NAME, "bad property name")
+                              ),
+
+                              NULL
+                            ),
+                            NULL
+                          )
+                        ),
+                        NULL
+                      ),
+                      newir_stmt(&A, JVST_IR_STMT_VALID),
+                      NULL
+                    ),
+                    NULL
+                  ),
+
+                  newir_frame(&A,
+                    newir_bitvec(&A, 0, "reqmask", 2),
+                    newir_matcher(&A, 0, "dfa"),
+                    newir_seq(&A,
+                      newir_loop(&A, "L_OBJ", 0,
+                        newir_stmt(&A, JVST_IR_STMT_TOKEN),
+                        newir_if(&A, newir_istok(&A, SJP_OBJECT_END),
+                          newir_break(&A, "L_OBJ", 0),
+                          newir_seq(&A,
+                            newir_match(&A, 0,
+                              // no match
+                              newir_case(&A, 0, 
+                                NULL,
+                                newir_frame(&A,
+                                  newir_stmt(&A, JVST_IR_STMT_TOKEN),
+                                  newir_stmt(&A, JVST_IR_STMT_VALID),
+                                  NULL
+                                )
+                              ),
+
+                              // match "quux"
+                              newir_case(&A, 1,
+                                newmatchset(&A, RE_LITERAL,  "that", -1),
+                                newir_bitop(&A, JVST_IR_STMT_BSET, 0, "reqmask", 1)
+                              ),
+
+                              // match "bar"
+                              newir_case(&A, 2,
+                                newmatchset(&A, RE_LITERAL,  "this", -1),
+                                newir_bitop(&A, JVST_IR_STMT_BSET, 0, "reqmask", 0)
+                              ),
+
+                              NULL
+                            ),
+                            NULL
+                          )
+                        ),
+                        NULL
+                      ),
+                      newir_if(&A,
+                          newir_btestall(&A, 0, "reqmask", 0, -1),
+                          newir_stmt(&A, JVST_IR_STMT_VALID),
+                          newir_invalid(&A, JVST_INVALID_MISSING_REQUIRED_PROPERTIES,
+                            "missing required properties")
+                      ),
+                      NULL
+                    ),
+                    NULL
+                  ),
+
+                  NULL
+                ),
+                newir_if(&A,
+                  newir_op(&A, JVST_IR_EXPR_AND, 
+                    newir_op(&A, JVST_IR_EXPR_OR, 
+                      newir_btestany(&A, 0, "splitvec", 0, 0),  // XXX - can combine the OR'd stuff...
+                      newir_btest(&A, 0, "splitvec", 1)
+                    ),
+                    newir_op(&A, JVST_IR_EXPR_OR,               // XXX - can combine the OR'd stuff...
+                      newir_btestany(&A, 0, "splitvec", 2, 2),
+                      newir_btest(&A, 0, "splitvec", 3)
+                    )
+                  ),
+                  newir_stmt(&A, JVST_IR_STMT_VALID),
+                  newir_invalid(&A, JVST_INVALID_SPLIT_CONDITION, "invalid split condition")
+                ),
+
+                NULL
+              ),
+              newir_if(&A, newir_istok(&A, SJP_OBJECT_END),
+                newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token"),
+                newir_if(&A, newir_istok(&A, SJP_ARRAY_END),
+                  newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token"),
+                  newir_stmt(&A, JVST_IR_STMT_VALID)
+                )
+              )
+          ),
+          NULL
+      )
+    },
+
+    { NULL },
+  };
+
+  const struct ir_test unfinished_tests[] = {
+    {
+      // schema: {
+      //   "dependencies": {
+      //     "bar": {
+      //       "properties": {
+      //         "foo": {"type": "integer"},
+      //         "bar": {"type": "integer"}
+      //       }
+      //     }
+      //   }
+      // },
+      newcnode_bool(&A, JVST_CNODE_AND,
+          newcnode_switch(&A, 1, SJP_NONE),
+          newcnode_bool(&A, JVST_CNODE_OR,
+            newcnode_bool(&A, JVST_CNODE_AND,
+              newcnode_switch(&A, 0, 
+                SJP_OBJECT_BEG, newcnode_required(&A, stringset(&A, "bar", NULL)),
+                SJP_NONE),
+              newcnode_switch(&A, 1, 
+                SJP_OBJECT_BEG, newcnode_bool(&A, JVST_CNODE_AND,
+                                  newcnode_propset(&A,
+                                    newcnode_prop_match(&A, RE_LITERAL, "foo", 
+                                      newcnode_switch(&A, 0, 
+                                        SJP_NUMBER, newcnode(&A,JVST_CNODE_NUM_INTEGER),
+                                        SJP_NONE)),
+                                    newcnode_prop_match(&A, RE_LITERAL, "bar", 
+                                      newcnode_switch(&A, 0, 
+                                        SJP_NUMBER, newcnode(&A,JVST_CNODE_NUM_INTEGER),
+                                        SJP_NONE)),
+                                    NULL),
+                                  newcnode_valid(),
+                                  NULL),
+                SJP_NONE),
+              NULL),
+            newcnode_switch(&A, 1, 
+              SJP_OBJECT_BEG, newcnode_propset(&A,
+                                newcnode_prop_match(&A, RE_LITERAL, "bar", newcnode_invalid()),
+                                NULL),
+              SJP_NONE),
+            NULL),
+          NULL),
+
+      NULL
+    },
+
+    { NULL },
+  };
+
+  RUNTESTS(tests);
+}
+
 /* incomplete tests... placeholders for conversion from cnode tests */
 static void test_ir_minproperties_3(void);
 static void test_ir_maxproperties_1(void);
 static void test_ir_maxproperties_2(void);
 static void test_ir_minmax_properties_2(void);
-
-static void test_ir_dependencies(void);
 
 static void test_ir_anyof_allof_oneof_1(void);
 static void test_ir_anyof_2(void);
@@ -998,13 +1550,13 @@ int main(void)
 
   test_ir_required();
 
+  test_ir_dependencies();
+
   /* incomplete tests... placeholders for conversion from cnode tests */
   test_ir_minproperties_3();
   test_ir_maxproperties_1();
   test_ir_maxproperties_2();
   test_ir_minmax_properties_2();
-
-  test_ir_dependencies();
 
   test_ir_anyof_allof_oneof_1();
   test_ir_anyof_2();
@@ -1173,122 +1725,6 @@ void test_ir_minmax_properties_2(void)
                             NULL),
                           NULL),
         SJP_NONE),
-
-      NULL
-    },
-
-    { NULL },
-  };
-
-  UNIMPLEMENTED(tests);
-}
-
-void test_ir_dependencies(void)
-{
-  struct arena_info A = {0};
-
-  // initial schema is not reduced (additional constraints are ANDed
-  // together).  Reduction will occur on a later pass.
-  const struct ir_test tests[] = {
-    {
-      // schema: { "dependencies": {"bar": ["foo"]} }
-      newcnode_switch(&A, 1,
-        SJP_OBJECT_BEG, newcnode_bool(&A, JVST_CNODE_AND,
-                          newcnode_bool(&A, JVST_CNODE_OR,
-                            newcnode_required(&A, stringset(&A, "bar", "foo", NULL)),
-                            newcnode_propset(&A,
-                              newcnode_prop_match(&A, RE_LITERAL, "bar", newcnode_invalid()),
-                              NULL),
-                            NULL),
-                          newcnode_valid(),
-                          NULL),
-        SJP_NONE),
-
-      NULL
-    },
-
-    {
-      // schema: { "dependencies": {"quux": ["foo", "bar"]} }
-      newcnode_switch(&A, 1,
-        SJP_OBJECT_BEG, newcnode_bool(&A, JVST_CNODE_AND,
-                          newcnode_bool(&A, JVST_CNODE_OR,
-                            newcnode_required(&A, stringset(&A, "quux", "foo", "bar", NULL)),
-                            newcnode_propset(&A,
-                              newcnode_prop_match(&A, RE_LITERAL, "quux", newcnode_invalid()),
-                              NULL),
-                            NULL),
-                          newcnode_valid(),
-                          NULL),
-        SJP_NONE),
-
-      NULL
-    },
-
-    {
-      // schema: { "dependencies": {"quux": ["foo", "bar"], "this": ["that"]} }
-      newcnode_switch(&A, 1,
-        SJP_OBJECT_BEG, newcnode_bool(&A, JVST_CNODE_AND,
-                          newcnode_bool(&A, JVST_CNODE_OR,
-                            newcnode_required(&A, stringset(&A, "quux", "foo", "bar", NULL)),
-                            newcnode_propset(&A,
-                              newcnode_prop_match(&A, RE_LITERAL, "quux", newcnode_invalid()),
-                              NULL),
-                            NULL),
-                          newcnode_bool(&A, JVST_CNODE_OR,
-                            newcnode_required(&A, stringset(&A, "this", "that", NULL)),
-                            newcnode_propset(&A,
-                              newcnode_prop_match(&A, RE_LITERAL, "this", newcnode_invalid()),
-                              NULL),
-                            NULL),
-                          newcnode_valid(),
-                          NULL),
-        SJP_NONE),
-
-      NULL
-    },
-
-    {
-      // schema: { "dependencies": {"quux": ["foo", "bar"]} }
-      // schema: {
-      //   "dependencies": {
-      //     "bar": {
-      //       "properties": {
-      //         "foo": {"type": "integer"},
-      //         "bar": {"type": "integer"}
-      //       }
-      //     }
-      //   }
-      // },
-      newcnode_bool(&A, JVST_CNODE_AND,
-          newcnode_switch(&A, 1, SJP_NONE),
-          newcnode_bool(&A, JVST_CNODE_OR,
-            newcnode_bool(&A, JVST_CNODE_AND,
-              newcnode_switch(&A, 0, 
-                SJP_OBJECT_BEG, newcnode_required(&A, stringset(&A, "bar", NULL)),
-                SJP_NONE),
-              newcnode_switch(&A, 1, 
-                SJP_OBJECT_BEG, newcnode_bool(&A, JVST_CNODE_AND,
-                                  newcnode_propset(&A,
-                                    newcnode_prop_match(&A, RE_LITERAL, "foo", 
-                                      newcnode_switch(&A, 0, 
-                                        SJP_NUMBER, newcnode(&A,JVST_CNODE_NUM_INTEGER),
-                                        SJP_NONE)),
-                                    newcnode_prop_match(&A, RE_LITERAL, "bar", 
-                                      newcnode_switch(&A, 0, 
-                                        SJP_NUMBER, newcnode(&A,JVST_CNODE_NUM_INTEGER),
-                                        SJP_NONE)),
-                                    NULL),
-                                  newcnode_valid(),
-                                  NULL),
-                SJP_NONE),
-              NULL),
-            newcnode_switch(&A, 1, 
-              SJP_OBJECT_BEG, newcnode_propset(&A,
-                                newcnode_prop_match(&A, RE_LITERAL, "bar", newcnode_invalid()),
-                                NULL),
-              SJP_NONE),
-            NULL),
-          NULL),
 
       NULL
     },

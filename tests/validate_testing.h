@@ -144,6 +144,9 @@ struct jvst_ir_stmt *
 newir_match(struct arena_info *A, size_t ind, ...);
 
 struct jvst_ir_stmt *
+newir_splitvec(struct arena_info *A, size_t ind, const char *label, ...);
+
+struct jvst_ir_stmt *
 newir_incr(struct arena_info *A, size_t ind, const char *label);
 
 struct jvst_ir_stmt *
@@ -173,7 +176,16 @@ struct jvst_ir_expr *
 newir_count(struct arena_info *A, size_t ind, const char *label);
 
 struct jvst_ir_expr *
-newir_btestall(struct arena_info *A, size_t ind, const char *label);
+newir_btest(struct arena_info *A, size_t ind, const char *label, size_t b);
+
+struct jvst_ir_expr *
+newir_btestall(struct arena_info *A, size_t ind, const char *label, size_t b0, size_t b1);
+
+struct jvst_ir_expr *
+newir_btestany(struct arena_info *A, size_t ind, const char *label, size_t b0, size_t b1);
+
+struct jvst_ir_expr *
+newir_split(struct arena_info *A, ...);
 
 const char *
 jvst_ret2name(int ret);

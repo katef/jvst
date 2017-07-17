@@ -876,6 +876,29 @@ newir_match(struct arena_info *A, size_t ind, ...)
 }
 
 struct jvst_ir_stmt *
+newir_splitvec(struct arena_info *A, size_t ind, const char *label, ...)
+{
+	struct jvst_ir_stmt *stmt, **spp, *fr;
+	va_list args;
+
+	stmt = newir_stmt(A,JVST_IR_STMT_SPLITVEC);
+	stmt->u.splitvec.label = label;
+	stmt->u.splitvec.ind = ind;
+
+	spp = &stmt->u.splitvec.split_frames;
+
+	va_start(args, label);
+	while (fr = va_arg(args, struct jvst_ir_stmt *), fr != NULL) {
+		assert(fr->type == JVST_IR_STMT_FRAME);
+		*spp = fr;
+		spp = &(*spp)->next;
+	}
+	va_end(args);
+
+	return stmt;
+}
+
+struct jvst_ir_stmt *
 newir_incr(struct arena_info *A, size_t ind, const char *label)
 {
 	struct jvst_ir_stmt *stmt;
@@ -971,13 +994,59 @@ newir_count(struct arena_info *A, size_t ind, const char *label)
 }
 
 struct jvst_ir_expr *
-newir_btestall(struct arena_info *A, size_t ind, const char *label)
+newir_btest(struct arena_info *A, size_t ind, const char *label, size_t b)
+{
+	struct jvst_ir_expr *expr;
+	expr = newir_expr(A,JVST_IR_EXPR_BTEST);
+	expr->u.btest.label = label;
+	expr->u.btest.ind = ind;
+	expr->u.btest.b0 = b;
+	expr->u.btest.b1 = b;
+	return expr;
+}
+
+struct jvst_ir_expr *
+newir_btestall(struct arena_info *A, size_t ind, const char *label, size_t b0, size_t b1)
 {
 	struct jvst_ir_expr *expr;
 	expr = newir_expr(A,JVST_IR_EXPR_BTESTALL);
 	expr->u.btest.label = label;
 	expr->u.btest.ind = ind;
-	expr->u.btest.bit_index = 0;
+	expr->u.btest.b0 = b0;
+	expr->u.btest.b1 = b1;
+	return expr;
+}
+
+struct jvst_ir_expr *
+newir_btestany(struct arena_info *A, size_t ind, const char *label, size_t b0, size_t b1)
+{
+	struct jvst_ir_expr *expr;
+	expr = newir_expr(A,JVST_IR_EXPR_BTESTANY);
+	expr->u.btest.label = label;
+	expr->u.btest.ind = ind;
+	expr->u.btest.b0 = b0;
+	expr->u.btest.b1 = b1;
+	return expr;
+}
+
+struct jvst_ir_expr *
+newir_split(struct arena_info *A, ...)
+{
+	struct jvst_ir_expr *expr;
+	struct jvst_ir_stmt **spp, *fr;
+	va_list args;
+
+	expr = newir_expr(A,JVST_IR_EXPR_SPLIT);
+	spp = &expr->u.split.frames;
+
+	va_start(args, A);
+	while (fr = va_arg(args, struct jvst_ir_stmt *), fr != NULL) {
+		assert(fr->type == JVST_IR_STMT_FRAME);
+		*spp = fr;
+		spp = &(*spp)->next;
+	}
+	va_end(args);
+
 	return expr;
 }
 
@@ -1018,6 +1087,9 @@ newir_op(struct arena_info *A, enum jvst_ir_expr_type op,
 	case JVST_IR_EXPR_COUNT:
 	case JVST_IR_EXPR_BTEST:
 	case JVST_IR_EXPR_BTESTALL:
+	case JVST_IR_EXPR_BTESTANY:
+	case JVST_IR_EXPR_BTESTONE:
+	case JVST_IR_EXPR_BCOUNT:
 	case JVST_IR_EXPR_ISTOK:
 	case JVST_IR_EXPR_ISINT:
 	case JVST_IR_EXPR_NOT:
