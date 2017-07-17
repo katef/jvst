@@ -884,7 +884,7 @@ void test_ir_required(void)
         SJP_NONE),
 
       newir_frame(&A,
-          newir_bitvec(&A, 0, "reqmask", 1),
+          newir_bitvec(&A, 1, "reqmask", 1),
           newir_matcher(&A, 0, "dfa"),
           newir_stmt(&A, JVST_IR_STMT_TOKEN),
           newir_if(&A, newir_istok(&A, SJP_OBJECT_BEG),
@@ -930,7 +930,7 @@ void test_ir_required(void)
                             ),
                             NULL
                           ),
-                          newir_bitop(&A, JVST_IR_STMT_BSET, 0, "reqmask", 0),
+                          newir_bitop(&A, JVST_IR_STMT_BSET, 1, "reqmask", 0),
                           NULL
                         )
                       ),
@@ -943,7 +943,7 @@ void test_ir_required(void)
                 NULL
               ),
               newir_if(&A,
-                  newir_btestall(&A, 0, "reqmask"),
+                  newir_btestall(&A, 1, "reqmask"),
                   newir_stmt(&A, JVST_IR_STMT_VALID),
                   newir_invalid(&A, JVST_INVALID_MISSING_REQUIRED_PROPERTIES,
                     "missing required properties")
@@ -994,6 +994,44 @@ void test_ir_dependencies(void)
                 newir_op(&A, JVST_IR_EXPR_GE, 
                   newir_split(&A,
                     newir_frame(&A,
+                      newir_matcher(&A, 0, "dfa"),
+                      newir_seq(&A,
+                        newir_loop(&A, "L_OBJ", 0,
+                          newir_stmt(&A, JVST_IR_STMT_TOKEN),
+                          newir_if(&A, newir_istok(&A, SJP_OBJECT_END),
+                            newir_break(&A, "L_OBJ", 0),
+                            newir_seq(&A,                                 // unnecessary SEQ should be removed in the future
+                              newir_match(&A, 0,
+                                // no match
+                                newir_case(&A, 0, 
+                                  NULL,
+                                  newir_frame(&A,
+                                    newir_stmt(&A, JVST_IR_STMT_TOKEN),
+                                    newir_stmt(&A, JVST_IR_STMT_VALID),
+                                    NULL
+                                  )
+                                ),
+
+                                // match "bar"
+                                newir_case(&A, 1,
+                                  newmatchset(&A, RE_LITERAL,  "bar", -1),
+                                  newir_invalid(&A, JVST_INVALID_BAD_PROPERTY_NAME, "bad property name")
+                                ),
+
+                                NULL
+                              ),
+                              NULL
+                            )
+                          ),
+                          NULL
+                        ),
+                        newir_stmt(&A, JVST_IR_STMT_VALID),
+                        NULL
+                      ),
+                      NULL
+                    ),
+
+                    newir_frame(&A,
                       newir_bitvec(&A, 0, "reqmask", 2),
                       newir_matcher(&A, 0, "dfa"),
                       newir_seq(&A,
@@ -1043,44 +1081,6 @@ void test_ir_dependencies(void)
                       NULL
                     ),
 
-                    newir_frame(&A,
-                      newir_matcher(&A, 0, "dfa"),
-                      newir_seq(&A,
-                        newir_loop(&A, "L_OBJ", 0,
-                          newir_stmt(&A, JVST_IR_STMT_TOKEN),
-                          newir_if(&A, newir_istok(&A, SJP_OBJECT_END),
-                            newir_break(&A, "L_OBJ", 0),
-                            newir_seq(&A,                                 // unnecessary SEQ should be removed in the future
-                              newir_match(&A, 0,
-                                // no match
-                                newir_case(&A, 0, 
-                                  NULL,
-                                  newir_frame(&A,
-                                    newir_stmt(&A, JVST_IR_STMT_TOKEN),
-                                    newir_stmt(&A, JVST_IR_STMT_VALID),
-                                    NULL
-                                  )
-                                ),
-
-                                // match "bar"
-                                newir_case(&A, 1,
-                                  newmatchset(&A, RE_LITERAL,  "bar", -1),
-                                  newir_invalid(&A, JVST_INVALID_BAD_PROPERTY_NAME, "bad property name")
-                                ),
-
-                                NULL
-                              ),
-                              NULL
-                            )
-                          ),
-                          NULL
-                        ),
-                        newir_stmt(&A, JVST_IR_STMT_VALID),
-                        NULL
-                      ),
-                      NULL
-                    ),
-
                     NULL
                   ),
                   newir_size(&A, 1)
@@ -1117,6 +1117,44 @@ void test_ir_dependencies(void)
               newir_if(&A,
                 newir_op(&A, JVST_IR_EXPR_GE, 
                   newir_split(&A,
+                    newir_frame(&A,
+                      newir_matcher(&A, 0, "dfa"),
+                      newir_seq(&A,
+                        newir_loop(&A, "L_OBJ", 0,
+                          newir_stmt(&A, JVST_IR_STMT_TOKEN),
+                          newir_if(&A, newir_istok(&A, SJP_OBJECT_END),
+                            newir_break(&A, "L_OBJ", 0),
+                            newir_seq(&A,                                 // unnecessary SEQ should be removed in the future
+                              newir_match(&A, 0,
+                                // no match
+                                newir_case(&A, 0, 
+                                  NULL,
+                                  newir_frame(&A,
+                                    newir_stmt(&A, JVST_IR_STMT_TOKEN),
+                                    newir_stmt(&A, JVST_IR_STMT_VALID),
+                                    NULL
+                                  )
+                                ),
+
+                                // match "bar"
+                                newir_case(&A, 1,
+                                  newmatchset(&A, RE_LITERAL,  "quux", -1),
+                                  newir_invalid(&A, JVST_INVALID_BAD_PROPERTY_NAME, "bad property name")
+                                ),
+
+                                NULL
+                              ),
+                              NULL
+                            )
+                          ),
+                          NULL
+                        ),
+                        newir_stmt(&A, JVST_IR_STMT_VALID),
+                        NULL
+                      ),
+                      NULL
+                    ),
+
                     newir_frame(&A,
                       newir_bitvec(&A, 0, "reqmask", 3),
                       newir_matcher(&A, 0, "dfa"),
@@ -1168,44 +1206,6 @@ void test_ir_dependencies(void)
                             newir_invalid(&A, JVST_INVALID_MISSING_REQUIRED_PROPERTIES,
                               "missing required properties")
                         ),
-                        NULL
-                      ),
-                      NULL
-                    ),
-
-                    newir_frame(&A,
-                      newir_matcher(&A, 0, "dfa"),
-                      newir_seq(&A,
-                        newir_loop(&A, "L_OBJ", 0,
-                          newir_stmt(&A, JVST_IR_STMT_TOKEN),
-                          newir_if(&A, newir_istok(&A, SJP_OBJECT_END),
-                            newir_break(&A, "L_OBJ", 0),
-                            newir_seq(&A,                                 // unnecessary SEQ should be removed in the future
-                              newir_match(&A, 0,
-                                // no match
-                                newir_case(&A, 0, 
-                                  NULL,
-                                  newir_frame(&A,
-                                    newir_stmt(&A, JVST_IR_STMT_TOKEN),
-                                    newir_stmt(&A, JVST_IR_STMT_VALID),
-                                    NULL
-                                  )
-                                ),
-
-                                // match "bar"
-                                newir_case(&A, 1,
-                                  newmatchset(&A, RE_LITERAL,  "quux", -1),
-                                  newir_invalid(&A, JVST_INVALID_BAD_PROPERTY_NAME, "bad property name")
-                                ),
-
-                                NULL
-                              ),
-                              NULL
-                            )
-                          ),
-                          NULL
-                        ),
-                        newir_stmt(&A, JVST_IR_STMT_VALID),
                         NULL
                       ),
                       NULL

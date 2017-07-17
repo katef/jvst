@@ -42,6 +42,8 @@ enum jvst_ir_stmt_type {
 					//
 					// MATCH children should be MCASE nodes
 
+	JVST_IR_STMT_SPLITVEC,		// Splits the validator, stores
+					// results for each subvalidator in a bitvec
 };
 
 // expressions
@@ -59,8 +61,11 @@ enum jvst_ir_expr_type {
 	JVST_IR_EXPR_TOK_LEN,		// size: length of current token
 
 	JVST_IR_EXPR_COUNT, 		// counter value.  args: index; result: size
+	JVST_IR_EXPR_BCOUNT, 		// counts the number of bits set.  args: (bvec<index>, b0<size>, b1<size>
 	JVST_IR_EXPR_BTEST,		// tests if a bit is set.  args: (bvec<index>,bit<index>); result: bool
-	JVST_IR_EXPR_BTESTALL,		// true if all bits in the bit vector are set.  args(bvec<index>), result: bool
+	JVST_IR_EXPR_BTESTALL,		// true if all bits in the bit vector are set.  args(bvec<index>, [b0<size>,b1<size>]), result: bool
+	JVST_IR_EXPR_BTESTANY,		// true if any bits in the bit vector are set.  args(bvec<index>  [b0<size>,b1<size>]), result: bool
+	JVST_IR_EXPR_BTESTONE,		// true if exactly one bit in the bit vector is set.  args(bvec<index> [b0<size>,b1<size>]), result: bool
 
 	JVST_IR_EXPR_ISTOK,		// tests curernt token type.  args: tok_type; result: bool
 
@@ -198,6 +203,14 @@ struct jvst_ir_stmt {
 			struct jvst_ir_mcase *cases;
 			struct jvst_ir_stmt  *default_case;
 		} match;
+
+		struct {
+			struct jvst_ir_stmt *frame;
+			struct jvst_ir_stmt *bitvec;
+			struct jvst_ir_stmt *split_frames;
+			const char *label;
+			size_t ind;
+		} splitvec;
 	} u;
 };
 
@@ -220,7 +233,8 @@ struct jvst_ir_expr {
 			struct jvst_ir_stmt *frame;
 			const char *label;
 			size_t ind;
-			size_t bit_index;
+			size_t b0;
+			size_t b1;
 		} btest;
 
 		struct {

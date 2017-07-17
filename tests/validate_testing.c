@@ -977,7 +977,8 @@ newir_btestall(struct arena_info *A, size_t ind, const char *label)
 	expr = newir_expr(A,JVST_IR_EXPR_BTESTALL);
 	expr->u.btest.label = label;
 	expr->u.btest.ind = ind;
-	expr->u.btest.bit_index = 0;
+	expr->u.btest.b0 = 0;
+	expr->u.btest.b1 = 0;
 	return expr;
 }
 
@@ -1038,6 +1039,9 @@ newir_op(struct arena_info *A, enum jvst_ir_expr_type op,
 	case JVST_IR_EXPR_COUNT:
 	case JVST_IR_EXPR_BTEST:
 	case JVST_IR_EXPR_BTESTALL:
+	case JVST_IR_EXPR_BTESTANY:
+	case JVST_IR_EXPR_BTESTONE:
+	case JVST_IR_EXPR_BCOUNT:
 	case JVST_IR_EXPR_ISTOK:
 	case JVST_IR_EXPR_ISINT:
 	case JVST_IR_EXPR_NOT:
