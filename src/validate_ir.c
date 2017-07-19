@@ -1198,6 +1198,8 @@ struct ir_object_builder {
 	struct jvst_ir_mcase **mcpp;
 	struct jvst_ir_stmt *reqmask;
 	struct fsm *matcher;
+
+	bool consumed;
 };
 
 static struct jvst_ir_stmt *
@@ -1220,13 +1222,16 @@ obj_mcase_translate_inner(struct jvst_cnode *ctree, struct ir_object_builder *bu
 		}
 
 	case JVST_CNODE_VALID:
+		builder->consumed = true;
 		return ir_stmt_new(JVST_IR_STMT_VALID);
 
 	case JVST_CNODE_INVALID:
 		// XXX - better error message!
+		builder->consumed = true;
 		return ir_stmt_invalid(JVST_INVALID_BAD_PROPERTY_NAME);
 
 	default:
+		builder->consumed = true; // XXX - is this correct?
 		return jvst_ir_translate(ctree);
 	}
 }
@@ -1268,7 +1273,22 @@ obj_mcase_builder(const struct fsm *dfa, const struct fsm_state *st)
 	assert(node->type == JVST_CNODE_MATCH_CASE);
 	assert(node->u.mcase.tmp == NULL);
 
+	// XXX - this is a hack
+	// Basically, we need to keep track of whether the property
+	// value is consumed or not, and add a CONSUME statement after
+	// translation if it isn't.
+	obj_mcase_builder_state->consumed = false;
 	stmt = obj_mcase_translate(node->u.mcase.constraint, obj_mcase_builder_state);
+	if (!obj_mcase_builder_state->consumed) {
+		struct jvst_ir_stmt *seq, **spp;
+		seq = ir_stmt_new(JVST_IR_STMT_SEQ);
+		spp = &seq->u.stmt_list;
+		*spp = stmt;
+		spp = &(*spp)->next;
+		*spp = ir_stmt_new(JVST_IR_STMT_CONSUME);
+		
+		stmt = seq;
+	}
 	mcase = ir_mcase_new(UNASSIGNED_MATCH, stmt);
 	mcase->matchset = node->u.mcase.matchset;
 
@@ -1281,14 +1301,7 @@ obj_mcase_builder(const struct fsm *dfa, const struct fsm_state *st)
 struct jvst_ir_stmt *
 obj_default_case(void)
 {
-	struct jvst_ir_stmt *frame, **spp;
-
-	frame = ir_stmt_frame();
-	spp = &frame->u.frame.stmts;
-	*spp = ir_stmt_new(JVST_IR_STMT_TOKEN);
-	spp = &(*spp)->next;
-	*spp = ir_stmt_new(JVST_IR_STMT_VALID);
-	return frame;
+	return ir_stmt_new(JVST_IR_STMT_CONSUME);
 }
 
 static void
