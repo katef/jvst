@@ -549,7 +549,8 @@ jvst_ir_stmt_type_name(enum jvst_ir_stmt_type type)
 		return "MATCH";    	
 
 	default:
-		fprintf(stderr, "unknown IR statement type %d\n", type);
+		fprintf(stderr, "%s:%d unknown IR statement type %d in %s\n",
+			__FILE__, __LINE__, type, __func__);
 		abort();
 	}
 }
@@ -668,8 +669,6 @@ void dump_stmt_list(struct sbuf *buf, enum jvst_ir_stmt_type type, struct jvst_i
 void
 jvst_ir_dump_expr(struct sbuf *buf, struct jvst_ir_expr *expr, int indent)
 {
-	(void)indent;
-
 	sbuf_indent(buf, indent);
 	switch (expr->type) {
 	case JVST_IR_EXPR_NONE:
@@ -1204,8 +1203,6 @@ struct ir_object_builder {
 static struct jvst_ir_stmt *
 obj_mcase_translate_inner(struct jvst_cnode *ctree, struct ir_object_builder *builder)
 {
-	(void)builder;
-
 	switch (ctree->type) {
 	case JVST_CNODE_OBJ_REQBIT:
 		{
@@ -2180,6 +2177,21 @@ jvst_ir_translate(struct jvst_cnode *ctree)
 		;
 
 	return frame;
+}
+
+void
+jvst_ir_print(struct jvst_ir_stmt *stmt)
+{
+	size_t i;
+	// FIXME: gross hack
+	char buf[65536] = {0}; // 64K
+
+	jvst_ir_dump(stmt, buf, sizeof buf);
+	for (i=0; i < 72; i++) {
+		fprintf(stderr, "-");
+	}
+	fprintf(stderr, "\n");
+	fprintf(stderr, "%s\n", buf);
 }
 
 /* vim: set tabstop=8 shiftwidth=8 noexpandtab: */

@@ -9,6 +9,10 @@
 
 #include "validate_ir.h"
 
+#ifndef PRINT_IR
+#  define PRINT_IR 1
+#endif /* PRINT_IR */
+
 struct ir_test {
   struct jvst_cnode *ctree;
   struct jvst_ir_stmt *ir;
@@ -27,6 +31,10 @@ static int run_test(const char *fname, const struct ir_test *t)
   simplified = jvst_cnode_simplify(t->ctree);
   canonified = jvst_cnode_canonify(simplified);
   result = jvst_ir_translate(canonified);
+
+#if PRINT_IR
+  jvst_ir_print(result);
+#endif /* PRINT_IR */
 
   return ir_trees_equal(fname, result, t->ir);
 }
@@ -212,7 +220,7 @@ static void test_ir_type_constraints(void)
   };
 
   const struct ir_test tests[] = {
-    { 
+    {
       newcnode_switch(&A, 0, SJP_NUMBER, newcnode_valid(), SJP_NONE),
 
       newir_frame(&A,
@@ -237,7 +245,8 @@ static void test_ir_type_constraints(void)
       )
     },
 
-    { newcnode_switch(&A, 0,
+    {
+      newcnode_switch(&A, 0,
         SJP_OBJECT_BEG, newcnode_valid(),
         SJP_STRING, newcnode_valid(),
         SJP_NONE),
