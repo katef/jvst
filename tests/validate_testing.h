@@ -1,6 +1,8 @@
 #ifndef TESTING_H
 #define TESTING_H
 
+#include <stdio.h>
+
 #include "sjp_parser.h"
 
 #include "jdom.h"
@@ -8,6 +10,7 @@
 
 #include "validate_constraints.h"
 #include "validate_ir.h"
+#include "validate_op.h"
 
 extern int ntest;
 extern int nfail;
@@ -28,6 +31,12 @@ struct arena_info {
         size_t nstmt;
         size_t nexpr;
 	size_t nmcases;
+
+	/* OP related */
+	size_t nprog;
+	size_t nproc;
+	size_t ninstr;
+	size_t nfloat;
 };
 
 struct ast_schema *
@@ -186,6 +195,79 @@ newir_btestany(struct arena_info *A, size_t ind, const char *label, size_t b0, s
 
 struct jvst_ir_expr *
 newir_split(struct arena_info *A, ...);
+
+struct jvst_op_program *
+newop_program(struct arena_info *A, ...);
+
+struct jvst_op_proc *
+newop_proc(struct arena_info *A, ...);
+
+struct jvst_op_instr *
+newop_instr(struct arena_info *A, enum jvst_vm_op op);
+
+struct jvst_op_instr *
+newop_cmp(struct arena_info *A, enum jvst_vm_op op,
+	struct jvst_op_arg arg1, struct jvst_op_arg arg2);
+
+struct jvst_op_instr *
+newop_load(struct arena_info *A, enum jvst_vm_op op,
+	struct jvst_op_arg arg1, struct jvst_op_arg arg2);
+
+struct jvst_op_instr *
+newop_br(struct arena_info *A, enum jvst_vm_op op, const char *label);
+
+struct jvst_op_instr *
+newop_match(struct arena_info *A, int64_t dfa);
+
+struct jvst_op_instr *
+newop_call(struct arena_info *A, size_t frame);
+
+struct jvst_op_instr *
+newop_incr(struct arena_info *A, size_t slot);
+
+struct jvst_op_instr *
+newop_invalid(struct arena_info *A, enum jvst_invalid_code ecode);
+
+extern const struct jvst_op_instr *const oplabel;
+extern const struct jvst_op_instr *const opslots;
+extern const struct jvst_op_instr *const opfloat;
+extern const struct jvst_op_instr *const opdfa;
+
+static inline struct jvst_op_arg 
+oparg_make(enum jvst_op_arg_type type, int64_t ind) {
+	struct jvst_op_arg arg = { 
+		.type = type,
+		.index = ind,
+	};
+	return arg;
+}
+
+static inline struct jvst_op_arg 
+oparg_none(void) { return oparg_make(JVST_VM_ARG_NONE,0); }
+
+static inline struct jvst_op_arg 
+oparg_tt(void) { return oparg_make(JVST_VM_ARG_TT,0); }
+
+static inline struct jvst_op_arg 
+oparg_tnum(void) { return oparg_make(JVST_VM_ARG_TNUM,0); }
+
+static inline struct jvst_op_arg 
+oparg_m(void) { return oparg_make(JVST_VM_ARG_M,0); }
+
+static inline struct jvst_op_arg 
+oparg_lit(int64_t v) { return oparg_make(JVST_VM_ARG_CONST,v); }
+
+static inline struct jvst_op_arg 
+oparg_tok(enum SJP_EVENT evt) { return oparg_make(JVST_VM_ARG_TOKTYPE,evt); }
+
+static inline struct jvst_op_arg 
+oparg_ftmp(int n) { return oparg_make(JVST_VM_ARG_FLOAT,n); }
+
+static inline struct jvst_op_arg 
+oparg_itmp(int n) { return oparg_make(JVST_VM_ARG_INT,n); }
+
+static inline struct jvst_op_arg 
+oparg_slot(int n) { return oparg_make(JVST_VM_ARG_SLOT,n); }
 
 const char *
 jvst_ret2name(int ret);
