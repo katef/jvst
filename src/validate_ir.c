@@ -20,12 +20,6 @@
 #include "validate_constraints.h"
 #include "sjp_testing.h"
 
-enum { MATCH_LABEL_MAX = 4096 };
-
-// pointers for offsets to match labels
-// TODO: explain this more....
-static char matchlbls[MATCH_LABEL_MAX];
-
 const char *
 jvst_invalid_msg(enum jvst_invalid_code code)
 {
@@ -629,11 +623,20 @@ jvst_ir_expr_type_name(enum jvst_ir_expr_type type)
 	case JVST_IR_EXPR_SPLIT:
 		return "SPLIT";
 
-	default:
-		fprintf(stderr, "%s:%d unknown IR expression node type %d in %s\n",
-			__FILE__, __LINE__, type, __func__);
-		abort();
+	case JVST_IR_EXPR_NUM:
+		return "NUM";
+
+	case JVST_IR_EXPR_SIZE:
+		return "SIZE";
+
+	case JVST_IR_EXPR_BOOL:
+		return "BOOL";
+
 	}
+
+	fprintf(stderr, "%s:%d (%s) unknown IR expression node type %d\n",
+		__FILE__, __LINE__, __func__, type);
+	abort();
 }
 
 void
