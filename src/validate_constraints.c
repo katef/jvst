@@ -6,7 +6,6 @@
 #include <string.h>
 #include <limits.h>
 
-#include <adt/set.h>
 #include <fsm/bool.h>
 #include <fsm/fsm.h>
 #include <fsm/out.h>
@@ -1580,26 +1579,26 @@ json_str_getc(void *p)
 }
 
 static void
-merge_mcases(struct set *orig, struct fsm *dfa, struct fsm_state *comb)
+merge_mcases(const struct fsm_state **orig, size_t n,
+	struct fsm *dfa, struct fsm_state *comb)
 {
 	struct jvst_cnode *mcase, *jxn, **jpp;
 	struct jvst_cnode_matchset **mspp;
-	struct fsm_state *st;
-	struct set_iter it;
 	size_t nstates;
+	size_t i;
 
 	// first count states to make sure that we need to merge...
 	mcase = NULL;
 	nstates = 0;
 
-	for (st = set_first(orig, &it); st != NULL; st = set_next(&it)) {
+	for (i = 0; i < n; i++) {
 		struct jvst_cnode *c;
 
-		if (!fsm_isend(dfa, st)) {
+		if (!fsm_isend(dfa, orig[i])) {
 			continue;
 		}
 
-		c = fsm_getopaque(dfa, st);
+		c = fsm_getopaque(dfa, orig[i]);
 		assert(c != NULL);
 
 		// allow a fast path if nstates==1
@@ -1626,15 +1625,15 @@ merge_mcases(struct set *orig, struct fsm *dfa, struct fsm_state *comb)
 	mcase = cnode_new_mcase(NULL, jxn);
 	mspp = &mcase->u.mcase.matchset;
 
-	for (st = set_first(orig, &it); st != NULL; st = set_next(&it)) {
+	for (i = 0; i < n; i++) {
 		struct jvst_cnode *c;
 		struct jvst_cnode_matchset *mset;
 
-		if (!fsm_isend(dfa, st)) {
+		if (!fsm_isend(dfa, orig[i])) {
 			continue;
 		}
 
-		c = fsm_getopaque(dfa, st);
+		c = fsm_getopaque(dfa, orig[i]);
 		assert(c != NULL);
 
 		assert(c->type == JVST_CNODE_MATCH_CASE);

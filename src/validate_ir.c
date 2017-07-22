@@ -8,7 +8,6 @@
 #include <stdio.h>
 #include <string.h>
 
-#include <adt/set.h>
 #include <fsm/bool.h>
 #include <fsm/fsm.h>
 #include <fsm/out.h>
@@ -1107,21 +1106,22 @@ ir_translate_number(struct jvst_cnode *top)
 	return stmt;
 }
 
-static void merge_constraints(struct set *orig, struct fsm *dfa, struct fsm_state *comb)
+static void
+merge_constraints(const struct fsm_state **orig, size_t n,
+	struct fsm *dfa, struct fsm_state *comb)
 {
 	struct jvst_ir_mcase *mcase;
-	struct set_iter it = { 0 };
-	struct fsm_state *st;
+	size_t i;
 
 	fprintf(stderr, "... MERGING CONSTRAINTS ... \n");
-	for (mcase=NULL, st = set_first(orig, &it); st != NULL; st = set_next(&it)) {
+	for (mcase = NULL, i = 0; i < n; i++) {
 		struct jvst_ir_mcase *c;
 
-		if (!fsm_isend(dfa, st)) {
+		if (!fsm_isend(dfa, orig[i])) {
 			continue;
 		}
 
-		c = fsm_getopaque(dfa, st);
+		c = fsm_getopaque(dfa, orig[i]);
 		if (c == NULL) {
 			fprintf(stderr, "case is NULL!\n");
 			continue;
@@ -1130,15 +1130,15 @@ static void merge_constraints(struct set *orig, struct fsm *dfa, struct fsm_stat
 		fprintf(stderr, "merging case %p %zu\n", (void *)c, c->which);
 	}
 
-	for (mcase=NULL, st = set_first(orig, &it); st != NULL; st = set_next(&it)) {
+	for (mcase = NULL, i = 0; i < n; i++) {
 		struct jvst_ir_mcase *newcase;
 		struct jvst_ir_stmt *seq;
 
-		if (!fsm_isend(dfa, st)) {
+		if (!fsm_isend(dfa, orig[i])) {
 			continue;
 		}
 
-		newcase = fsm_getopaque(dfa, st);
+		newcase = fsm_getopaque(dfa, orig[i]);
 		if (mcase == NULL) {
 			assert(newcase->stmt != NULL);
 			mcase = newcase;
