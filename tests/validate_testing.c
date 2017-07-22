@@ -1102,4 +1102,68 @@ newir_op(struct arena_info *A, enum jvst_ir_expr_type op,
 }
 
 
+void
+buffer_diff(FILE *f, const char *buf1, const char *buf2, size_t n)
+{
+	size_t i, linenum, beg, off;
+
+	// slightly tedious job of finding first difference and printing out
+	// both up to that point...
+	for (i=0, linenum=1, off=0; i < n; i++) {
+		size_t j;
+		char line1[256], line2[256];
+
+		if (buf1[i] == buf2[i]) {
+			if (buf1[i] == '\0') {
+				fprintf(f, "INTERNAL ERROR: cannot find difference.\n");
+				abort();
+			}
+
+			if (buf1[i] == '\n') {
+				size_t n;
+				n = i-off;
+				if (n >= sizeof line1) {
+					n = sizeof line1 - 1;
+				}
+				if (n > 0) {
+					memcpy(line1,&buf1[off],n);
+					memcpy(line2,&buf2[off],n);
+				}
+				line1[n] = '\0';
+				line2[n] = '\0';
+
+				fprintf(f, "%3zu | %-40.40s | %-40.40s\n",
+						linenum, line1, line2);
+
+				linenum++;
+				off = i+1;
+			}
+
+			continue;
+		}
+
+		// difference
+		fprintf(f, "difference at line %zu, column %zu:\n", linenum, i-off+1);
+		fprintf(f, "EXPECTED: ");
+		for(j=off; j < n && buf2[j] != '\n'; j++) {
+			fputc(buf2[j], stderr);
+		}
+		fprintf(f, "\n");
+
+		fprintf(f, "ACTUAL  : ");
+		for(j=off; j < n && buf1[j] != '\n'; j++) {
+			fputc(buf1[j], stderr);
+		}
+		fprintf(f, "\n");
+
+		fprintf(f, "DIFF    : ");
+		for(j=off; j < i; j++) {
+			fputc(' ', stderr);
+		}
+		fprintf(f, "^\n");
+
+		break;
+	}
+}
+
 /* vim: set tabstop=8 shiftwidth=8 noexpandtab: */

@@ -193,6 +193,9 @@ jvst_ret2name(int ret);
 int
 report_tests(void);
 
+void
+buffer_diff(FILE *f, const char *buf1, const char *buf2, size_t n);
+
 #endif /* TESTING_H */
 
 /* vim: set tabstop=8 shiftwidth=8 noexpandtab: */

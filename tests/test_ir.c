@@ -193,6 +193,7 @@ static void test_ir_empty_schema(void)
   const struct ir_test tests[] = {
     {
       newcnode_switch(&A, 1, SJP_NONE),
+
       newir_frame(&A,
           newir_stmt(&A, JVST_IR_STMT_TOKEN),
           newir_if(&A, newir_istok(&A, SJP_OBJECT_END),
