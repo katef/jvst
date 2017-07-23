@@ -134,7 +134,7 @@ struct jvst_ir_stmt {
 	struct jvst_ir_stmt *next;
 	struct jvst_ir_stmt *parent;
 
-	// to used in further translation
+	// for use in subsequent translation steps
 	void *data;
 
 	union {
