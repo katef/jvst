@@ -277,6 +277,10 @@ jvst_ir_expr_type_name(enum jvst_ir_expr_type type);
 const char *
 jvst_ir_stmt_type_name(enum jvst_ir_stmt_type type);
 
+// for debugging, prints node to stderr
+void
+jvst_ir_print(struct jvst_ir_stmt *node);
+
 #endif /* JVST_VALIDATE_IR_H */
 
 /* vim: set tabstop=8 shiftwidth=8 noexpandtab: */

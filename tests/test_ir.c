@@ -9,6 +9,10 @@
 
 #include "validate_ir.h"
 
+#ifndef PRINT_IR
+#  define PRINT_IR 0
+#endif /* PRINT_IR */
+
 struct ir_test {
   struct jvst_cnode *ctree;
   struct jvst_ir_stmt *ir;
@@ -27,6 +31,10 @@ static int run_test(const char *fname, const struct ir_test *t)
   simplified = jvst_cnode_simplify(t->ctree);
   canonified = jvst_cnode_canonify(simplified);
   result = jvst_ir_translate(canonified);
+
+#if PRINT_IR
+  jvst_ir_print(result);
+#endif /* PRINT_IR */
 
   return ir_trees_equal(fname, result, t->ir);
 }
@@ -185,6 +193,7 @@ static void test_ir_empty_schema(void)
   const struct ir_test tests[] = {
     {
       newcnode_switch(&A, 1, SJP_NONE),
+
       newir_frame(&A,
           newir_stmt(&A, JVST_IR_STMT_TOKEN),
           newir_if(&A, newir_istok(&A, SJP_OBJECT_END),
@@ -212,7 +221,7 @@ static void test_ir_type_constraints(void)
   };
 
   const struct ir_test tests[] = {
-    { 
+    {
       newcnode_switch(&A, 0, SJP_NUMBER, newcnode_valid(), SJP_NONE),
 
       newir_frame(&A,
@@ -237,7 +246,8 @@ static void test_ir_type_constraints(void)
       )
     },
 
-    { newcnode_switch(&A, 0,
+    {
+      newcnode_switch(&A, 0,
         SJP_OBJECT_BEG, newcnode_valid(),
         SJP_STRING, newcnode_valid(),
         SJP_NONE),
@@ -358,11 +368,7 @@ void test_ir_properties(void)
                       // no match
                       newir_case(&A, 0, 
                         NULL,
-                        newir_frame(&A,
-                          newir_stmt(&A, JVST_IR_STMT_TOKEN),
-                          newir_stmt(&A, JVST_IR_STMT_VALID),
-                          NULL
-                        )
+                        newir_stmt(&A, JVST_IR_STMT_CONSUME)
                       ),
 
                       // match "bar"
@@ -438,15 +444,21 @@ void test_ir_properties(void)
                       // no match
                       newir_case(&A, 0, 
                         NULL,
+                        newir_stmt(&A, JVST_IR_STMT_CONSUME)
+                      ),
+
+                      // match "bar" AND "ba."
+                      newir_case(&A, 1,
+                        newmatchset(&A, RE_LITERAL, "bar", RE_NATIVE,  "ba.", -1),
                         newir_frame(&A,
-                          newir_stmt(&A, JVST_IR_STMT_TOKEN),
-                          newir_stmt(&A, JVST_IR_STMT_VALID),
+                          newir_stmt(&A, JVST_IR_STMT_TOKEN),   // XXX - is this necessary?
+                          newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token"),
                           NULL
                         )
                       ),
 
                       // match /ba./
-                      newir_case(&A, 1,
+                      newir_case(&A, 2,
                         newmatchset(&A, RE_NATIVE,  "ba.", -1),
                         newir_frame(&A,
                           newir_stmt(&A, JVST_IR_STMT_TOKEN),
@@ -454,16 +466,6 @@ void test_ir_properties(void)
                             newir_stmt(&A, JVST_IR_STMT_VALID),
                             newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token")
                           ),
-                          NULL
-                        )
-                      ),
-
-                      // match "bar" AND "ba."
-                      newir_case(&A, 2,
-                        newmatchset(&A, RE_LITERAL, "bar", RE_NATIVE,  "ba.", -1),
-                        newir_frame(&A,
-                          newir_stmt(&A, JVST_IR_STMT_TOKEN),   // XXX - is this necessary?
-                          newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token"),
                           NULL
                         )
                       ),
@@ -532,11 +534,7 @@ void test_ir_minmax_properties_1(void)
                       // no match
                       newir_case(&A, 0, 
                         NULL,
-                        newir_frame(&A,
-                          newir_stmt(&A, JVST_IR_STMT_TOKEN),
-                          newir_stmt(&A, JVST_IR_STMT_VALID),
-                          NULL
-                        )
+                        newir_stmt(&A, JVST_IR_STMT_CONSUME)
                       ),
 
                       NULL
@@ -618,11 +616,7 @@ void test_ir_minmax_properties_1(void)
                       // no match
                       newir_case(&A, 0, 
                         NULL,
-                        newir_frame(&A,
-                          newir_stmt(&A, JVST_IR_STMT_TOKEN),
-                          newir_stmt(&A, JVST_IR_STMT_VALID),
-                          NULL
-                        )
+                        newir_stmt(&A, JVST_IR_STMT_CONSUME)
                       ),
 
                       NULL
@@ -691,11 +685,7 @@ void test_ir_minmax_properties_1(void)
                       // no match
                       newir_case(&A, 0, 
                         NULL,
-                        newir_frame(&A,
-                          newir_stmt(&A, JVST_IR_STMT_TOKEN),
-                          newir_stmt(&A, JVST_IR_STMT_VALID),
-                          NULL
-                        )
+                        newir_stmt(&A, JVST_IR_STMT_CONSUME)
                       ),
 
                       NULL
@@ -779,19 +769,15 @@ void test_ir_minproperties_2(void)
                       // no match
                       newir_case(&A, 0, 
                         NULL,
-                        newir_frame(&A,
-                          newir_stmt(&A, JVST_IR_STMT_TOKEN),
-                          newir_stmt(&A, JVST_IR_STMT_VALID),
-                          NULL
-                        )
+                        newir_stmt(&A, JVST_IR_STMT_CONSUME)
                       ),
 
-                      // match "foo"
+                      // match "bar"
                       newir_case(&A, 1,
-                        newmatchset(&A, RE_LITERAL,  "foo", -1),
+                        newmatchset(&A, RE_LITERAL,  "bar", -1),
                         newir_frame(&A,
                           newir_stmt(&A, JVST_IR_STMT_TOKEN),
-                          newir_if(&A, newir_istok(&A, SJP_NUMBER),
+                          newir_if(&A, newir_istok(&A, SJP_STRING),
                             newir_stmt(&A, JVST_IR_STMT_VALID),
                             newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token")
                           ),
@@ -799,12 +785,12 @@ void test_ir_minproperties_2(void)
                         )
                       ),
 
-                      // match "bar"
+                      // match "foo"
                       newir_case(&A, 2,
-                        newmatchset(&A, RE_LITERAL,  "bar", -1),
+                        newmatchset(&A, RE_LITERAL,  "foo", -1),
                         newir_frame(&A,
                           newir_stmt(&A, JVST_IR_STMT_TOKEN),
-                          newir_if(&A, newir_istok(&A, SJP_STRING),
+                          newir_if(&A, newir_istok(&A, SJP_NUMBER),
                             newir_stmt(&A, JVST_IR_STMT_VALID),
                             newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token")
                           ),
@@ -898,11 +884,7 @@ void test_ir_required(void)
                       // no match
                       newir_case(&A, 0, 
                         NULL,
-                        newir_frame(&A,
-                          newir_stmt(&A, JVST_IR_STMT_TOKEN),
-                          newir_stmt(&A, JVST_IR_STMT_VALID),
-                          NULL
-                        )
+                        newir_stmt(&A, JVST_IR_STMT_CONSUME)
                       ),
 
                       // match "bar"
@@ -1005,11 +987,7 @@ void test_ir_dependencies(void)
                                 // no match
                                 newir_case(&A, 0, 
                                   NULL,
-                                  newir_frame(&A,
-                                    newir_stmt(&A, JVST_IR_STMT_TOKEN),
-                                    newir_stmt(&A, JVST_IR_STMT_VALID),
-                                    NULL
-                                  )
+                                  newir_stmt(&A, JVST_IR_STMT_CONSUME)
                                 ),
 
                                 // match "bar"
@@ -1044,23 +1022,27 @@ void test_ir_dependencies(void)
                                 // no match
                                 newir_case(&A, 0, 
                                   NULL,
-                                  newir_frame(&A,
-                                    newir_stmt(&A, JVST_IR_STMT_TOKEN),
-                                    newir_stmt(&A, JVST_IR_STMT_VALID),
+                                  newir_stmt(&A, JVST_IR_STMT_CONSUME)
+                                ),
+
+                                // match "bar"
+                                newir_case(&A, 1,
+                                  newmatchset(&A, RE_LITERAL,  "bar", -1),
+                                  newir_seq(&A,
+                                    newir_bitop(&A, JVST_IR_STMT_BSET, 0, "reqmask", 0),
+                                    newir_stmt(&A, JVST_IR_STMT_CONSUME),
                                     NULL
                                   )
                                 ),
 
                                 // match "foo"
-                                newir_case(&A, 1,
-                                  newmatchset(&A, RE_LITERAL,  "foo", -1),
-                                  newir_bitop(&A, JVST_IR_STMT_BSET, 0, "reqmask", 1)
-                                ),
-
-                                // match "bar"
                                 newir_case(&A, 2,
-                                  newmatchset(&A, RE_LITERAL,  "bar", -1),
-                                  newir_bitop(&A, JVST_IR_STMT_BSET, 0, "reqmask", 0)
+                                  newmatchset(&A, RE_LITERAL,  "foo", -1),
+                                  newir_seq(&A,
+                                    newir_bitop(&A, JVST_IR_STMT_BSET, 0, "reqmask", 1),
+                                    newir_stmt(&A, JVST_IR_STMT_CONSUME),
+                                    NULL
+                                  )
                                 ),
 
                                 NULL
@@ -1129,11 +1111,7 @@ void test_ir_dependencies(void)
                                 // no match
                                 newir_case(&A, 0, 
                                   NULL,
-                                  newir_frame(&A,
-                                    newir_stmt(&A, JVST_IR_STMT_TOKEN),
-                                    newir_stmt(&A, JVST_IR_STMT_VALID),
-                                    NULL
-                                  )
+                                  newir_stmt(&A, JVST_IR_STMT_CONSUME)
                                 ),
 
                                 // match "bar"
@@ -1168,29 +1146,37 @@ void test_ir_dependencies(void)
                                 // no match
                                 newir_case(&A, 0, 
                                   NULL,
-                                  newir_frame(&A,
-                                    newir_stmt(&A, JVST_IR_STMT_TOKEN),
-                                    newir_stmt(&A, JVST_IR_STMT_VALID),
-                                    NULL
-                                  )
+                                  newir_stmt(&A, JVST_IR_STMT_CONSUME)
                                 ),
 
                                 // match "bar"
                                 newir_case(&A, 1,
                                   newmatchset(&A, RE_LITERAL,  "bar", -1),
-                                  newir_bitop(&A, JVST_IR_STMT_BSET, 0, "reqmask", 2)
+                                  newir_seq(&A,
+                                    newir_bitop(&A, JVST_IR_STMT_BSET, 0, "reqmask", 2),
+                                    newir_stmt(&A, JVST_IR_STMT_CONSUME),
+                                    NULL
+                                  )
                                 ),
 
                                 // match "foo"
                                 newir_case(&A, 2,
                                   newmatchset(&A, RE_LITERAL,  "foo", -1),
-                                  newir_bitop(&A, JVST_IR_STMT_BSET, 0, "reqmask", 1)
+                                  newir_seq(&A,
+                                    newir_bitop(&A, JVST_IR_STMT_BSET, 0, "reqmask", 1),
+                                    newir_stmt(&A, JVST_IR_STMT_CONSUME),
+                                    NULL
+                                  )
                                 ),
 
                                 // match "quux"
                                 newir_case(&A, 3,
                                   newmatchset(&A, RE_LITERAL,  "quux", -1),
-                                  newir_bitop(&A, JVST_IR_STMT_BSET, 0, "reqmask", 0)
+                                  newir_seq(&A,
+                                    newir_bitop(&A, JVST_IR_STMT_BSET, 0, "reqmask", 0),
+                                    newir_stmt(&A, JVST_IR_STMT_CONSUME),
+                                    NULL
+                                  )
                                 ),
 
                                 NULL
@@ -1267,11 +1253,7 @@ void test_ir_dependencies(void)
                               // no match
                               newir_case(&A, 0, 
                                 NULL,
-                                newir_frame(&A,
-                                  newir_stmt(&A, JVST_IR_STMT_TOKEN),
-                                  newir_stmt(&A, JVST_IR_STMT_VALID),
-                                  NULL
-                                )
+                                newir_stmt(&A, JVST_IR_STMT_CONSUME)
                               ),
 
                               // match "bar"
@@ -1306,29 +1288,37 @@ void test_ir_dependencies(void)
                               // no match
                               newir_case(&A, 0, 
                                 NULL,
-                                newir_frame(&A,
-                                  newir_stmt(&A, JVST_IR_STMT_TOKEN),
-                                  newir_stmt(&A, JVST_IR_STMT_VALID),
-                                  NULL
-                                )
+                                newir_stmt(&A, JVST_IR_STMT_CONSUME)
                               ),
 
                               // match "bar"
                               newir_case(&A, 1,
                                 newmatchset(&A, RE_LITERAL,  "bar", -1),
-                                newir_bitop(&A, JVST_IR_STMT_BSET, 0, "reqmask", 2)
+                                newir_seq(&A,
+                                  newir_bitop(&A, JVST_IR_STMT_BSET, 0, "reqmask", 2),
+                                  newir_stmt(&A, JVST_IR_STMT_CONSUME),
+                                  NULL
+                                )
                               ),
 
                               // match "foo"
                               newir_case(&A, 2,
                                 newmatchset(&A, RE_LITERAL,  "foo", -1),
-                                newir_bitop(&A, JVST_IR_STMT_BSET, 0, "reqmask", 1)
+                                newir_seq(&A,
+                                  newir_bitop(&A, JVST_IR_STMT_BSET, 0, "reqmask", 1),
+                                  newir_stmt(&A, JVST_IR_STMT_CONSUME),
+                                  NULL
+                                )
                               ),
 
                               // match "quux"
                               newir_case(&A, 3,
                                 newmatchset(&A, RE_LITERAL,  "quux", -1),
-                                newir_bitop(&A, JVST_IR_STMT_BSET, 0, "reqmask", 0)
+                                newir_seq(&A,
+                                  newir_bitop(&A, JVST_IR_STMT_BSET, 0, "reqmask", 0),
+                                  newir_stmt(&A, JVST_IR_STMT_CONSUME),
+                                  NULL
+                                )
                               ),
 
                               NULL
@@ -1361,11 +1351,7 @@ void test_ir_dependencies(void)
                               // no match
                               newir_case(&A, 0, 
                                 NULL,
-                                newir_frame(&A,
-                                  newir_stmt(&A, JVST_IR_STMT_TOKEN),
-                                  newir_stmt(&A, JVST_IR_STMT_VALID),
-                                  NULL
-                                )
+                                newir_stmt(&A, JVST_IR_STMT_CONSUME)
                               ),
 
                               // match "bar"
@@ -1400,23 +1386,27 @@ void test_ir_dependencies(void)
                               // no match
                               newir_case(&A, 0, 
                                 NULL,
-                                newir_frame(&A,
-                                  newir_stmt(&A, JVST_IR_STMT_TOKEN),
-                                  newir_stmt(&A, JVST_IR_STMT_VALID),
-                                  NULL
-                                )
+                                newir_stmt(&A, JVST_IR_STMT_CONSUME)
                               ),
 
                               // match "quux"
                               newir_case(&A, 1,
                                 newmatchset(&A, RE_LITERAL,  "that", -1),
-                                newir_bitop(&A, JVST_IR_STMT_BSET, 0, "reqmask", 1)
+                                newir_seq(&A, 
+                                  newir_bitop(&A, JVST_IR_STMT_BSET, 0, "reqmask", 1),
+                                  newir_stmt(&A, JVST_IR_STMT_CONSUME),
+                                  NULL
+                                )
                               ),
 
                               // match "bar"
                               newir_case(&A, 2,
                                 newmatchset(&A, RE_LITERAL,  "this", -1),
-                                newir_bitop(&A, JVST_IR_STMT_BSET, 0, "reqmask", 0)
+                                newir_seq(&A, 
+                                  newir_bitop(&A, JVST_IR_STMT_BSET, 0, "reqmask", 0),
+                                  newir_stmt(&A, JVST_IR_STMT_CONSUME),
+                                  NULL
+                                )
                               ),
 
                               NULL
