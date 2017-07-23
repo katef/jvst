@@ -10,7 +10,7 @@
 #include "validate_ir.h"
 
 #ifndef PRINT_IR
-#  define PRINT_IR 1
+#  define PRINT_IR 0
 #endif /* PRINT_IR */
 
 struct ir_test {
@@ -447,8 +447,18 @@ void test_ir_properties(void)
                         newir_stmt(&A, JVST_IR_STMT_CONSUME)
                       ),
 
-                      // match /ba./
+                      // match "bar" AND "ba."
                       newir_case(&A, 1,
+                        newmatchset(&A, RE_LITERAL, "bar", RE_NATIVE,  "ba.", -1),
+                        newir_frame(&A,
+                          newir_stmt(&A, JVST_IR_STMT_TOKEN),   // XXX - is this necessary?
+                          newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token"),
+                          NULL
+                        )
+                      ),
+
+                      // match /ba./
+                      newir_case(&A, 2,
                         newmatchset(&A, RE_NATIVE,  "ba.", -1),
                         newir_frame(&A,
                           newir_stmt(&A, JVST_IR_STMT_TOKEN),
@@ -456,16 +466,6 @@ void test_ir_properties(void)
                             newir_stmt(&A, JVST_IR_STMT_VALID),
                             newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token")
                           ),
-                          NULL
-                        )
-                      ),
-
-                      // match "bar" AND "ba."
-                      newir_case(&A, 2,
-                        newmatchset(&A, RE_LITERAL, "bar", RE_NATIVE,  "ba.", -1),
-                        newir_frame(&A,
-                          newir_stmt(&A, JVST_IR_STMT_TOKEN),   // XXX - is this necessary?
-                          newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token"),
                           NULL
                         )
                       ),
@@ -772,12 +772,12 @@ void test_ir_minproperties_2(void)
                         newir_stmt(&A, JVST_IR_STMT_CONSUME)
                       ),
 
-                      // match "foo"
+                      // match "bar"
                       newir_case(&A, 1,
-                        newmatchset(&A, RE_LITERAL,  "foo", -1),
+                        newmatchset(&A, RE_LITERAL,  "bar", -1),
                         newir_frame(&A,
                           newir_stmt(&A, JVST_IR_STMT_TOKEN),
-                          newir_if(&A, newir_istok(&A, SJP_NUMBER),
+                          newir_if(&A, newir_istok(&A, SJP_STRING),
                             newir_stmt(&A, JVST_IR_STMT_VALID),
                             newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token")
                           ),
@@ -785,12 +785,12 @@ void test_ir_minproperties_2(void)
                         )
                       ),
 
-                      // match "bar"
+                      // match "foo"
                       newir_case(&A, 2,
-                        newmatchset(&A, RE_LITERAL,  "bar", -1),
+                        newmatchset(&A, RE_LITERAL,  "foo", -1),
                         newir_frame(&A,
                           newir_stmt(&A, JVST_IR_STMT_TOKEN),
-                          newir_if(&A, newir_istok(&A, SJP_STRING),
+                          newir_if(&A, newir_istok(&A, SJP_NUMBER),
                             newir_stmt(&A, JVST_IR_STMT_VALID),
                             newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token")
                           ),
@@ -1025,21 +1025,21 @@ void test_ir_dependencies(void)
                                   newir_stmt(&A, JVST_IR_STMT_CONSUME)
                                 ),
 
-                                // match "foo"
+                                // match "bar"
                                 newir_case(&A, 1,
-                                  newmatchset(&A, RE_LITERAL,  "foo", -1),
+                                  newmatchset(&A, RE_LITERAL,  "bar", -1),
                                   newir_seq(&A,
-                                    newir_bitop(&A, JVST_IR_STMT_BSET, 0, "reqmask", 1),
+                                    newir_bitop(&A, JVST_IR_STMT_BSET, 0, "reqmask", 0),
                                     newir_stmt(&A, JVST_IR_STMT_CONSUME),
                                     NULL
                                   )
                                 ),
 
-                                // match "bar"
+                                // match "foo"
                                 newir_case(&A, 2,
-                                  newmatchset(&A, RE_LITERAL,  "bar", -1),
+                                  newmatchset(&A, RE_LITERAL,  "foo", -1),
                                   newir_seq(&A,
-                                    newir_bitop(&A, JVST_IR_STMT_BSET, 0, "reqmask", 0),
+                                    newir_bitop(&A, JVST_IR_STMT_BSET, 0, "reqmask", 1),
                                     newir_stmt(&A, JVST_IR_STMT_CONSUME),
                                     NULL
                                   )

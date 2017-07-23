@@ -1519,13 +1519,6 @@ void test_canonify_ored_schema(void)
                                 newcnode_valid(),
 
                                 newcnode_mcase(&A,
-                                  newmatchset(&A, RE_LITERAL, "foo", -1),
-                                    newcnode_switch(&A, 0, 
-                                      SJP_NUMBER, newcnode(&A,JVST_CNODE_NUM_INTEGER),
-                                      SJP_NONE)
-                                ),
-
-                                newcnode_mcase(&A,
                                   newmatchset(&A, RE_LITERAL, "bar", RE_LITERAL, "bar", -1),
                                   newcnode_bool(&A, JVST_CNODE_AND,
                                     newcnode_switch(&A, 0, 
@@ -1533,6 +1526,13 @@ void test_canonify_ored_schema(void)
                                       SJP_NONE),
                                     newcnode_reqbit(&A, 0),
                                     NULL)
+                                ),
+
+                                newcnode_mcase(&A,
+                                  newmatchset(&A, RE_LITERAL, "foo", -1),
+                                    newcnode_switch(&A, 0, 
+                                      SJP_NUMBER, newcnode(&A,JVST_CNODE_NUM_INTEGER),
+                                      SJP_NONE)
                                 ),
 
                                 NULL
@@ -1589,17 +1589,17 @@ void test_canonify_propsets(void)
 
                             newcnode_mcase(&A,
                               newmatchset(&A,
-                                RE_NATIVE,  "ba.",
-                                -1),
-                              newcnode_switch(&A, 0, SJP_NUMBER, newcnode_valid(), SJP_NONE)
-                            ),
-
-                            newcnode_mcase(&A,
-                              newmatchset(&A,
                                 RE_LITERAL, "bar",
                                 RE_NATIVE,  "ba.",
                                 -1),
                               newcnode_switch(&A, 0, SJP_NONE)
+                            ),
+
+                            newcnode_mcase(&A,
+                              newmatchset(&A,
+                                RE_NATIVE,  "ba.",
+                                -1),
+                              newcnode_switch(&A, 0, SJP_NUMBER, newcnode_valid(), SJP_NONE)
                             ),
 
                             NULL),

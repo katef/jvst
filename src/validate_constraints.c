@@ -1677,6 +1677,141 @@ mcase_collector(const struct fsm *dfa, const struct fsm_state *st)
 	return 1;
 }
 
+static bool opt_sort_mcases = true;
+
+static int matchset_cmp(const void *p0, const void *p1)
+{
+	const struct jvst_cnode_matchset *const *ms0, *const *ms1;
+	int diff;
+	size_t n0, n1, nsm;
+
+	ms0 = p0;
+	ms1 = p1;
+
+	diff = (*ms0)->match.dialect - (*ms1)->match.dialect;
+	if (diff != 0) {
+		return diff;
+	}
+
+	n0 = (*ms0)->match.str.len;
+	n1 = (*ms1)->match.str.len;
+	nsm = n0;
+	if (nsm > n1) {
+		nsm = n1;
+	}
+
+	diff = memcmp((*ms0)->match.str.s, (*ms1)->match.str.s, nsm);
+	if ((diff != 0) || (n0 == n1)) {
+		return diff;
+	}
+
+	return (n0 < n1) ? -1 : 1;
+}
+
+static void
+sort_matchset(struct jvst_cnode_matchset **mspp)
+{
+	struct jvst_cnode_matchset *ms, **msv;
+	struct jvst_cnode_matchset *msv0[16];
+	size_t i,n;
+
+	for (n=0, ms = *mspp; ms != NULL; n++, ms = ms->next) {
+		continue;
+	}
+
+	if (n < 2) {
+		return;
+	}
+
+	if (n <= ARRAYLEN(msv0)) {
+		msv = msv0;
+	} else {
+		msv = xmalloc(n * sizeof *msv);
+	}
+
+	for (i=0, ms=*mspp; ms != NULL; i++, ms=ms->next) {
+		msv[i] = ms;
+	}
+
+	qsort(msv, n, sizeof *msv, matchset_cmp);
+
+	for (i=0; i < n; i++) {
+		*mspp = msv[i];
+		mspp = &(*mspp)->next;
+		*mspp = NULL;
+	}
+
+	if (msv != msv0) {
+		free(msv);
+	}
+}
+
+static int
+mcase_cmp(const void *p0, const void *p1)
+{
+	const struct jvst_cnode *const *c0, *const *c1;
+	const struct jvst_cnode_matchset *ms0, *ms1;
+	c0 = p0;
+	c1 = p1;
+
+	ms0 = (*c0)->u.mcase.matchset;
+	ms1 = (*c1)->u.mcase.matchset;
+	for(; (ms0 != NULL) || (ms1 != NULL); ms0=ms0->next, ms1=ms1->next) {
+		int diff;
+
+		diff = matchset_cmp(&ms0,&ms1);
+		if (diff != 0) {
+			return diff;
+		}
+	}
+
+	if ((ms0 == NULL) && (ms1 == NULL)) {
+		return 0;
+	}
+
+	return (ms0 == NULL) ? -1 : 1;
+}
+
+static void
+sort_mcases(struct jvst_cnode **mcpp)
+{
+	struct jvst_cnode *mc, **mcv;
+	size_t i,n;
+	struct jvst_cnode *mcv0[16];
+
+	assert(mcpp != NULL);
+
+	for (n=0, mc = *mcpp; mc != NULL; n++, mc = mc->next) {
+		sort_matchset(&mc->u.mcase.matchset);
+	}
+
+	if (n < 2) {
+		return;
+	}
+
+	if (n <= ARRAYLEN(mcv0)) {
+		mcv = mcv0;
+	} else {
+		mcv = xmalloc(n * sizeof *mcv);
+	}
+
+	for (i=0, mc = *mcpp; mc != NULL; i++, mc = mc->next) {
+		mcv[i] = mc;
+	}
+
+	qsort(mcv, n, sizeof *mcv, mcase_cmp);
+
+	for (i=0; i < n; i++) {
+		*mcpp = mcv[i];
+		mcpp = &(*mcpp)->next;
+		*mcpp = NULL;
+	}
+
+	if (mcv != mcv0) {
+		free(mcv);
+	}
+}
+
 static struct jvst_cnode *
 cnode_canonify_propset(struct jvst_cnode *top)
 {
@@ -1771,6 +1906,9 @@ cnode_canonify_propset(struct jvst_cnode *top)
 	mcase_collector_head = &mcases; // XXX - ugly global variable
 
 	fsm_all(matches, mcase_collector);
+
+	// step 4: sort the MATCH_CASE nodes
+	sort_mcases(&mcases);
 
 	// step 5: build the MATCH_SWITCH container to hold the cases
 	// and the DFA.  The default case should be VALID.
@@ -1887,8 +2025,8 @@ cnode_canonify_pass1(struct jvst_cnode *tree)
 				cons = cnode_canonify_pass1(node->u.prop_match.constraint);
 				node->u.prop_match.constraint = cons;
 			}
-			return tree;
 		}
+		return tree;
 
 	case JVST_CNODE_OBJ_REQUIRED:
 		return cnode_canonify_required(tree);
