@@ -1677,8 +1677,6 @@ mcase_collector(const struct fsm *dfa, const struct fsm_state *st)
 	return 1;
 }
 
-static bool opt_sort_mcases = true;
-
 static int matchset_cmp(const void *p0, const void *p1)
 {
 	const struct jvst_cnode_matchset *const *ms0, *const *ms1;
@@ -1907,7 +1905,11 @@ cnode_canonify_propset(struct jvst_cnode *top)
 
 	fsm_all(matches, mcase_collector);
 
-	// step 4: sort the MATCH_CASE nodes
+	// step 4: sort the MATCH_CASE nodes.
+	//
+	// This keeps the IR output deterministic (useful for testing,
+	// possibly other places?).  Currently this could be elided (or
+	// put behind an optional flag) if necessary.
 	sort_mcases(&mcases);
 
 	// step 5: build the MATCH_SWITCH container to hold the cases
