@@ -121,6 +121,7 @@ struct jvst_ir_frame {
 	struct jvst_ir_stmt *matchers;
 	struct jvst_ir_stmt *bitvecs;
 	struct jvst_ir_stmt *stmts;
+
 	size_t nloops;
 	size_t nmatchers;
 	size_t ncounters;
@@ -132,6 +133,9 @@ struct jvst_ir_stmt {
 
 	struct jvst_ir_stmt *next;
 	struct jvst_ir_stmt *parent;
+
+	// for use in subsequent translation steps
+	void *data;
 
 	union {
 		struct {
@@ -165,6 +169,7 @@ struct jvst_ir_stmt {
 			const char *label;
 			struct jvst_ir_stmt *frame;
 			size_t ind;
+			size_t frame_off;
 		} counter;
 
 		// for INCR/DECR statements
@@ -185,6 +190,7 @@ struct jvst_ir_stmt {
 			const char *label;
 			size_t ind;
 			size_t nbits;
+			size_t frame_off;
 		} bitvec;
 
 		struct {

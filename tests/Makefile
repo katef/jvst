@@ -3,11 +3,13 @@
 TEST_PROG += test_validation
 TEST_PROG += test_constraints
 TEST_PROG += test_ir
+TEST_PROG += test_op
 
 # currently each test_*.c is a separate program
 TEST_SRC += tests/test_validation.c
 TEST_SRC += tests/test_constraints.c
 TEST_SRC += tests/test_ir.c
+TEST_SRC += tests/test_op.c
 TEST_SRC += tests/validate_testing.c
 
 SRC += ${TEST_SRC}

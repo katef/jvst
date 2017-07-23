@@ -42,6 +42,12 @@ static struct jvst_ir_stmt ar_ir_stmts[NUM_TEST_THINGS];
 static struct jvst_ir_expr ar_ir_exprs[NUM_TEST_THINGS];
 static struct jvst_ir_mcase ar_ir_mcases[NUM_TEST_THINGS];
 
+static struct jvst_op_program ar_op_prog[NUM_TEST_THINGS];
+static struct jvst_op_proc ar_op_proc[NUM_TEST_THINGS];
+static struct jvst_op_instr ar_op_instr[NUM_TEST_THINGS];
+
+static double ar_op_float[NUM_TEST_THINGS];
+
 // Returns a constant empty schema
 struct ast_schema *
 empty_schema(void)
@@ -1101,6 +1107,439 @@ newir_op(struct arena_info *A, enum jvst_ir_expr_type op,
 	return expr;
 }
 
+struct jvst_op_instr v_oplabel;
+struct jvst_op_instr v_opslots;
+struct jvst_op_instr v_opfloat;
+struct jvst_op_instr v_opdfa;
+const struct jvst_op_instr *const oplabel = &v_oplabel;
+const struct jvst_op_instr *const opslots = &v_opslots;
+const struct jvst_op_instr *const opfloat = &v_opfloat;
+const struct jvst_op_instr *const opdfa   = &v_opdfa;
+
+struct jvst_op_program *
+newop_program(struct arena_info *A, ...)
+{
+	size_t i, max;
+	struct jvst_op_program *prog;
+	struct jvst_op_proc **procpp;
+	va_list args;
+
+	i   = A->nprog++;
+	max = ARRAYLEN(ar_op_prog);
+	if (A->nprog >= max) {
+		fprintf(stderr, "too many OP programs: %zu max\n", max);
+		abort();
+	}
+
+	prog  = &ar_op_prog[i];
+	memset(prog, 0, sizeof *prog);
+	procpp = &prog->procs;
+
+	va_start(args, A);
+	for (;;) {
+		struct jvst_op_proc *proc;
+		proc = va_arg(args, struct jvst_op_proc *);
+		if (proc == NULL) {
+			break;
+		}
+
+		*procpp = proc;
+		procpp = &proc->next;
+	}
+	va_end(args);
+
+	return prog;
+}
+
+static double *
+newfloats(struct arena_info *A, double *fv, size_t n)
+{
+	size_t i,off,max;
+	double *flts;
+
+	max = ARRAYLEN(ar_op_float);
+	if (A->nfloat + n > max) {
+		fprintf(stderr, "%s:%d (%s) too many floats (%zu max)\n",
+			__FILE__, __LINE__, __func__, max);
+	}
+
+	off = A->nfloat;
+	A->nfloat += n;
+
+	flts = &ar_op_float[off];
+	for (i=0; i < n; i++) {
+		flts[i] = fv[i];
+	}
+
+	return flts;
+}
+
+struct jvst_op_proc *
+newop_proc(struct arena_info *A, ...)
+{
+	size_t i, max;
+	struct jvst_op_proc *proc;
+	struct jvst_op_instr **ipp;
+	size_t nfloat = 0;
+	double flt[16] = { 0.0 };
+	va_list args;
+
+
+	i   = A->nproc++;
+	max = ARRAYLEN(ar_op_proc);
+	if (A->nproc >= max) {
+		fprintf(stderr, "too many OP procs: %zu max\n", max);
+		abort();
+	}
+
+	proc  = &ar_op_proc[i];
+	memset(proc, 0, sizeof *proc);
+	ipp = &proc->ilist;
+
+	va_start(args, A);
+	for (;;) {
+		struct jvst_op_instr *instr;
+		const char *label = NULL;
+
+fetch:
+		instr = va_arg(args, struct jvst_op_instr *);
+		if (instr == NULL) {
+			break;
+		}
+
+		if (instr == oplabel) {
+			label = va_arg(args, const char *);
+			goto fetch;
+		}
+
+		if (instr == opfloat) {
+			int ind;
+
+			ind = nfloat++;
+			if (nfloat >= ARRAYLEN(flt)) {
+				fprintf(stderr, "%s:%d (%s) too many floats! (max is %zu)\n",
+					__FILE__, __LINE__, __func__, ARRAYLEN(flt));
+				abort();
+			}
+			flt[ind] = va_arg(args, double);
+			continue;
+		}
+
+		if (instr == opdfa) {
+			int ndfa;
+
+			ndfa = va_arg(args, int);
+			proc->ndfa += ndfa;
+			continue;
+		}
+
+		if (instr == opslots) {
+			int nslots;
+
+			nslots = va_arg(args, int);
+			proc->nslots += nslots;
+			continue;
+		}
+
+		if (label != NULL) {
+			instr->label = label;
+		}
+
+		*ipp = instr;
+		ipp = &instr->next;
+	}
+	va_end(args);
+
+	if (nfloat > 0) {
+		proc->fdata = newfloats(A, flt, nfloat);
+		proc->nfloat = nfloat;
+	}
+
+	return proc;
+}
+
+
+struct jvst_op_instr *
+newop_instr(struct arena_info *A, enum jvst_vm_op op)
+{
+	size_t i, max;
+	struct jvst_op_instr *instr;
+	va_list args;
+
+	i   = A->ninstr++;
+	max = ARRAYLEN(ar_op_instr);
+	if (A->nproc >= max) {
+		fprintf(stderr, "too many OP procs: %zu max\n", max);
+		abort();
+	}
+
+	instr = &ar_op_instr[i];
+	memset(instr, 0, sizeof *instr);
+
+	instr->op = op;
+	return instr;
+}
+
+struct jvst_op_instr *
+newop_cmp(struct arena_info *A, enum jvst_vm_op op,
+	struct jvst_op_arg arg1, struct jvst_op_arg arg2)
+{
+	struct jvst_op_instr *instr;
+
+	switch (op) {
+	case JVST_OP_ILT:
+	case JVST_OP_ILE:
+	case JVST_OP_IEQ:
+	case JVST_OP_IGE:
+	case JVST_OP_IGT:
+	case JVST_OP_INEQ:
+	case JVST_OP_FLT:
+	case JVST_OP_FLE:
+	case JVST_OP_FEQ:
+	case JVST_OP_FGE:
+	case JVST_OP_FGT:
+	case JVST_OP_FNEQ:
+	case JVST_OP_FINT:
+		instr = newop_instr(A, op);
+		instr->u.args[0] = arg1;
+		instr->u.args[1] = arg2;
+		return instr;
+
+	case JVST_OP_NOP:
+	case JVST_OP_FRAME:
+	case JVST_OP_BR:
+	case JVST_OP_CBT:
+	case JVST_OP_CBF:
+	case JVST_OP_CALL:
+	case JVST_OP_SPLIT:
+	case JVST_OP_SPLITV:
+	case JVST_OP_TOKEN:
+	case JVST_OP_CONSUME:
+	case JVST_OP_MATCH:
+	case JVST_OP_FLOAD:
+	case JVST_OP_ILOAD:
+	case JVST_OP_INCR:
+	case JVST_OP_BSET:
+	case JVST_OP_BTEST:
+	case JVST_OP_BAND:
+	case JVST_OP_VALID:
+	case JVST_OP_INVALID:
+		fprintf(stderr, "OP %s is not a comparison\n",
+			jvst_op_name(op));
+		abort();
+	}
+
+	fprintf(stderr, "Unknown OP %d\n", op);
+	abort();
+}
+
+enum { ARG_NONE, ARG_BOOL, ARG_INT, ARG_FLOAT };
+enum { ARG_READABLE, ARG_WRITEABLE };
+
+static int
+arg_okay(struct jvst_op_arg arg, int kind, int writeable)
+{
+	switch (arg.type) {
+	case JVST_VM_ARG_NONE:
+		return (kind == ARG_NONE) && (writeable == ARG_WRITEABLE);
+
+	case JVST_VM_ARG_FLAG:
+	case JVST_VM_ARG_PC:
+	case JVST_VM_ARG_TT:
+	case JVST_VM_ARG_TLEN:
+	case JVST_VM_ARG_M:
+	case JVST_VM_ARG_TOKTYPE:
+	case JVST_VM_ARG_CONST:
+	case JVST_VM_ARG_TCOMPLETE:
+		return (kind == ARG_INT) && (writeable == ARG_READABLE);
+
+	case JVST_VM_ARG_TNUM:
+		return (kind == ARG_FLOAT) && (writeable == ARG_READABLE);
+
+	case JVST_VM_ARG_FLOAT:
+		return (kind == ARG_FLOAT);
+
+	case JVST_VM_ARG_INT:
+	case JVST_VM_ARG_SLOT:
+		return (kind == ARG_INT);
+
+	default:
+		fprintf(stderr, "%s:%d (%s) unknown argument type %d\n",
+			__FILE__, __LINE__, __func__, arg.type);
+		abort();
+	}
+}
+
+struct jvst_op_instr *
+newop_load(struct arena_info *A, enum jvst_vm_op op,
+	struct jvst_op_arg arg1, struct jvst_op_arg arg2)
+{
+	struct jvst_op_instr *instr;
+
+	switch (op) {
+	case JVST_OP_FLOAD:
+		if (!arg_okay(arg1, ARG_FLOAT, ARG_WRITEABLE)) {
+			fprintf(stderr, "%s:%d (%s) FLOAD first argument is not a writable float (type=%d)\n",
+				__FILE__, __LINE__, __func__, arg1.type);
+			abort();
+		}
+
+		if (!arg_okay(arg2, ARG_FLOAT, ARG_READABLE) && !arg_okay(arg2, ARG_INT, ARG_READABLE)) {
+			fprintf(stderr, "%s:%d (%s) FLOAD first argument is not a readable float (type=%d)\n",
+				__FILE__, __LINE__, __func__, arg2.type);
+			abort();
+		}
+		goto make_op;
+
+	case JVST_OP_ILOAD:
+		instr = newop_instr(A, op);
+		if (!arg_okay(arg1, ARG_INT, ARG_WRITEABLE)) {
+			fprintf(stderr, "%s:%d (%s) ILOAD first argument is not a writable int (type=%d)\n",
+				__FILE__, __LINE__, __func__, arg1.type);
+			abort();
+		}
+
+		if (!arg_okay(arg2, ARG_INT, ARG_READABLE)) {
+			fprintf(stderr, "%s:%d (%s) ILOAD first argument is not a readable int (type=%d)\n",
+				__FILE__, __LINE__, __func__, arg2.type);
+			abort();
+		}
+		goto make_op;
+
+	case JVST_OP_ILT:
+	case JVST_OP_ILE:
+	case JVST_OP_IEQ:
+	case JVST_OP_IGE:
+	case JVST_OP_IGT:
+	case JVST_OP_INEQ:
+	case JVST_OP_FLT:
+	case JVST_OP_FLE:
+	case JVST_OP_FEQ:
+	case JVST_OP_FGE:
+	case JVST_OP_FGT:
+	case JVST_OP_FNEQ:
+	case JVST_OP_FINT:
+	case JVST_OP_NOP:
+	case JVST_OP_FRAME:
+	case JVST_OP_BR:
+	case JVST_OP_CBT:
+	case JVST_OP_CBF:
+	case JVST_OP_CALL:
+	case JVST_OP_SPLIT:
+	case JVST_OP_SPLITV:
+	case JVST_OP_TOKEN:
+	case JVST_OP_CONSUME:
+	case JVST_OP_MATCH:
+	case JVST_OP_INCR:
+	case JVST_OP_BSET:
+	case JVST_OP_BTEST:
+	case JVST_OP_BAND:
+	case JVST_OP_VALID:
+	case JVST_OP_INVALID:
+		fprintf(stderr, "OP %s is not a load\n",
+			jvst_op_name(op));
+		abort();
+	}
+
+	fprintf(stderr, "Unknown OP %d\n", op);
+	abort();
+
+make_op:
+	instr = newop_instr(A, op);
+	instr->u.args[0] = arg1;
+	instr->u.args[1] = arg2;
+	return instr;
+}
+
+struct jvst_op_instr *
+newop_br(struct arena_info *A, enum jvst_vm_op op, const char *label)
+{
+	struct jvst_op_instr *instr;
+
+	switch (op) {
+	case JVST_OP_BR:
+	case JVST_OP_CBT:
+	case JVST_OP_CBF:
+		instr = newop_instr(A, op);
+		instr->u.branch.label = label;
+		return instr;
+
+	case JVST_OP_ILT:
+	case JVST_OP_ILE:
+	case JVST_OP_IEQ:
+	case JVST_OP_IGE:
+	case JVST_OP_IGT:
+	case JVST_OP_INEQ:
+	case JVST_OP_FLT:
+	case JVST_OP_FLE:
+	case JVST_OP_FEQ:
+	case JVST_OP_FGE:
+	case JVST_OP_FGT:
+	case JVST_OP_FNEQ:
+	case JVST_OP_FINT:
+	case JVST_OP_NOP:
+	case JVST_OP_FRAME:
+	case JVST_OP_CALL:
+	case JVST_OP_SPLIT:
+	case JVST_OP_SPLITV:
+	case JVST_OP_TOKEN:
+	case JVST_OP_CONSUME:
+	case JVST_OP_MATCH:
+	case JVST_OP_FLOAD:
+	case JVST_OP_ILOAD:
+	case JVST_OP_INCR:
+	case JVST_OP_BSET:
+	case JVST_OP_BTEST:
+	case JVST_OP_BAND:
+	case JVST_OP_VALID:
+	case JVST_OP_INVALID:
+		fprintf(stderr, "%s:%d (%s) OP %s is not a branch\n",
+		__FILE__, __LINE__, __func__, jvst_op_name(op));
+		abort();
+	}
+
+	fprintf(stderr, "%s:%d (%s) unknown OP %d\n",
+		__FILE__, __LINE__, __func__, op);
+	abort();
+}
+
+struct jvst_op_instr *
+newop_match(struct arena_info *A, int64_t dfa)
+{
+	struct jvst_op_instr *instr;
+	instr = newop_instr(A, JVST_OP_MATCH);
+	instr->u.args[0] = oparg_lit(dfa);
+	instr->u.args[1] = oparg_none();
+	return instr;
+}
+
+struct jvst_op_instr *
+newop_call(struct arena_info *A, size_t pind)
+{
+	struct jvst_op_instr *instr;
+	instr = newop_instr(A, JVST_OP_CALL);
+	instr->u.call.proc_index = pind;
+	return instr;
+}
+
+struct jvst_op_instr *
+newop_incr(struct arena_info *A, size_t slot)
+{
+	struct jvst_op_instr *instr;
+	instr = newop_instr(A, JVST_OP_INCR);
+	instr->u.args[0] = oparg_slot(slot);
+	instr->u.args[1] = oparg_none();
+	return instr;
+}
+
+struct jvst_op_instr *
+newop_invalid(struct arena_info *A, enum jvst_invalid_code ecode)
+{
+	struct jvst_op_instr *instr;
+	instr = newop_instr(A, JVST_OP_INVALID);
+	instr->u.ecode = ecode;
+	return instr;
+}
 
 void
 buffer_diff(FILE *f, const char *buf1, const char *buf2, size_t n)
