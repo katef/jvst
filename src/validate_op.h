@@ -45,7 +45,7 @@ enum jvst_vm_op {
 
 	// Loads proc constants into registers
 	JVST_OP_FLOAD,		// Loads a float: FLOAD(const_index)
-	JVST_OP_ILOAD,		// Loads a size/int: ILOAD(const_index)
+	JVST_OP_ILOAD,		// Loads a size/int: ILOAD(const_or_slot)
 
 	JVST_OP_INCR,		// Increments a register or slot: INCR(reg_slotA)
 
@@ -156,6 +156,9 @@ struct jvst_op_proc {
 
 	size_t nfloat;
 	double *fdata;
+
+	size_t nconst;
+	int64_t *cdata;
 
 	size_t ndfa;
 	struct fsm **dfas;

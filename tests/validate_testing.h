@@ -37,6 +37,7 @@ struct arena_info {
 	size_t nproc;
 	size_t ninstr;
 	size_t nfloat;
+	size_t nconst;
 };
 
 struct ast_schema *
@@ -228,9 +229,17 @@ newop_incr(struct arena_info *A, size_t slot);
 struct jvst_op_instr *
 newop_invalid(struct arena_info *A, enum jvst_invalid_code ecode);
 
+struct jvst_op_instr *
+newop_bitop(struct arena_info *A, enum jvst_vm_op op, int frame_off, int bit);
+
+struct jvst_op_instr *
+newop_instr2(struct arena_info *A, enum jvst_vm_op op,
+	struct jvst_op_arg arg1, struct jvst_op_arg arg2);
+
 extern const struct jvst_op_instr *const oplabel;
 extern const struct jvst_op_instr *const opslots;
 extern const struct jvst_op_instr *const opfloat;
+extern const struct jvst_op_instr *const opconst;
 extern const struct jvst_op_instr *const opdfa;
 
 static inline struct jvst_op_arg 

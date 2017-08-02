@@ -195,8 +195,7 @@ struct jvst_ir_stmt {
 
 		struct {
 			struct jvst_ir_stmt *frame;
-			const char *label;
-			size_t ind;
+			struct jvst_ir_stmt *bitvec;
 			size_t bit;
 		} bitop;
 
@@ -237,8 +236,7 @@ struct jvst_ir_expr {
 
 		struct {
 			struct jvst_ir_stmt *frame;
-			const char *label;
-			size_t ind;
+			struct jvst_ir_stmt *bitvec;
 			size_t b0;
 			size_t b1;
 		} btest;

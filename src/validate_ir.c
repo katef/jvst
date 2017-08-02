@@ -155,7 +155,9 @@ ir_stmt_frame(void)
 {
 	struct jvst_ir_stmt *frame;
 	frame = ir_stmt_new(JVST_IR_STMT_FRAME);
-	frame->u.frame.nloops = 0;
+	frame->u.frame.nloops    = 0;
+	frame->u.frame.ncounters = 0;
+	frame->u.frame.nbitvecs  = 0;
 	frame->u.frame.stmts = NULL;
 	return frame;
 }
@@ -213,6 +215,17 @@ ir_stmt_counter(struct jvst_ir_stmt *frame, const char *label)
 	return counter;
 }
 
+static inline size_t
+bv_count(struct jvst_ir_stmt *b)
+{
+	size_t n = 0;
+	for(; b != NULL; b = b->next) {
+		n++;
+	}
+
+	return n;
+}
+
 static inline struct jvst_ir_stmt *
 ir_stmt_bitvec(struct jvst_ir_stmt *frame, const char *label, size_t nbits)
 {
@@ -231,6 +244,11 @@ ir_stmt_bitvec(struct jvst_ir_stmt *frame, const char *label, size_t nbits)
 
 	bitvec->next = frame->u.frame.bitvecs;
 	frame->u.frame.bitvecs = bitvec;
+
+	// condition is <= because bitvecs can be removed, and the
+	// nbitvecs value can't be decremented b/c it's used to generate
+	// a unique identifier
+	assert(bv_count(frame->u.frame.bitvecs) <= frame->u.frame.nbitvecs);
 
 	return bitvec;
 }
@@ -784,13 +802,18 @@ jvst_ir_dump_expr(struct sbuf *buf, struct jvst_ir_expr *expr, int indent)
 	case JVST_IR_EXPR_BTESTALL:
 	case JVST_IR_EXPR_BTESTONE:
 	case JVST_IR_EXPR_BCOUNT:
-		sbuf_snprintf(buf, "%s(%zu, \"%s_%zu\", b0=%zu, b1=%zu)",
-			jvst_ir_expr_type_name(expr->type),
-			expr->u.btest.ind,
-			expr->u.btest.label,
-			expr->u.btest.ind,
-			expr->u.btest.b0,
-			expr->u.btest.b1);
+		{
+			struct jvst_ir_stmt *bv;
+			bv = expr->u.btest.bitvec;
+
+			sbuf_snprintf(buf, "%s(%zu, \"%s_%zu\", b0=%zu, b1=%zu)",
+				jvst_ir_expr_type_name(expr->type),
+				bv->u.bitvec.ind,
+				bv->u.bitvec.label,
+				bv->u.bitvec.ind,
+				expr->u.btest.b0,
+				expr->u.btest.b1);
+		}
 		break;
 
 	default:
@@ -961,12 +984,16 @@ jvst_ir_dump_inner(struct sbuf *buf, struct jvst_ir_stmt *ir, int indent)
 
 	case JVST_IR_STMT_BSET:
 	case JVST_IR_STMT_BCLEAR:
-		sbuf_snprintf(buf, "%s(%zu, \"%s_%zu\", bit=%zu)",
-			jvst_ir_stmt_type_name(ir->type),
-			ir->u.bitop.ind,
-			ir->u.bitop.label,
-			ir->u.bitop.ind,
-			ir->u.bitop.bit);
+		{
+			struct jvst_ir_stmt *bv;
+			bv = ir->u.bitop.bitvec;
+			sbuf_snprintf(buf, "%s(%zu, \"%s_%zu\", bit=%zu)",
+				jvst_ir_stmt_type_name(ir->type),
+				bv->u.bitvec.ind,
+				bv->u.bitvec.label,
+				bv->u.bitvec.ind,
+				ir->u.bitop.bit);
+		}
 		break;
 
 	case JVST_IR_STMT_BITVECTOR:		
@@ -1217,8 +1244,7 @@ obj_mcase_translate_inner(struct jvst_cnode *ctree, struct ir_object_builder *bu
 
 			setbit = ir_stmt_new(JVST_IR_STMT_BSET);
 			setbit->u.bitop.frame = builder->reqmask->u.bitvec.frame;
-			setbit->u.bitop.label = builder->reqmask->u.bitvec.label;
-			setbit->u.bitop.ind   = builder->reqmask->u.bitvec.ind;
+			setbit->u.bitop.bitvec = builder->reqmask;
 			setbit->u.bitop.bit   = ctree->u.reqbit.bit;
 
 			return setbit;
@@ -1437,8 +1463,7 @@ ir_translate_obj_inner(struct jvst_cnode *top, struct ir_object_builder *builder
 
 			allbits = ir_expr_new(JVST_IR_EXPR_BTESTALL);
 			allbits->u.btest.frame = bitvec->u.bitvec.frame;
-			allbits->u.btest.label = bitvec->u.bitvec.label;
-			allbits->u.btest.ind   = bitvec->u.bitvec.ind;
+			allbits->u.btest.bitvec = bitvec;
 			allbits->u.btest.b0 = 0;
 			allbits->u.btest.b1 = -1;
 
@@ -1746,8 +1771,7 @@ split_gather(struct jvst_cnode *top, struct split_gather_data *data)
 
 				e_btest = ir_expr_new(JVST_IR_EXPR_BTEST);
 				e_btest->u.btest.frame = data->bvec->u.bitvec.frame;
-				e_btest->u.btest.label = data->bvec->u.bitvec.label;
-				e_btest->u.btest.ind   = data->bvec->u.bitvec.ind;
+				e_btest->u.btest.bitvec = data->bvec;
 				e_btest->u.btest.b0 = b0;
 				e_btest->u.btest.b1 = b0;
 
@@ -1829,8 +1853,7 @@ split_gather(struct jvst_cnode *top, struct split_gather_data *data)
 
 				e_btest = ir_expr_new(JVST_IR_EXPR_BTESTANY);
 				e_btest->u.btest.frame = data->bvec->u.bitvec.frame;
-				e_btest->u.btest.label = data->bvec->u.bitvec.label;
-				e_btest->u.btest.ind   = data->bvec->u.bitvec.ind;
+				e_btest->u.btest.bitvec = data->bvec;
 				e_btest->u.btest.b0 = b0;
 				e_btest->u.btest.b1 = data->boff-1;
 

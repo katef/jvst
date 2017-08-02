@@ -47,6 +47,7 @@ static struct jvst_op_proc ar_op_proc[NUM_TEST_THINGS];
 static struct jvst_op_instr ar_op_instr[NUM_TEST_THINGS];
 
 static double ar_op_float[NUM_TEST_THINGS];
+static int64_t ar_op_iconst[NUM_TEST_THINGS];
 
 // Returns a constant empty schema
 struct ast_schema *
@@ -919,13 +920,17 @@ newir_incr(struct arena_info *A, size_t ind, const char *label)
 struct jvst_ir_stmt *
 newir_bitop(struct arena_info *A, enum jvst_ir_stmt_type op, size_t ind, const char *label, size_t bit)
 {
-	struct jvst_ir_stmt *stmt;
+	struct jvst_ir_stmt *stmt, *bv;
 
 	assert((op == JVST_IR_STMT_BSET) || (op == JVST_IR_STMT_BCLEAR));
 
+	// should really link this up, but we currently cheese it...
+	bv = newir_stmt(A,JVST_IR_STMT_BITVECTOR);
+	bv->u.bitvec.label = label;
+	bv->u.bitvec.ind = ind;
+
 	stmt = newir_stmt(A,op);
-	stmt->u.bitop.label = label;
-	stmt->u.bitop.ind = ind;
+	stmt->u.bitop.bitvec = bv;
 	stmt->u.bitop.bit = bit;
 
 	return stmt;
@@ -1003,9 +1008,15 @@ struct jvst_ir_expr *
 newir_btest(struct arena_info *A, size_t ind, const char *label, size_t b)
 {
 	struct jvst_ir_expr *expr;
+	struct jvst_ir_stmt *bv;
+
+	// should really link this up, but we currently cheese it...
+	bv = newir_stmt(A,JVST_IR_STMT_BITVECTOR);
+	bv->u.bitvec.label = label;
+	bv->u.bitvec.ind = ind;
+
 	expr = newir_expr(A,JVST_IR_EXPR_BTEST);
-	expr->u.btest.label = label;
-	expr->u.btest.ind = ind;
+	expr->u.btest.bitvec = bv;
 	expr->u.btest.b0 = b;
 	expr->u.btest.b1 = b;
 	return expr;
@@ -1015,9 +1026,15 @@ struct jvst_ir_expr *
 newir_btestall(struct arena_info *A, size_t ind, const char *label, size_t b0, size_t b1)
 {
 	struct jvst_ir_expr *expr;
+	struct jvst_ir_stmt *bv;
+
+	// should really link this up, but we currently cheese it...
+	bv = newir_stmt(A,JVST_IR_STMT_BITVECTOR);
+	bv->u.bitvec.label = label;
+	bv->u.bitvec.ind = ind;
+
 	expr = newir_expr(A,JVST_IR_EXPR_BTESTALL);
-	expr->u.btest.label = label;
-	expr->u.btest.ind = ind;
+	expr->u.btest.bitvec = bv;
 	expr->u.btest.b0 = b0;
 	expr->u.btest.b1 = b1;
 	return expr;
@@ -1027,9 +1044,15 @@ struct jvst_ir_expr *
 newir_btestany(struct arena_info *A, size_t ind, const char *label, size_t b0, size_t b1)
 {
 	struct jvst_ir_expr *expr;
+	struct jvst_ir_stmt *bv;
+
+	// should really link this up, but we currently cheese it...
+	bv = newir_stmt(A,JVST_IR_STMT_BITVECTOR);
+	bv->u.bitvec.label = label;
+	bv->u.bitvec.ind = ind;
+
 	expr = newir_expr(A,JVST_IR_EXPR_BTESTANY);
-	expr->u.btest.label = label;
-	expr->u.btest.ind = ind;
+	expr->u.btest.bitvec = bv;
 	expr->u.btest.b0 = b0;
 	expr->u.btest.b1 = b1;
 	return expr;
@@ -1110,10 +1133,12 @@ newir_op(struct arena_info *A, enum jvst_ir_expr_type op,
 struct jvst_op_instr v_oplabel;
 struct jvst_op_instr v_opslots;
 struct jvst_op_instr v_opfloat;
+struct jvst_op_instr v_opconst;
 struct jvst_op_instr v_opdfa;
 const struct jvst_op_instr *const oplabel = &v_oplabel;
 const struct jvst_op_instr *const opslots = &v_opslots;
 const struct jvst_op_instr *const opfloat = &v_opfloat;
+const struct jvst_op_instr *const opconst = &v_opconst;
 const struct jvst_op_instr *const opdfa   = &v_opdfa;
 
 struct jvst_op_program *
@@ -1174,6 +1199,29 @@ newfloats(struct arena_info *A, double *fv, size_t n)
 	return flts;
 }
 
+static int64_t *
+newconsts(struct arena_info *A, int64_t *cv, size_t n)
+{
+	size_t i,off,max;
+	int64_t *iconsts;
+
+	max = ARRAYLEN(ar_op_iconst);
+	if (A->nconst + n > max) {
+		fprintf(stderr, "%s:%d (%s) too many integer constants (%zu max)\n",
+			__FILE__, __LINE__, __func__, max);
+	}
+
+	off = A->nconst;
+	A->nconst += n;
+
+	iconsts = &ar_op_iconst[off];
+	for (i=0; i < n; i++) {
+		iconsts[i] = cv[i];
+	}
+
+	return iconsts;
+}
+
 struct jvst_op_proc *
 newop_proc(struct arena_info *A, ...)
 {
@@ -1181,7 +1229,9 @@ newop_proc(struct arena_info *A, ...)
 	struct jvst_op_proc *proc;
 	struct jvst_op_instr **ipp;
 	size_t nfloat = 0;
+	size_t nconst = 0;
 	double flt[16] = { 0.0 };
+	int64_t iconsts[16] = { 0 };
 	va_list args;
 
 
@@ -1225,6 +1275,19 @@ fetch:
 			continue;
 		}
 
+		if (instr == opconst) {
+			int ind;
+
+			ind = nconst++;
+			if (nconst >= ARRAYLEN(iconsts)) {
+				fprintf(stderr, "%s:%d (%s) too many integer constants! (max is %zu)\n",
+					__FILE__, __LINE__, __func__, ARRAYLEN(iconsts));
+				abort();
+			}
+			iconsts[ind] = va_arg(args, int64_t);
+			continue;
+		}
+
 		if (instr == opdfa) {
 			int ndfa;
 
@@ -1253,6 +1316,11 @@ fetch:
 	if (nfloat > 0) {
 		proc->fdata = newfloats(A, flt, nfloat);
 		proc->nfloat = nfloat;
+	}
+
+	if (nconst > 0) {
+		proc->cdata = newconsts(A, iconsts, nconst);
+		proc->nconst = nconst;
 	}
 
 	return proc;
@@ -1331,6 +1399,29 @@ newop_cmp(struct arena_info *A, enum jvst_vm_op op,
 
 	fprintf(stderr, "Unknown OP %d\n", op);
 	abort();
+}
+
+struct jvst_op_instr *
+newop_bitop(struct arena_info *A, enum jvst_vm_op op, int frame_off, int bit)
+{
+	struct jvst_op_instr *instr;
+
+	instr = newop_instr(A, op);
+	instr->u.args[0] = oparg_slot(frame_off);
+	instr->u.args[1] = oparg_lit(bit);
+	return instr;
+}
+
+struct jvst_op_instr *
+newop_instr2(struct arena_info *A, enum jvst_vm_op op,
+	struct jvst_op_arg arg1, struct jvst_op_arg arg2)
+{
+	struct jvst_op_instr *instr;
+
+	instr = newop_instr(A, op);
+	instr->u.args[0] = arg1;
+	instr->u.args[1] = arg2;
+	return instr;
 }
 
 enum { ARG_NONE, ARG_BOOL, ARG_INT, ARG_FLOAT };

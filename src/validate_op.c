@@ -301,11 +301,17 @@ op_instr_dump(struct sbuf *buf, struct jvst_op_instr *instr)
 			instr->u.ecode);
 		break;
 
-	case JVST_OP_BSET:
-	case JVST_OP_BTEST:
 	case JVST_OP_BAND:
-		fprintf(stderr, "OP %s not yet implemented\n",
-			jvst_op_name(instr->op));
+	case JVST_OP_BSET:
+		sbuf_snprintf(buf, "%s ", jvst_op_name(instr->op));
+		op_arg_dump(buf, instr->u.args[0]);
+		sbuf_snprintf(buf, ", ", jvst_op_name(instr->op));
+		op_arg_dump(buf, instr->u.args[1]);
+		break;
+
+	case JVST_OP_BTEST:
+		fprintf(stderr, "%s:%d (%s) OP %s not yet implemented\n",
+			__FILE__, __LINE__, __func__, jvst_op_name(instr->op));
 		abort();
 
 	default:
@@ -372,6 +378,12 @@ op_proc_dump(struct sbuf *buf, struct jvst_op_proc *proc, size_t fno, int indent
 	for (i=0; i < proc->nfloat; i++) {
 		sbuf_indent(buf, indent+2);
 		sbuf_snprintf(buf, "FLOAT(%zu)\t%g\n", i, proc->fdata[i]);
+	}
+
+	for (i=0; i < proc->nconst; i++) {
+		sbuf_indent(buf, indent+2);
+		sbuf_snprintf(buf, "CONST(%zu)\t%" PRId64 "\t%" PRIu64 "\n",
+			i, proc->cdata[i], (uint64_t) proc->cdata[i]);
 	}
 
 	if (proc->nfloat > 0) {
@@ -506,6 +518,9 @@ struct op_assembler {
 	double *fdata;
 	size_t maxfloat;
 
+	int64_t *cdata;
+	size_t maxconst;
+
 	size_t nlbl;
 	size_t ntmp;
 };
@@ -637,6 +652,43 @@ proc_add_float(struct op_assembler *opasm, double v)
 	}
 
 	proc->fdata[ind] = v;
+
+	return (int64_t)ind;
+}
+
+static int64_t
+proc_add_uconst(struct op_assembler *opasm, uint64_t v)
+{
+	struct jvst_op_proc *proc;
+	size_t ind;
+
+	proc = opasm->currproc;
+	assert(proc != NULL);
+
+	ind = proc->nconst++;
+	if (proc->nconst > opasm->maxconst) {
+		size_t newmax;
+		int64_t *cv;
+
+		if (opasm->maxconst < 4) {
+			newmax = 4;
+		} else if (opasm->maxconst < 1024) {
+			newmax = 2*opasm->maxconst;
+		} else {
+			newmax = opasm->maxconst;
+			newmax += newmax/4;
+		}
+
+		assert(newmax > opasm->maxconst+1);
+		cv = xrealloc(opasm->cdata, newmax * sizeof opasm->cdata[0]);
+		assert(cv != NULL);
+		opasm->cdata = cv;
+		opasm->maxconst = newmax;
+
+		proc->cdata = opasm->cdata;
+	}
+
+	proc->cdata[ind] = (int64_t)v;
 
 	return (int64_t)ind;
 }
@@ -1090,14 +1142,24 @@ op_assemble_frame(struct op_assembler *opasm, struct jvst_ir_stmt *top)
 	size_t nslots, off;
 
 	assert(top->type == JVST_IR_STMT_FRAME);
-	nslots = top->u.frame.ncounters;
+
+	// allocate slots for counters
 	off = 0;
 	for (stmt = top->u.frame.counters; stmt != NULL; stmt = stmt->next) {
 		assert(stmt->type == JVST_IR_STMT_COUNTER);
 		stmt->u.counter.frame_off = off++;
 	}
 
-	// XXX - add slots for bit vectors!
+	// allocate slots for bit vectors
+	for (stmt = top->u.frame.bitvecs; stmt != NULL; stmt = stmt->next) {
+		assert(stmt->type == JVST_IR_STMT_BITVECTOR);
+		stmt->u.bitvec.frame_off = off++;
+	}
+
+	// can't rely on top->u.frame.ncounters or top->u.frame.nbitvecs
+	// because they're not decremented if a bitvec or counter is
+	// removed to keep names unique
+	nslots = off;
 
 	proc = op_proc_new();
 	proc->nslots = nslots;
@@ -1425,6 +1487,63 @@ op_assemble_cond(struct op_assembler *opasm, struct jvst_ir_expr *cond,
 		}
 		return;
 
+	case JVST_IR_EXPR_BTESTALL:
+		{
+			struct jvst_ir_stmt *bv;
+			uint64_t mask;
+			size_t nb;
+			int64_t cidx;
+			struct jvst_op_arg ireg0, ireg1, slot;
+			struct jvst_op_instr *instr;
+
+			bv = cond->u.btest.bitvec;
+			assert(bv != NULL);
+			assert(bv->type == JVST_IR_STMT_BITVECTOR);
+
+			nb = bv->u.bitvec.nbits;
+
+			// XXX - remove this limitation!
+			if (nb > 64) {
+				fprintf(stderr, "%s:%d (%s) bitvectors with more than 64 bits are currently unsupported\n",
+						__FILE__, __LINE__, __func__);
+				abort();
+			}
+
+			if (nb == 64) {
+				mask = ~(uint64_t)0;
+			} else {
+				mask = (((uint64_t)1) << nb) - 1;
+			}
+
+			// emit mask constant and load
+			cidx = proc_add_uconst(opasm, mask);
+			ireg0 = arg_itmp(opasm);
+			instr = op_instr_new(JVST_OP_ILOAD);
+			instr->u.args[0] = ireg0;
+			instr->u.args[1] = arg_const(cidx);
+			*opasm->ipp = instr;
+			opasm->ipp = &instr->next;
+
+			// emit slot load
+			ireg1 = arg_itmp(opasm);
+			instr = op_instr_new(JVST_OP_ILOAD);
+			instr->u.args[0] = ireg1;
+			instr->u.args[1] = arg_slot(bv->u.bitvec.frame_off);
+			*opasm->ipp = instr;
+			opasm->ipp = &instr->next;
+
+			// emit AND
+			instr = op_instr_new(JVST_OP_BAND);
+			instr->u.args[0] = ireg1;
+			instr->u.args[1] = ireg0;
+			*opasm->ipp = instr;
+			opasm->ipp = &instr->next;
+
+			// emit test
+			emit_cond(opasm, JVST_OP_IEQ, ireg1, ireg0, btrue, bfalse);
+		}
+		return;
+
 	case JVST_IR_EXPR_BOOL:
 
 	case JVST_IR_EXPR_NUM:
@@ -1438,7 +1557,6 @@ op_assemble_cond(struct op_assembler *opasm, struct jvst_ir_expr *cond,
 	case JVST_IR_EXPR_COUNT:
 	case JVST_IR_EXPR_BCOUNT:
 	case JVST_IR_EXPR_BTEST:
-	case JVST_IR_EXPR_BTESTALL:
 	case JVST_IR_EXPR_BTESTANY:
 	case JVST_IR_EXPR_BTESTONE:
 
@@ -1654,10 +1772,24 @@ op_assemble(struct op_assembler *opasm, struct jvst_ir_stmt *stmt)
 		}
 		return;
 
+	case JVST_IR_STMT_BSET:
+		{
+			struct jvst_ir_stmt *bv;
+			bv = stmt->u.bitop.bitvec;
+			assert(bv != NULL);
+			assert(bv->type == JVST_IR_STMT_BITVECTOR);
+
+			instr = op_instr_new(JVST_OP_BSET);
+			instr->u.args[0] = arg_slot(bv->u.bitvec.frame_off);
+			instr->u.args[1] = arg_const(stmt->u.bitop.bit);
+			*opasm->ipp = instr;
+			opasm->ipp = &instr->next;
+		}
+		return;
+
 	case JVST_IR_STMT_COUNTER:
 	case JVST_IR_STMT_MATCHER:
 	case JVST_IR_STMT_BITVECTOR:
-	case JVST_IR_STMT_BSET:
 	case JVST_IR_STMT_BCLEAR:
 	case JVST_IR_STMT_DECR:
 	case JVST_IR_STMT_SPLITVEC:
