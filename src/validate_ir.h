@@ -213,8 +213,6 @@ struct jvst_ir_stmt {
 			struct jvst_ir_stmt *frame;
 			struct jvst_ir_stmt *bitvec;
 			struct jvst_ir_stmt *split_frames;
-			const char *label;
-			size_t ind;
 		} splitvec;
 	} u;
 };

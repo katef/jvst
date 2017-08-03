@@ -886,12 +886,15 @@ newir_match(struct arena_info *A, size_t ind, ...)
 struct jvst_ir_stmt *
 newir_splitvec(struct arena_info *A, size_t ind, const char *label, ...)
 {
-	struct jvst_ir_stmt *stmt, **spp, *fr;
+	struct jvst_ir_stmt *stmt, **spp, *fr, *bv;
 	va_list args;
 
 	stmt = newir_stmt(A,JVST_IR_STMT_SPLITVEC);
-	stmt->u.splitvec.label = label;
-	stmt->u.splitvec.ind = ind;
+	bv = newir_stmt(A, JVST_IR_STMT_BITVECTOR);
+	bv->u.bitvec.label = label;
+	bv->u.bitvec.ind = ind;
+
+	stmt->u.splitvec.bitvec = bv;
 
 	spp = &stmt->u.splitvec.split_frames;
 

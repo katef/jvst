@@ -559,12 +559,13 @@ jvst_ir_stmt_type_name(enum jvst_ir_stmt_type type)
 		return "DECR";
 	case JVST_IR_STMT_MATCH:
 		return "MATCH";    	
-
-	default:
-		fprintf(stderr, "%s:%d unknown IR statement type %d in %s\n",
-			__FILE__, __LINE__, type, __func__);
-		abort();
+	case JVST_IR_STMT_SPLITVEC:
+		return "SPLITVEC";
 	}
+
+	fprintf(stderr, "%s:%d unknown IR statement type %d in %s\n",
+			__FILE__, __LINE__, type, __func__);
+	abort();
 }
 
 const char *
@@ -1007,10 +1008,15 @@ jvst_ir_dump_inner(struct sbuf *buf, struct jvst_ir_stmt *ir, int indent)
 
 	case JVST_IR_STMT_SPLITVEC:
 		{
+			struct jvst_ir_stmt *bv;
+
+			bv = ir->u.splitvec.bitvec;
+			assert(bv != NULL);
+
 			sbuf_snprintf(buf, "SPLITVEC(%zu, \"%s_%zu\",\n",
-				ir->u.splitvec.ind,
-				ir->u.splitvec.label,
-				ir->u.splitvec.ind);
+				bv->u.bitvec.ind,
+				bv->u.bitvec.label,
+				bv->u.bitvec.ind);
 
 			assert(ir->u.splitvec.split_frames != NULL);
 			dump_stmt_list_inner(buf, ir->u.splitvec.split_frames, indent);
@@ -2019,8 +2025,6 @@ ir_translate_object_split(struct jvst_cnode *top, struct jvst_ir_stmt *frame)
 
 	(*spp)->u.splitvec.frame = frame;
 	(*spp)->u.splitvec.bitvec = gather.bvec;
-	(*spp)->u.splitvec.label = gather.bvec->u.bitvec.label;
-	(*spp)->u.splitvec.ind   = gather.bvec->u.bitvec.ind;
 
 	spp = &(*spp)->next;
 	*spp = ir_stmt_new(JVST_IR_STMT_IF);

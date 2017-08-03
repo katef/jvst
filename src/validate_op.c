@@ -278,13 +278,13 @@ op_instr_dump(struct sbuf *buf, struct jvst_op_instr *instr)
 				: instr->u.call.proc_index);
 		break;
 
-	case JVST_OP_SPLITV:
 	case JVST_OP_MATCH:
 	case JVST_OP_INCR:
 		sbuf_snprintf(buf, "%s ", jvst_op_name(instr->op));
 		op_arg_dump(buf, instr->u.args[0]);
 		break;
 
+	case JVST_OP_SPLITV:
 	case JVST_OP_SPLIT:
 	case JVST_OP_FLOAD:
 	case JVST_OP_ILOAD:
@@ -1290,6 +1290,25 @@ op_assemble_frame(struct op_assembler *opasm, struct jvst_ir_stmt *top)
 
 static struct jvst_op_block LOOP_BLOCK;
 
+static void
+opasm_setup_block(struct op_assembler *block_opasm, struct op_assembler *opasm, struct jvst_op_block *block)
+{
+	*opasm->bpp = block;
+	opasm->bpp = &block->next;
+
+	*block_opasm = *opasm;
+	block_opasm->ipp = &block->ilist;
+}
+
+static void
+opasm_finish_block(struct op_assembler *block_opasm, struct op_assembler *opasm)
+{
+	opasm->nlbl = block_opasm->nlbl;
+	opasm->ntmp = block_opasm->ntmp;
+	opasm->bpp  = block_opasm->bpp;
+	opasm->procpp = block_opasm->procpp;
+}
+
 static struct jvst_op_block *
 op_assemble_block(struct op_assembler *opasm, struct jvst_ir_stmt *top, const char *prefix, struct jvst_op_block *bnext)
 {
@@ -1301,11 +1320,8 @@ op_assemble_block(struct op_assembler *opasm, struct jvst_ir_stmt *top, const ch
 		prefix = "L";
 	}
 	block = op_block_newf(NULL, "%s_%" PRId64, prefix, opasm->nlbl++);
-	*opasm->bpp = block;
-	opasm->bpp = &block->next;
 
-	block_opasm = *opasm;
-	block_opasm.ipp = &block->ilist;
+	opasm_setup_block(&block_opasm, opasm, block);
 
 	// XXX - allocate storage for floats, dfas, splits
 	op_assemble_seq(&block_opasm, top);
@@ -1316,10 +1332,7 @@ op_assemble_block(struct op_assembler *opasm, struct jvst_ir_stmt *top, const ch
 		emit_branch(&block_opasm, JVST_OP_BR, bnext);
 	}
 
-	opasm->nlbl = block_opasm.nlbl;
-	opasm->ntmp = block_opasm.ntmp;
-	opasm->bpp  = block_opasm.bpp;
-	opasm->procpp = block_opasm.procpp;
+	opasm_finish_block(&block_opasm, opasm);
 
 	return block;
 }
@@ -1607,13 +1620,18 @@ op_assemble_cond(struct op_assembler *opasm, struct jvst_ir_expr *cond,
 		}
 		return;
 
+	case JVST_IR_EXPR_BTEST:
+		assert(cond->u.btest.b0 == cond->u.btest.b1);
+		/* fallthrough */
+
+	case JVST_IR_EXPR_BTESTANY:
 	case JVST_IR_EXPR_BTESTALL:
 		{
 			struct jvst_ir_stmt *bv;
 			uint64_t mask;
-			size_t nb;
+			size_t nb, b0,b1, nbm;
 			int64_t cidx;
-			struct jvst_op_arg ireg0, ireg1, slot;
+			struct jvst_op_arg iarg0, ireg1, slot;
 			struct jvst_op_instr *instr;
 
 			bv = cond->u.btest.bitvec;
@@ -1629,20 +1647,40 @@ op_assemble_cond(struct op_assembler *opasm, struct jvst_ir_expr *cond,
 				abort();
 			}
 
-			if (nb == 64) {
-				mask = ~(uint64_t)0;
-			} else {
-				mask = (((uint64_t)1) << nb) - 1;
+			b0 = cond->u.btest.b0;
+			b1 = cond->u.btest.b1;
+			if (b1 == (size_t)-1) {
+				b1 = nb-1;
 			}
 
-			// emit mask constant and load
-			cidx = proc_add_uconst(opasm, mask);
-			ireg0 = arg_itmp(opasm);
-			instr = op_instr_new(JVST_OP_ILOAD);
-			instr->u.args[0] = ireg0;
-			instr->u.args[1] = arg_const(cidx);
-			*opasm->ipp = instr;
-			opasm->ipp = &instr->next;
+			if (b0 >= nb || b1 >= nb || b0 > b1) {
+				fprintf(stderr, "%s:%d (%s) invalid bit range (%zu - %zu) for bitvector with %zu bits\n",
+						__FILE__, __LINE__, __func__, b0,b1,nb);
+				abort();
+			}
+
+			nbm = b1-b0+1;
+
+			// XXX - remove 64-bit limitation!
+			if (nbm == 64) {
+				mask = ~(uint64_t)0;
+			} else {
+				mask = (((uint64_t)1) << nbm) - 1;
+				mask = mask << b0;
+			}
+
+			if (mask <= MAX_CONST_VALUE) {
+				iarg0 = arg_const(mask);
+			} else {
+				// emit mask constant and load
+				cidx = proc_add_uconst(opasm, mask);
+				iarg0 = arg_itmp(opasm);
+				instr = op_instr_new(JVST_OP_ILOAD);
+				instr->u.args[0] = iarg0;
+				instr->u.args[1] = arg_const(cidx);
+				*opasm->ipp = instr;
+				opasm->ipp = &instr->next;
+			}
 
 			// emit slot load
 			ireg1 = arg_itmp(opasm);
@@ -1655,36 +1693,53 @@ op_assemble_cond(struct op_assembler *opasm, struct jvst_ir_expr *cond,
 			// emit AND
 			instr = op_instr_new(JVST_OP_BAND);
 			instr->u.args[0] = ireg1;
-			instr->u.args[1] = ireg0;
+			instr->u.args[1] = iarg0;
 			*opasm->ipp = instr;
 			opasm->ipp = &instr->next;
 
 			// emit test
-			emit_cond(opasm, JVST_OP_IEQ, ireg1, ireg0, btrue, bfalse);
+			//
+			switch (cond->type) {
+			case JVST_IR_EXPR_BTESTANY:
+				emit_cond(opasm, JVST_OP_INEQ, ireg1, arg_const(0), btrue, bfalse);
+				break;
+
+			case JVST_IR_EXPR_BTEST:
+			case JVST_IR_EXPR_BTESTALL:
+				emit_cond(opasm, JVST_OP_IEQ, ireg1, iarg0, btrue, bfalse);
+				break;
+
+			default:
+				assert( !"unreachable" );
+			}
 		}
 		return;
 
 	case JVST_IR_EXPR_BOOL:
-
-	case JVST_IR_EXPR_NUM:
-	case JVST_IR_EXPR_SIZE:
-
-	case JVST_IR_EXPR_TOK_TYPE:
-	case JVST_IR_EXPR_TOK_NUM:
 	case JVST_IR_EXPR_TOK_COMPLETE:
-	case JVST_IR_EXPR_TOK_LEN:
-
-	case JVST_IR_EXPR_COUNT:
-	case JVST_IR_EXPR_BCOUNT:
-	case JVST_IR_EXPR_BTEST:
-	case JVST_IR_EXPR_BTESTANY:
 	case JVST_IR_EXPR_BTESTONE:
+		fprintf(stderr, "%s:%d (%s) expression %s not yet supported\n",
+				__FILE__, __LINE__, __func__,
+				jvst_ir_expr_type_name(cond->type));
+		abort();
 
 	case JVST_IR_EXPR_AND:
 	case JVST_IR_EXPR_OR:
 	case JVST_IR_EXPR_NOT:
+		fprintf(stderr, "%s:%d (%s) expression %s is not a simple boolean condition\n",
+				__FILE__, __LINE__, __func__,
+				jvst_ir_expr_type_name(cond->type));
+		abort();
+
+	case JVST_IR_EXPR_NUM:
+	case JVST_IR_EXPR_SIZE:
+	case JVST_IR_EXPR_TOK_TYPE:
+	case JVST_IR_EXPR_TOK_NUM:
+	case JVST_IR_EXPR_TOK_LEN:
+	case JVST_IR_EXPR_COUNT:
+	case JVST_IR_EXPR_BCOUNT:
 	case JVST_IR_EXPR_SPLIT:
-		fprintf(stderr, "%s:%d (%s) expression %s not yet supported\n",
+		fprintf(stderr, "%s:%d (%s) expression %s is not a boolean condition\n",
 				__FILE__, __LINE__, __func__,
 				jvst_ir_expr_type_name(cond->type));
 		abort();
@@ -1696,9 +1751,82 @@ op_assemble_cond(struct op_assembler *opasm, struct jvst_ir_expr *cond,
 }
 
 static void
+op_assemble_if_inner(struct op_assembler *opasm, struct jvst_ir_expr *cond,
+	struct jvst_op_block *btrue, struct jvst_op_block *bfalse)
+{
+	switch (cond->type) {
+	case JVST_IR_EXPR_ISTOK:
+	case JVST_IR_EXPR_ISINT:
+	case JVST_IR_EXPR_NE:
+	case JVST_IR_EXPR_LT:
+	case JVST_IR_EXPR_LE:
+	case JVST_IR_EXPR_EQ:
+	case JVST_IR_EXPR_GE:
+	case JVST_IR_EXPR_GT:
+	case JVST_IR_EXPR_BOOL:
+	case JVST_IR_EXPR_TOK_COMPLETE:
+	case JVST_IR_EXPR_BTEST:
+	case JVST_IR_EXPR_BTESTALL:
+	case JVST_IR_EXPR_BTESTANY:
+	case JVST_IR_EXPR_BTESTONE:
+		// assemble simple conditional...
+		op_assemble_cond(opasm, cond, btrue, bfalse);
+		return;
+
+	case JVST_IR_EXPR_AND:
+		{
+			struct jvst_op_block *btrue1;
+			struct op_assembler and_opasm;
+
+			btrue1 = op_block_newf(NULL, "and_true_%zu", opasm->nlbl++);
+			op_assemble_if_inner(opasm, cond->u.and_or.left, btrue1, bfalse);
+
+			opasm_setup_block(&and_opasm, opasm, btrue1);
+			op_assemble_if_inner(&and_opasm, cond->u.and_or.right, btrue, bfalse);
+			opasm_finish_block(&and_opasm, opasm);
+		}
+		return;
+
+	case JVST_IR_EXPR_OR:
+		{
+			struct jvst_op_block *bfalse1;
+			struct op_assembler or_opasm;
+
+			bfalse1 = op_block_newf(NULL, "or_false_%zu", opasm->nlbl++);
+			op_assemble_if_inner(opasm, cond->u.and_or.left, btrue, bfalse1);
+
+			opasm_setup_block(&or_opasm, opasm, bfalse1);
+			op_assemble_if_inner(&or_opasm, cond->u.and_or.right, btrue, bfalse);
+			opasm_finish_block(&or_opasm, opasm);
+		}
+		return;
+
+	case JVST_IR_EXPR_NOT:
+		fprintf(stderr, "%s:%d (%s) expression %s is not a simple boolean condition\n",
+				__FILE__, __LINE__, __func__,
+				jvst_ir_expr_type_name(cond->type));
+		abort();
+
+	case JVST_IR_EXPR_NONE:
+	case JVST_IR_EXPR_NUM:
+	case JVST_IR_EXPR_SIZE:
+	case JVST_IR_EXPR_TOK_TYPE:
+	case JVST_IR_EXPR_TOK_NUM:
+	case JVST_IR_EXPR_TOK_LEN:
+	case JVST_IR_EXPR_COUNT:
+	case JVST_IR_EXPR_BCOUNT:
+	case JVST_IR_EXPR_SPLIT:
+		fprintf(stderr, "%s:%d (%s) expression %s is not a boolean condition\n",
+				__FILE__, __LINE__, __func__,
+				jvst_ir_expr_type_name(cond->type));
+		abort();
+	}
+}
+
+static void
 op_assemble_if(struct op_assembler *opasm, struct jvst_ir_stmt *stmt)
 {
-	struct jvst_op_block *btrue, *bfalse, **condpp, *bjoin;
+	struct jvst_op_block *btrue, *bfalse, *bjoin;
 
 	// block for rejoining execution...
 	bjoin = op_assemble_block(opasm, NULL, "rejoin", NULL);
@@ -1708,11 +1836,7 @@ op_assemble_if(struct op_assembler *opasm, struct jvst_ir_stmt *stmt)
 	btrue  = op_assemble_block(opasm, stmt->u.if_.br_true, NULL, bjoin);
 	bfalse = op_assemble_block(opasm, stmt->u.if_.br_false, NULL, bjoin);
 
-	// XXX - how to handle statements after if, eg in a SEQ block?
-	//       does this case come up?
-
-	// assemble conditional...
-	op_assemble_cond(opasm, stmt->u.if_.cond, btrue, bfalse);
+	op_assemble_if_inner(opasm, stmt->u.if_.cond, btrue, bfalse);
 
 	opasm->ipp = &bjoin->ilist;
 }
@@ -1907,12 +2031,32 @@ op_assemble(struct op_assembler *opasm, struct jvst_ir_stmt *stmt)
 		}
 		return;
 
+	case JVST_IR_STMT_SPLITVEC:
+		{
+			struct jvst_ir_stmt *bv;
+			int64_t split_ind;
+
+			bv = stmt->u.splitvec.bitvec;
+			assert(bv != NULL);
+			assert(bv->type == JVST_IR_STMT_BITVECTOR);
+
+			split_ind = proc_add_split(opasm, stmt->u.splitvec.split_frames);
+
+			instr = op_instr_new(JVST_OP_SPLITV);
+			instr->u.args[0] = arg_const(split_ind);
+			instr->u.args[1] = arg_slot(bv->u.bitvec.frame_off);
+
+			*opasm->ipp = instr;
+			opasm->ipp = &instr->next;
+
+		}
+		return;
+
 	case JVST_IR_STMT_COUNTER:
 	case JVST_IR_STMT_MATCHER:
 	case JVST_IR_STMT_BITVECTOR:
 	case JVST_IR_STMT_BCLEAR:
 	case JVST_IR_STMT_DECR:
-	case JVST_IR_STMT_SPLITVEC:
 		fprintf(stderr, "%s:%d (%s) IR statement %s not yet implemented\n",
 			__FILE__, __LINE__, __func__, jvst_ir_stmt_type_name(stmt->type));
 		abort();
