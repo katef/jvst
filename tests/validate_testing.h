@@ -38,6 +38,7 @@ struct arena_info {
 	size_t ninstr;
 	size_t nfloat;
 	size_t nconst;
+	size_t nsplit;
 };
 
 struct ast_schema *
@@ -240,6 +241,7 @@ extern const struct jvst_op_instr *const oplabel;
 extern const struct jvst_op_instr *const opslots;
 extern const struct jvst_op_instr *const opfloat;
 extern const struct jvst_op_instr *const opconst;
+extern const struct jvst_op_instr *const opsplit;
 extern const struct jvst_op_instr *const opdfa;
 
 static inline struct jvst_op_arg 

@@ -48,6 +48,7 @@ static struct jvst_op_instr ar_op_instr[NUM_TEST_THINGS];
 
 static double ar_op_float[NUM_TEST_THINGS];
 static int64_t ar_op_iconst[NUM_TEST_THINGS];
+static struct jvst_op_proc *ar_op_splits[NUM_TEST_THINGS];
 
 // Returns a constant empty schema
 struct ast_schema *
@@ -1135,11 +1136,14 @@ struct jvst_op_instr v_opslots;
 struct jvst_op_instr v_opfloat;
 struct jvst_op_instr v_opconst;
 struct jvst_op_instr v_opdfa;
+struct jvst_op_instr v_opsplit;
+
 const struct jvst_op_instr *const oplabel = &v_oplabel;
 const struct jvst_op_instr *const opslots = &v_opslots;
 const struct jvst_op_instr *const opfloat = &v_opfloat;
 const struct jvst_op_instr *const opconst = &v_opconst;
 const struct jvst_op_instr *const opdfa   = &v_opdfa;
+const struct jvst_op_instr *const opsplit = &v_opsplit;
 
 struct jvst_op_program *
 newop_program(struct arena_info *A, ...)
@@ -1222,6 +1226,29 @@ newconsts(struct arena_info *A, int64_t *cv, size_t n)
 	return iconsts;
 }
 
+static struct jvst_op_proc **
+newsplits(struct arena_info *A, struct jvst_op_proc **sv, size_t n)
+{
+	size_t i,off,max;
+	struct jvst_op_proc **splits;
+
+	max = ARRAYLEN(ar_op_splits);
+	if (A->nsplit + n > max) {
+		fprintf(stderr, "%s:%d (%s) too many splits (%zu max)\n",
+			__FILE__, __LINE__, __func__, max);
+	}
+
+	off = A->nsplit;
+	A->nsplit += n;
+
+	splits = &ar_op_splits[off];
+	for (i=0; i < n; i++) {
+		splits[i] = sv[i];
+	}
+
+	return splits;
+}
+
 struct jvst_op_proc *
 newop_proc(struct arena_info *A, ...)
 {
@@ -1230,8 +1257,10 @@ newop_proc(struct arena_info *A, ...)
 	struct jvst_op_instr **ipp;
 	size_t nfloat = 0;
 	size_t nconst = 0;
+	size_t nsplit = 0;
 	double flt[16] = { 0.0 };
 	int64_t iconsts[16] = { 0 };
+	struct jvst_op_proc *splits[16] = { NULL };
 	va_list args;
 
 
@@ -1288,6 +1317,36 @@ fetch:
 			continue;
 		}
 
+		if (instr == opsplit) {
+			int ind;
+			int j,n;
+			struct jvst_op_proc *spl, **splpp;
+
+			ind = nsplit++;
+			if (nsplit>= ARRAYLEN(splits)) {
+				fprintf(stderr, "%s:%d (%s) too many splits ! (max is %zu)\n",
+					__FILE__, __LINE__, __func__, ARRAYLEN(splits));
+				abort();
+			}
+
+			splpp = &splits[ind];
+
+			n = va_arg(args, int);
+			for (j=0; j < n; j++) {
+				int pind;
+				pind = va_arg(args, int);
+
+				*splpp = newop_proc(A, NULL);
+				(*splpp)->proc_index = pind;
+				(*splpp)->next = NULL;
+				(*splpp)->split_next = NULL;
+
+				splpp = &(*splpp)->split_next;
+			}
+
+			continue;
+		}
+
 		if (instr == opdfa) {
 			int ndfa;
 
@@ -1321,6 +1380,11 @@ fetch:
 	if (nconst > 0) {
 		proc->cdata = newconsts(A, iconsts, nconst);
 		proc->nconst = nconst;
+	}
+
+	if (nsplit > 0) {
+		proc->splits = newsplits(A, splits, nsplit);
+		proc->nsplit = nsplit;
 	}
 
 	return proc;

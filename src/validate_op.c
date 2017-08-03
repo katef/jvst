@@ -17,8 +17,13 @@
 
 /** some OP encoding constants **/
 
-#define MAX_CONST_SIZE ((size_t)(1UL << 16)-1)
+// 16-bit signed constants can be inlined into the opcodes
+//
+// XXX - implement constant storage + ILOAD for larger values
+#define MIN_CONST_VALUE ((int64_t)(-32768))
+#define MAX_CONST_VALUE ((int64_t)( 32767))
 
+#define MAX_CONST_SIZE ((size_t)(65535))
 
 /** memory pool allocation **/
 
@@ -273,7 +278,6 @@ op_instr_dump(struct sbuf *buf, struct jvst_op_instr *instr)
 				: instr->u.call.proc_index);
 		break;
 
-	case JVST_OP_SPLIT:
 	case JVST_OP_SPLITV:
 	case JVST_OP_MATCH:
 	case JVST_OP_INCR:
@@ -281,6 +285,7 @@ op_instr_dump(struct sbuf *buf, struct jvst_op_instr *instr)
 		op_arg_dump(buf, instr->u.args[0]);
 		break;
 
+	case JVST_OP_SPLIT:
 	case JVST_OP_FLOAD:
 	case JVST_OP_ILOAD:
 		sbuf_snprintf(buf, "%s ", jvst_op_name(instr->op));
@@ -380,13 +385,42 @@ op_proc_dump(struct sbuf *buf, struct jvst_op_proc *proc, size_t fno, int indent
 		sbuf_snprintf(buf, "FLOAT(%zu)\t%g\n", i, proc->fdata[i]);
 	}
 
+	if (proc->nfloat > 0) {
+		sbuf_snprintf(buf, "\n");
+	}
+
 	for (i=0; i < proc->nconst; i++) {
 		sbuf_indent(buf, indent+2);
 		sbuf_snprintf(buf, "CONST(%zu)\t%" PRId64 "\t%" PRIu64 "\n",
 			i, proc->cdata[i], (uint64_t) proc->cdata[i]);
 	}
 
-	if (proc->nfloat > 0) {
+	if (proc->nconst > 0) {
+		sbuf_snprintf(buf, "\n");
+	}
+
+	for (i=0; i < proc->nsplit; i++) {
+		struct jvst_op_proc *p;
+		size_t c;
+
+		assert(proc->splits != NULL);
+
+		sbuf_indent(buf, indent+2);
+		sbuf_snprintf(buf, "SPLIT(%zu)\t", i);
+		for (c=0, p = proc->splits[i]; p != NULL; c++, p = p->split_next) {
+			sbuf_snprintf(buf, " %zu", p->proc_index);
+
+			if (c >= 6 && p->next != NULL) {
+				sbuf_snprintf(buf, "\n");
+				sbuf_indent(buf, indent+2);
+				sbuf_snprintf(buf, "\t\t");
+			}
+		}
+
+		sbuf_snprintf(buf, "\n");
+	}
+
+	if (proc->nsplit > 0) {
 		sbuf_snprintf(buf, "\n");
 	}
 
@@ -397,24 +431,6 @@ op_proc_dump(struct sbuf *buf, struct jvst_op_proc *proc, size_t fno, int indent
 	}
 
 	if (proc->ndfa> 0) {
-		sbuf_snprintf(buf, "\n");
-	}
-
-	// surely we can provide more data than this?
-	for (i=0; i < proc->nsplit; i++) {
-		struct jvst_op_proc *spl;
-		int j;
-
-		sbuf_indent(buf, indent+2);
-		sbuf_snprintf(buf, "SPLIT(%zu)\n", i);
-		sbuf_indent(buf, indent+7);
-		for (j=0, spl=proc->splits[i]; spl != NULL; spl = spl->split_next) {
-			sbuf_snprintf(buf, " %zu", spl->proc_index);
-			if (++j > 10) {
-				sbuf_snprintf(buf, "\n");
-				sbuf_indent(buf, indent+7);
-			}
-		}
 		sbuf_snprintf(buf, "\n");
 	}
 
@@ -521,9 +537,15 @@ struct op_assembler {
 	int64_t *cdata;
 	size_t maxconst;
 
+	struct jvst_op_proc **splits;
+	size_t maxsplit;
+
 	size_t nlbl;
 	size_t ntmp;
 };
+
+static struct jvst_op_proc *
+op_assemble_frame(struct op_assembler *opasm, struct jvst_ir_stmt *top);
 
 static struct jvst_op_arg
 arg_none(void)
@@ -572,6 +594,20 @@ arg_const(int64_t v)
 		.index = v,
 	};
 
+	if (v > MAX_CONST_VALUE) {
+		fprintf(stderr, "%s:%d (%s) large constants (%" PRId64 " > max %" PRId64 ") not yet implemented\n",
+				__FILE__, __LINE__, __func__,
+				v, (int64_t) MAX_CONST_VALUE);
+		abort();
+	}
+
+	if (v < MIN_CONST_VALUE) {
+		fprintf(stderr, "%s:%d (%s) large negative constants (%" PRId64 " < min %" PRId64 ") not yet implemented\n",
+				__FILE__, __LINE__, __func__,
+				v, (int64_t) MIN_CONST_VALUE);
+		abort();
+	}
+
 	return arg;
 }
 
@@ -617,6 +653,63 @@ arg_slot(size_t ind)
 	};
 
 	return arg;
+}
+
+static int64_t
+proc_add_split(struct op_assembler *opasm, struct jvst_ir_stmt *frames)
+{
+	struct jvst_op_proc *parent, *split_procs, **splpp;
+	struct jvst_ir_stmt *fr;
+	size_t ind;
+
+	assert(opasm  != NULL);
+	assert(frames != NULL);
+
+	parent = opasm->currproc;
+	assert(parent != NULL);
+
+	split_procs = NULL;
+	splpp = &split_procs;
+
+	for (fr = frames; fr != NULL; fr = fr->next) {
+		struct jvst_op_proc *p;
+
+		assert(fr->type == JVST_IR_STMT_FRAME);
+
+		p = op_assemble_frame(opasm, fr);
+
+		*splpp = p;
+		splpp = &p->split_next;
+	}
+
+	ind = parent->nsplit++;
+	if (parent->nsplit > opasm->maxsplit) {
+		size_t newmax;
+		struct jvst_op_proc **pv;
+
+		if (opasm->maxsplit < 4) {
+			newmax = 4;
+		} else if (opasm->maxsplit < 1024) {
+			newmax = 2*opasm->maxsplit;
+		} else {
+			newmax = opasm->maxsplit;
+			newmax += newmax/4;
+		}
+
+		assert(newmax > opasm->maxsplit+1);
+		pv = xrealloc(opasm->splits, newmax * sizeof opasm->splits[0]);
+		assert(pv != NULL);
+
+		opasm->splits = pv;
+		opasm->maxsplit = newmax;
+
+		parent->splits = opasm->splits;
+	}
+
+	assert(split_procs != NULL);
+	parent->splits[ind] = split_procs;
+
+	return (int64_t)ind;
 }
 
 static int64_t
@@ -1132,7 +1225,7 @@ op_assemble_seq(struct op_assembler *opasm, struct jvst_ir_stmt *stmt_list)
 	}
 }
 
-struct jvst_op_proc *
+static struct jvst_op_proc *
 op_assemble_frame(struct op_assembler *opasm, struct jvst_ir_stmt *top)
 {
 	struct op_assembler frame_opasm;
@@ -1172,6 +1265,12 @@ op_assemble_frame(struct op_assembler *opasm, struct jvst_ir_stmt *top)
 
 	frame_opasm.fdata = NULL;
 	frame_opasm.maxfloat = 0;
+
+	frame_opasm.cdata = NULL;
+	frame_opasm.maxconst = 0;
+
+	frame_opasm.splits = NULL;
+	frame_opasm.maxsplit = 0;
 
 	frame_opasm.currproc = proc;
 	frame_opasm.bpp = &proc->blocks;
@@ -1338,6 +1437,28 @@ emit_cond_arg(struct op_assembler *opasm, struct jvst_ir_expr *arg)
 			return ireg;
 		}
 
+	// SPLIT(i, reg):
+	// splits execution using split 'i' (data attached to current
+	// proc), returns number of valid returns in reg
+	case JVST_IR_EXPR_SPLIT:
+		{
+			struct jvst_op_instr *instr;
+			struct jvst_op_arg ireg;
+			int64_t split_ind;
+
+			ireg = arg_itmp(opasm);
+			split_ind = proc_add_split(opasm, arg->u.split.frames);
+
+			instr = op_instr_new(JVST_OP_SPLIT);
+			instr->u.args[0] = arg_const(split_ind);
+			instr->u.args[1] = ireg;
+
+			*opasm->ipp = instr;
+			opasm->ipp = &instr->next;
+
+			return ireg;
+		}
+
 	case JVST_IR_EXPR_BOOL:
 	case JVST_IR_EXPR_BCOUNT:
 	case JVST_IR_EXPR_BTEST:
@@ -1360,7 +1481,6 @@ emit_cond_arg(struct op_assembler *opasm, struct jvst_ir_expr *arg)
 	case JVST_IR_EXPR_AND:
 	case JVST_IR_EXPR_OR:
 	case JVST_IR_EXPR_NOT:
-	case JVST_IR_EXPR_SPLIT:
 		fprintf(stderr, "%s:%d (%s) expression %s is not an argument\n",
 				__FILE__, __LINE__, __func__,
 				jvst_ir_expr_type_name(arg->type));
