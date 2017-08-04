@@ -214,6 +214,10 @@ op_arg_dump(struct sbuf *buf, struct jvst_op_arg arg)
 		sbuf_snprintf(buf,"$%" PRId64, arg.index);
 		return;
 
+	case JVST_VM_ARG_POOL:
+		sbuf_snprintf(buf,"POOL(%" PRId64 ")", arg.index);
+		return;
+
 	case JVST_VM_ARG_SLOT:
 		sbuf_snprintf(buf,"SLOT(%" PRId64 ")", arg.index);
 		return;
@@ -232,8 +236,8 @@ op_instr_dump(struct sbuf *buf, struct jvst_op_instr *instr)
 		sbuf_snprintf(buf, "NOP");
 		break;
 
-	case JVST_OP_FRAME:
-		sbuf_snprintf(buf, "FRAME ");
+	case JVST_OP_PROC:
+		sbuf_snprintf(buf, "PROC ");
 		op_arg_dump(buf, instr->u.args[0]);
 		break;
 
@@ -475,7 +479,7 @@ jvst_op_name(enum jvst_vm_op op)
 {
 	switch (op) {
 	case JVST_OP_NOP:	return "NOP";
-	case JVST_OP_FRAME:     return "FRAME";
+	case JVST_OP_PROC:	return "PROC";
 	case JVST_OP_ILT:       return "ILT";
 	case JVST_OP_ILE:       return "ILE";
 	case JVST_OP_IEQ:       return "IEQ";
@@ -579,6 +583,7 @@ arg_special(enum jvst_op_arg_type type)
 	case JVST_VM_ARG_FLOAT:
 	case JVST_VM_ARG_TOKTYPE:
 	case JVST_VM_ARG_CONST:
+	case JVST_VM_ARG_POOL:
 	case JVST_VM_ARG_SLOT:
 		fprintf(stderr, "%s:%d (%s) arg type %d is not a special arg\n",
 			__FILE__, __LINE__, __func__, type);
@@ -867,7 +872,7 @@ emit_branch(struct op_assembler *opasm, enum jvst_vm_op op, struct jvst_op_block
 		goto emit_branch;
 
 	case JVST_OP_NOP:
-	case JVST_OP_FRAME:
+	case JVST_OP_PROC:
 	case JVST_OP_ILT:
 	case JVST_OP_ILE:
 	case JVST_OP_IEQ:
@@ -940,7 +945,7 @@ emit_cond(struct op_assembler *opasm, enum jvst_vm_op op,
 	case JVST_OP_CBT:
 	case JVST_OP_CBF:
 	case JVST_OP_NOP:
-	case JVST_OP_FRAME:
+	case JVST_OP_PROC:
 	case JVST_OP_CALL:
 	case JVST_OP_SPLIT:
 	case JVST_OP_SPLITV:
@@ -1356,6 +1361,7 @@ op_arg_type(enum jvst_op_arg_type type)
 	case JVST_VM_ARG_SLOT:
 	case JVST_VM_ARG_TOKTYPE:
 	case JVST_VM_ARG_CONST:
+	case JVST_VM_ARG_POOL:
 		return ARG_INT;
 
 	case JVST_VM_ARG_TNUM:

@@ -1441,7 +1441,7 @@ newop_cmp(struct arena_info *A, enum jvst_vm_op op,
 		return instr;
 
 	case JVST_OP_NOP:
-	case JVST_OP_FRAME:
+	case JVST_OP_PROC:
 	case JVST_OP_BR:
 	case JVST_OP_CBT:
 	case JVST_OP_CBF:
@@ -1578,7 +1578,7 @@ newop_load(struct arena_info *A, enum jvst_vm_op op,
 	case JVST_OP_FNEQ:
 	case JVST_OP_FINT:
 	case JVST_OP_NOP:
-	case JVST_OP_FRAME:
+	case JVST_OP_PROC:
 	case JVST_OP_BR:
 	case JVST_OP_CBT:
 	case JVST_OP_CBF:
@@ -1636,7 +1636,7 @@ newop_br(struct arena_info *A, enum jvst_vm_op op, const char *label)
 	case JVST_OP_FNEQ:
 	case JVST_OP_FINT:
 	case JVST_OP_NOP:
-	case JVST_OP_FRAME:
+	case JVST_OP_PROC:
 	case JVST_OP_CALL:
 	case JVST_OP_SPLIT:
 	case JVST_OP_SPLITV:
