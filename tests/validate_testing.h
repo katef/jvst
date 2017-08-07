@@ -133,6 +133,9 @@ struct jvst_ir_stmt *
 newir_seq(struct arena_info *A, ...);
 
 struct jvst_ir_stmt *
+newir_block(struct arena_info *A, size_t lind, const char *prefix, ...);
+
+struct jvst_ir_stmt *
 newir_loop(struct arena_info *A, const char *loopname, size_t ind, ...);
 
 struct jvst_ir_stmt *
@@ -162,6 +165,14 @@ newir_incr(struct arena_info *A, size_t ind, const char *label);
 
 struct jvst_ir_stmt *
 newir_bitop(struct arena_info *A, enum jvst_ir_stmt_type op, size_t ind, const char *label, size_t bit);
+
+struct jvst_ir_stmt *
+newir_branch(struct arena_info *A, size_t lind, const char *prefix);
+
+struct jvst_ir_stmt *
+newir_cbranch(struct arena_info *A, struct jvst_ir_expr *cond,
+	size_t tind, const char *tprefix,
+	size_t find, const char *fprefix);
 
 struct jvst_ir_mcase *
 newir_case(struct arena_info *A, size_t ind, struct jvst_cnode_matchset *mset, struct jvst_ir_stmt *frame);

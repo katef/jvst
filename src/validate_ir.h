@@ -300,6 +300,9 @@ struct jvst_ir_stmt *
 jvst_ir_translate(struct jvst_cnode *ctree);
 
 struct jvst_ir_stmt *
+jvst_ir_stmt_copy(struct jvst_ir_stmt *ir);
+
+struct jvst_ir_stmt *
 jvst_ir_linearize(struct jvst_ir_stmt *ir);
 
 int

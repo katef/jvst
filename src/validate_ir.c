@@ -2333,10 +2333,375 @@ jvst_ir_translate(struct jvst_cnode *ctree)
 	return frame;
 }
 
+struct jvst_ir_expr *
+jvst_ir_expr_copy(struct jvst_ir_expr *ir)
+{
+	struct jvst_ir_expr *copy;
+
+	copy = ir_expr_new(ir->type);
+
+	switch (ir->type) {
+	case JVST_IR_EXPR_ISTOK:
+		copy->u.istok = ir->u.istok;
+		return copy;
+
+	case JVST_IR_EXPR_NONE:
+	case JVST_IR_EXPR_NUM:
+	case JVST_IR_EXPR_SIZE:
+	case JVST_IR_EXPR_BOOL:
+	case JVST_IR_EXPR_TOK_TYPE:
+	case JVST_IR_EXPR_TOK_NUM:
+	case JVST_IR_EXPR_TOK_COMPLETE:
+	case JVST_IR_EXPR_TOK_LEN:
+	case JVST_IR_EXPR_COUNT:
+	case JVST_IR_EXPR_BCOUNT:
+	case JVST_IR_EXPR_BTEST:
+	case JVST_IR_EXPR_BTESTALL:
+	case JVST_IR_EXPR_BTESTANY:
+	case JVST_IR_EXPR_BTESTONE:
+	case JVST_IR_EXPR_AND:
+	case JVST_IR_EXPR_OR:
+	case JVST_IR_EXPR_NOT:
+	case JVST_IR_EXPR_NE:
+	case JVST_IR_EXPR_LT:
+	case JVST_IR_EXPR_LE:
+	case JVST_IR_EXPR_EQ:
+	case JVST_IR_EXPR_GE:
+	case JVST_IR_EXPR_GT:
+	case JVST_IR_EXPR_ISINT:
+	case JVST_IR_EXPR_SPLIT:
+	case JVST_IR_EXPR_SLOT:
+	case JVST_IR_EXPR_ITEMP:
+	case JVST_IR_EXPR_FTEMP:
+	case JVST_IR_EXPR_SEQ:
+		fprintf(stderr, "%s:%d (%s) copying IR expression %s not yet implemented\n",
+				__FILE__, __LINE__, __func__, 
+				jvst_ir_expr_type_name(ir->type));
+		abort();
+	}
+
+	fprintf(stderr, "%s:%d (%s) unknown IR statement type %d\n",
+			__FILE__, __LINE__, __func__, ir->type);
+	abort();
+}
+
+struct jvst_ir_stmt *
+jvst_ir_stmt_copy(struct jvst_ir_stmt *ir)
+{
+	struct jvst_ir_stmt *copy;
+
+	copy = ir_stmt_new(ir->type);
+
+	switch (ir->type) {
+	case JVST_IR_STMT_NOP:
+	case JVST_IR_STMT_VALID:
+	case JVST_IR_STMT_TOKEN:
+		return copy;
+
+	case JVST_IR_STMT_INVALID:
+		copy->u.invalid = ir->u.invalid;
+		return copy;
+
+	case JVST_IR_STMT_FRAME:
+		{
+			struct jvst_ir_stmt *stmt, **spp;
+
+			copy->u.frame = ir->u.frame;
+
+			spp = &copy->u.frame.counters;
+			*spp = NULL;
+			for (stmt = ir->u.frame.counters; stmt != NULL; stmt = stmt->next) {
+				*spp = jvst_ir_stmt_copy(stmt);
+				spp = &(*spp)->next;
+			}
+
+			spp = &copy->u.frame.matchers;
+			*spp = NULL;
+			for (stmt = ir->u.frame.matchers; stmt != NULL; stmt = stmt->next) {
+				*spp = jvst_ir_stmt_copy(stmt);
+				spp = &(*spp)->next;
+			}
+
+			spp = &copy->u.frame.bitvecs;
+			*spp = NULL;
+			for (stmt = ir->u.frame.bitvecs; stmt != NULL; stmt = stmt->next) {
+				*spp = jvst_ir_stmt_copy(stmt);
+				spp = &(*spp)->next;
+			}
+
+			spp = &copy->u.frame.blocks;
+			*spp = NULL;
+			for (stmt = ir->u.frame.blocks; stmt != NULL; stmt = stmt->next) {
+				*spp = jvst_ir_stmt_copy(stmt);
+				spp = &(*spp)->next;
+			}
+
+			spp = &copy->u.frame.stmts;
+			*spp = NULL;
+			for (stmt = ir->u.frame.stmts; stmt != NULL; stmt = stmt->next) {
+				*spp = jvst_ir_stmt_copy(stmt);
+				spp = &(*spp)->next;
+			}
+		}
+		return copy;
+
+	case JVST_IR_STMT_IF:
+		{
+			struct jvst_ir_stmt *stmt, **spp;
+
+			copy->u.if_.cond     = jvst_ir_expr_copy(ir->u.if_.cond);
+			copy->u.if_.br_true  = jvst_ir_stmt_copy(ir->u.if_.br_true);
+			copy->u.if_.br_false = jvst_ir_stmt_copy(ir->u.if_.br_false);
+		}
+		return copy;
+
+	case JVST_IR_STMT_LOOP:
+	case JVST_IR_STMT_SEQ:
+	case JVST_IR_STMT_BREAK:
+	case JVST_IR_STMT_CONSUME:
+	case JVST_IR_STMT_COUNTER:
+	case JVST_IR_STMT_MATCHER:
+	case JVST_IR_STMT_BITVECTOR:
+	case JVST_IR_STMT_BSET:
+	case JVST_IR_STMT_BCLEAR:
+	case JVST_IR_STMT_INCR:
+	case JVST_IR_STMT_DECR:
+	case JVST_IR_STMT_MATCH:
+	case JVST_IR_STMT_SPLITVEC:
+	case JVST_IR_STMT_BLOCK:
+	case JVST_IR_STMT_BRANCH:
+	case JVST_IR_STMT_CBRANCH:
+	case JVST_IR_STMT_MOVE:
+	case JVST_IR_STMT_CALL:
+		fprintf(stderr, "%s:%d (%s) copying IR statement %s not yet implemented\n",
+				__FILE__, __LINE__, __func__, 
+				jvst_ir_stmt_type_name(ir->type));
+		abort();
+	}
+
+	fprintf(stderr, "%s:%d (%s) unknown IR statement type %d\n",
+			__FILE__, __LINE__, __func__, ir->type);
+	abort();
+}
+
+struct op_linearizer {
+	struct jvst_ir_stmt *orig_frame;
+	struct jvst_ir_stmt *frame;
+	struct jvst_ir_stmt **fpp;
+
+	struct jvst_ir_stmt **ipp;
+	struct jvst_ir_stmt **bpp;
+};
+
+static struct jvst_ir_stmt *
+ir_copy_stmtlist(struct jvst_ir_stmt *n)
+{
+	struct jvst_ir_stmt *copy, **spp;
+	copy = NULL;
+	spp = &copy;
+
+	for( ; n != NULL; n = n->next) {
+		*spp = jvst_ir_stmt_copy(n);
+		spp = &(*spp)->next;
+	}
+
+	return copy;
+}
+
+static void
+ir_linearize_stmt(struct op_linearizer *oplin, struct jvst_ir_stmt *stmt);
+
+void
+ir_linearize_stmtlist(struct op_linearizer *oplin, struct jvst_ir_stmt *stmt)
+{
+	struct jvst_ir_stmt *s;
+
+	for (s = stmt; s != NULL; s = s->next) {
+		ir_linearize_stmt(oplin, s);
+	}
+}
+
+static struct jvst_ir_stmt *
+ir_linearize_frame(struct op_linearizer *oplin, struct jvst_ir_stmt *fr)
+{
+	struct jvst_ir_stmt *copy, *stmt, **spp, *entry;
+	struct op_linearizer frame_oplin;
+
+	assert(fr->type == JVST_IR_STMT_FRAME);
+	assert(fr->u.frame.blocks == NULL);
+	assert(fr->u.frame.nblocks == 0);
+
+	copy = ir_stmt_new(fr->type);
+	copy->u.frame = fr->u.frame;
+
+	*oplin->fpp = copy;
+	oplin->fpp = &copy->next;
+
+	copy->u.frame.counters = ir_copy_stmtlist(fr->u.frame.counters);
+	copy->u.frame.matchers = ir_copy_stmtlist(fr->u.frame.matchers);
+	copy->u.frame.bitvecs  = ir_copy_stmtlist(fr->u.frame.bitvecs);
+
+	copy->u.frame.stmts = NULL;
+
+	frame_oplin.orig_frame = fr;
+	frame_oplin.frame = copy;
+	frame_oplin.fpp = oplin->fpp;
+
+	entry = ir_stmt_block(copy, "entry");
+	copy->u.frame.blocks = entry;
+	copy->u.frame.stmts = entry;
+	frame_oplin.bpp = &entry->u.block.block_next;
+	frame_oplin.ipp = &entry->u.block.stmts;
+
+	ir_linearize_stmtlist(&frame_oplin, fr->u.frame.stmts);
+
+	oplin->fpp = frame_oplin.fpp;
+	return copy;
+}
+
+static struct jvst_ir_stmt *
+ir_linearize_block(struct op_linearizer *oplin, const char *prefix, struct jvst_ir_stmt *stmt, struct jvst_ir_stmt *blknext)
+{
+	struct jvst_ir_stmt *blk, *jmp;
+	struct op_linearizer block_oplin;
+
+	assert(blknext == NULL || blknext->type == JVST_IR_STMT_BLOCK);
+
+	blk = ir_stmt_block(oplin->frame, prefix);
+	block_oplin = *oplin;
+	*block_oplin.bpp = blk;
+	block_oplin.bpp = &blk->u.block.block_next;
+
+	block_oplin.ipp = &blk->u.block.stmts;
+	*block_oplin.ipp = ir_stmt_new(JVST_IR_STMT_NOP);
+
+	ir_linearize_stmtlist(&block_oplin, stmt);
+
+	jmp = ir_stmt_new(JVST_IR_STMT_BRANCH);
+	jmp->u.branch = blknext;
+	*block_oplin.ipp = jmp;
+
+	oplin->bpp = block_oplin.bpp;
+
+	return blk;
+}
+
+static struct jvst_ir_stmt *
+ir_linearize_cond(struct op_linearizer *oplin, struct jvst_ir_expr *cond, struct jvst_ir_stmt *btrue, struct jvst_ir_stmt *bfalse)
+{
+	struct jvst_ir_stmt *cbr;
+
+	(void)oplin;
+
+	// XXX - this doesn't handle AND/OR/XOR/NOT &c
+	cbr = ir_stmt_new(JVST_IR_STMT_CBRANCH);
+	cbr->u.cbranch.cond = cond; // FIXME: linearize!
+	cbr->u.cbranch.br_true = btrue;
+	cbr->u.cbranch.br_false = bfalse;
+
+	return cbr;
+}
+
+static struct jvst_ir_stmt *
+ir_linearize_if(struct op_linearizer *oplin, struct jvst_ir_stmt *stmt)
+{
+	struct jvst_ir_stmt *cbr, *br_true, *br_false, *br_join;
+
+	assert(stmt->type == JVST_IR_STMT_IF);
+
+	br_join  = ir_stmt_block(oplin->frame, "join");
+
+	*oplin->bpp = br_join;
+	oplin->bpp = &br_join->u.block.block_next;
+
+	br_true  = ir_linearize_block(oplin, "true", stmt->u.if_.br_true, br_join);
+	br_false = ir_linearize_block(oplin, "false", stmt->u.if_.br_false, br_join);
+
+	cbr = ir_linearize_cond(oplin, stmt->u.if_.cond, br_true, br_false);
+	*oplin->ipp = cbr;
+	oplin->ipp = &cbr->next;
+
+	*oplin->ipp = br_true;
+	oplin->ipp = &br_true->next;
+
+	*oplin->ipp = br_false;
+	oplin->ipp = &br_false->next;
+
+	*oplin->ipp = br_join;
+	oplin->ipp = &br_join->next;
+
+	oplin->ipp = &br_join->u.block.stmts;
+	*oplin->ipp = ir_stmt_new(JVST_IR_STMT_NOP);
+
+	return cbr;
+}
+
+void
+ir_linearize_stmt(struct op_linearizer *oplin, struct jvst_ir_stmt *stmt)
+{
+	struct jvst_ir_stmt *linstmt;
+
+	switch (stmt->type) {
+	case JVST_IR_STMT_NOP:
+	case JVST_IR_STMT_VALID:
+	case JVST_IR_STMT_TOKEN:
+	case JVST_IR_STMT_INVALID:
+		linstmt = jvst_ir_stmt_copy(stmt);
+		*oplin->ipp = linstmt;
+		oplin->ipp = &linstmt->next;
+		return;
+
+	case JVST_IR_STMT_FRAME:
+		linstmt = ir_linearize_frame(oplin, stmt);
+		*oplin->ipp = linstmt;
+		oplin->ipp = &linstmt->next;
+		return;
+
+	case JVST_IR_STMT_IF:
+		ir_linearize_if(oplin, stmt);
+		return;
+
+	case JVST_IR_STMT_LOOP:
+	case JVST_IR_STMT_SEQ:
+	case JVST_IR_STMT_BREAK:
+	case JVST_IR_STMT_CONSUME:
+	case JVST_IR_STMT_COUNTER:
+	case JVST_IR_STMT_MATCHER:
+	case JVST_IR_STMT_BITVECTOR:
+	case JVST_IR_STMT_BSET:
+	case JVST_IR_STMT_BCLEAR:
+	case JVST_IR_STMT_INCR:
+	case JVST_IR_STMT_DECR:
+	case JVST_IR_STMT_MATCH:
+	case JVST_IR_STMT_SPLITVEC:
+	case JVST_IR_STMT_BLOCK:
+	case JVST_IR_STMT_BRANCH:
+	case JVST_IR_STMT_CBRANCH:
+	case JVST_IR_STMT_MOVE:
+	case JVST_IR_STMT_CALL:
+		fprintf(stderr, "%s:%d (%s) linearizing IR statement %s not yet implemented\n",
+				__FILE__, __LINE__, __func__, 
+				jvst_ir_stmt_type_name(stmt->type));
+		abort();
+	}
+
+	fprintf(stderr, "%s:%d (%s) unknown IR statement type %d\n",
+			__FILE__, __LINE__, __func__, stmt->type);
+	abort();
+}
+
 struct jvst_ir_stmt *
 jvst_ir_linearize(struct jvst_ir_stmt *ir)
 {
-	return ir;
+	struct jvst_ir_stmt *copy;
+	struct op_linearizer oplin = { 0 };
+
+	assert(ir->type == JVST_IR_STMT_FRAME);
+	oplin.frame = NULL;
+	oplin.fpp = &oplin.frame;
+	oplin.ipp = NULL;
+
+	return ir_linearize_frame(&oplin, ir);
 }
 
 void

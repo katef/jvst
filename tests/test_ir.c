@@ -239,6 +239,55 @@ static void test_ir_empty_schema(void)
       )
     },
 
+    {
+      LINEARIZE,
+      newcnode_switch(&A, 1, SJP_NONE),
+
+      NULL,
+
+      newir_frame(&A,
+          newir_block(&A, 0, "entry",
+            newir_stmt(&A, JVST_IR_STMT_TOKEN),
+            newir_cbranch(&A, newir_istok(&A, SJP_OBJECT_END),
+              2, "true",
+              3, "false"
+            ),
+            newir_block(&A, 2, "true",
+              newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token"),
+              newir_branch(&A, 1, "join"),
+              NULL
+            ),
+            newir_block(&A, 3, "false",
+              newir_cbranch(&A, newir_istok(&A, SJP_ARRAY_END),
+                5, "true",
+                6, "false"
+              ),
+              newir_block(&A, 5, "true",
+                newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token"),
+                newir_branch(&A, 4, "join"),
+                NULL
+              ),
+              newir_block(&A, 6, "false",
+                newir_stmt(&A, JVST_IR_STMT_VALID),
+                newir_branch(&A, 4, "join"),
+                NULL
+              ),
+              newir_block(&A, 4, "join",
+                newir_branch(&A, 1, "join"),
+                NULL
+              ),
+              NULL
+            ),
+            newir_block(&A, 1, "join",
+              newir_stmt(&A, JVST_IR_STMT_NOP),
+              NULL
+            ),
+            NULL
+          ),
+          NULL
+      )
+    },
+
     { STOP },
   };
 

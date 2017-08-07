@@ -772,6 +772,62 @@ newir_seq(struct arena_info *A, ...)
 }
 
 struct jvst_ir_stmt *
+newir_block(struct arena_info *A, size_t lind, const char *prefix, ...)
+{
+	struct jvst_ir_stmt *blk;
+	va_list args;
+
+	blk = newir_stmt(A,JVST_IR_STMT_BLOCK);
+	blk->u.block.lindex  = lind;
+	blk->u.block.prefix = prefix;
+
+	va_start(args, prefix);
+	ir_stmt_list(&blk->u.block.stmts, args);
+	va_end(args);
+
+	return blk;
+}
+
+struct jvst_ir_stmt *
+newir_branch(struct arena_info *A, size_t lind, const char *prefix)
+{
+	struct jvst_ir_stmt *br, *blk;
+
+	blk = newir_stmt(A,JVST_IR_STMT_BLOCK);
+	blk->u.block.lindex  = lind;
+	blk->u.block.prefix = prefix;
+
+	br = newir_stmt(A,JVST_IR_STMT_BRANCH);
+	br->u.branch = blk;
+
+	return br;
+}
+
+struct jvst_ir_stmt *
+newir_cbranch(struct arena_info *A,
+	struct jvst_ir_expr *cond,
+	size_t li_true, const char *pfx_true,
+	size_t li_false, const char *pfx_false)
+{
+	struct jvst_ir_stmt *cbr, *t_blk, *f_blk;
+
+	t_blk = newir_stmt(A,JVST_IR_STMT_BLOCK);
+	t_blk->u.block.lindex  = li_true;
+	t_blk->u.block.prefix = pfx_true;
+
+	f_blk = newir_stmt(A,JVST_IR_STMT_BLOCK);
+	f_blk->u.block.lindex  = li_false;
+	f_blk->u.block.prefix = pfx_false;
+
+	cbr = newir_stmt(A,JVST_IR_STMT_CBRANCH);
+	cbr->u.cbranch.cond = cond;
+	cbr->u.cbranch.br_true = t_blk;
+	cbr->u.cbranch.br_false = f_blk;
+
+	return cbr;
+}
+
+struct jvst_ir_stmt *
 newir_loop(struct arena_info *A, const char *loopname, size_t ind, ...)
 {
 	struct jvst_ir_stmt *loop;
