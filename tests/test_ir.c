@@ -13,9 +13,17 @@
 #  define PRINT_IR 0
 #endif /* PRINT_IR */
 
+enum ir_test_type {
+  STOP = 0,
+  TRANSLATE,
+  LINEARIZE,
+};
+
 struct ir_test {
+  enum ir_test_type type;
   struct jvst_cnode *ctree;
-  struct jvst_ir_stmt *ir;
+  struct jvst_ir_stmt *translated;
+  struct jvst_ir_stmt *linearized;
 };
 
 static int ir_trees_equal(const char *fname, struct jvst_ir_stmt *n1, struct jvst_ir_stmt *n2);
@@ -23,20 +31,43 @@ static int ir_trees_equal(const char *fname, struct jvst_ir_stmt *n1, struct jvs
 static int run_test(const char *fname, const struct ir_test *t)
 {
   struct jvst_cnode *simplified, *canonified;
-  struct jvst_ir_stmt *result;
+  struct jvst_ir_stmt *translated, *result, *expected;
 
   assert(t->ctree != NULL);
-  assert(t->ir != NULL);
 
-  simplified = jvst_cnode_simplify(t->ctree);
-  canonified = jvst_cnode_canonify(simplified);
-  result = jvst_ir_translate(canonified);
+  switch (t->type) {
+  default:
+  case STOP:
+    fprintf(stderr, "SHOULD NOT REACH!\n");
+    abort();
+
+  case TRANSLATE:
+    assert(t->translated != NULL);
+
+    expected = t->translated;
+    simplified = jvst_cnode_simplify(t->ctree);
+    canonified = jvst_cnode_canonify(simplified);
+    result = jvst_ir_translate(canonified);
+    break;
+
+  case LINEARIZE:
+    assert(t->linearized != NULL);
+
+    expected = t->linearized;
+    simplified = jvst_cnode_simplify(t->ctree);
+    canonified = jvst_cnode_canonify(simplified);
+    translated = jvst_ir_translate(canonified);
+    result = jvst_ir_linearize(translated);
+    break;
+  }
+
+  assert(expected != NULL);
 
 #if PRINT_IR
   jvst_ir_print(result);
 #endif /* PRINT_IR */
 
-  return ir_trees_equal(fname, result, t->ir);
+  return ir_trees_equal(fname, result, expected);
 }
 
 // n1 is actual, n2 is expected
@@ -176,7 +207,7 @@ static void runtests(const char *testname, const struct ir_test tests[])
 {
   int i;
 
-  for (i=0; tests[i].ctree != NULL; i++) {
+  for (i=0; tests[i].type != STOP; i++) {
     ntest++;
 
     if (!run_test(testname, &tests[i])) {
@@ -192,6 +223,7 @@ static void test_ir_empty_schema(void)
 
   const struct ir_test tests[] = {
     {
+      TRANSLATE,
       newcnode_switch(&A, 1, SJP_NONE),
 
       newir_frame(&A,
@@ -207,7 +239,7 @@ static void test_ir_empty_schema(void)
       )
     },
 
-    { NULL },
+    { STOP },
   };
 
   RUNTESTS(tests);
@@ -222,6 +254,7 @@ static void test_ir_type_constraints(void)
 
   const struct ir_test tests[] = {
     {
+      TRANSLATE,
       newcnode_switch(&A, 0, SJP_NUMBER, newcnode_valid(), SJP_NONE),
 
       newir_frame(&A,
@@ -235,6 +268,7 @@ static void test_ir_type_constraints(void)
     },
 
     {
+      TRANSLATE,
       newcnode_switch(&A, 0, SJP_OBJECT_BEG, newcnode_valid(), SJP_NONE),
       newir_frame(&A,
           newir_stmt(&A, JVST_IR_STMT_TOKEN),
@@ -247,6 +281,7 @@ static void test_ir_type_constraints(void)
     },
 
     {
+      TRANSLATE,
       newcnode_switch(&A, 0,
         SJP_OBJECT_BEG, newcnode_valid(),
         SJP_STRING, newcnode_valid(),
@@ -265,7 +300,7 @@ static void test_ir_type_constraints(void)
       )
     },
 
-    { NULL },
+    { STOP },
   };
 
   RUNTESTS(tests);
@@ -280,6 +315,7 @@ static void test_ir_type_integer(void)
 
   const struct ir_test tests[] = {
     {
+      TRANSLATE,
       newcnode_switch(&A, 0,
         SJP_NUMBER,
         newcnode(&A,JVST_CNODE_NUM_INTEGER),
@@ -297,7 +333,7 @@ static void test_ir_type_integer(void)
       )
     },
 
-    { NULL },
+    { STOP },
   };
 
   RUNTESTS(tests);
@@ -312,6 +348,7 @@ void test_ir_minimum(void)
 
   const struct ir_test tests[] = {
     {
+      TRANSLATE,
       newcnode_switch(&A, 0,
           SJP_NUMBER, newcnode_range(&A, JVST_CNODE_RANGE_MIN, 1.1, 0.0),
           SJP_NONE),
@@ -331,7 +368,7 @@ void test_ir_minimum(void)
       )
     },
 
-    { NULL },
+    { STOP },
   };
 
   RUNTESTS(tests);
@@ -345,6 +382,7 @@ void test_ir_properties(void)
   // together).  Reduction will occur on a later pass.
   const struct ir_test tests[] = {
     {
+      TRANSLATE,
       newcnode_switch(&A, 1,
         SJP_OBJECT_BEG, newcnode_propset(&A,
                           newcnode_prop_match(&A, RE_LITERAL, "foo",
@@ -421,6 +459,7 @@ void test_ir_properties(void)
     },
 
     {
+      TRANSLATE,
       newcnode_switch(&A, 1,
         SJP_OBJECT_BEG, newcnode_propset(&A,
                           newcnode_prop_match(&A, RE_NATIVE, "ba.",
@@ -493,7 +532,7 @@ void test_ir_properties(void)
       )
     },
 
-    { NULL },
+    { STOP },
   };
 
   RUNTESTS(tests);
@@ -507,6 +546,7 @@ void test_ir_minmax_properties_1(void)
   // together).  Reduction will occur on a later pass.
   const struct ir_test tests[] = {
     {
+      TRANSLATE,
       newcnode_switch(&A, 1,
         SJP_OBJECT_BEG, newcnode_counts(&A, 1, 0),
         SJP_NONE),
@@ -591,6 +631,7 @@ void test_ir_minmax_properties_1(void)
     },
 
     {
+      TRANSLATE,
       newcnode_switch(&A, 1,
         SJP_OBJECT_BEG, newcnode_counts(&A, 0, 2),
         SJP_NONE),
@@ -660,6 +701,7 @@ void test_ir_minmax_properties_1(void)
     },
 
     {
+      TRANSLATE,
       newcnode_switch(&A, 1,
         SJP_OBJECT_BEG, newcnode_counts(&A, 2, 5),
         SJP_NONE),
@@ -728,7 +770,7 @@ void test_ir_minmax_properties_1(void)
       )
     },
 
-    { NULL },
+    { STOP },
   };
 
   RUNTESTS(tests);
@@ -742,16 +784,17 @@ void test_ir_minproperties_2(void)
   // together).  Reduction will occur on a later pass.
   const struct ir_test tests[] = {
     {
-        newcnode_switch(&A, 1,
+      TRANSLATE,
+      newcnode_switch(&A, 1,
           SJP_OBJECT_BEG, newcnode_bool(&A,JVST_CNODE_AND,
-                            newcnode_counts(&A, 1, 0),
-                            newcnode_propset(&A,
-                              newcnode_prop_match(&A, RE_LITERAL, "foo",
-                                newcnode_switch(&A, 0, SJP_NUMBER, newcnode_valid(), SJP_NONE)),
-                              newcnode_prop_match(&A, RE_LITERAL, "bar",
-                                newcnode_switch(&A, 0, SJP_STRING, newcnode_valid(), SJP_NONE)),
-                              NULL),
+                          newcnode_counts(&A, 1, 0),
+                          newcnode_propset(&A,
+                            newcnode_prop_match(&A, RE_LITERAL, "foo",
+                              newcnode_switch(&A, 0, SJP_NUMBER, newcnode_valid(), SJP_NONE)),
+                            newcnode_prop_match(&A, RE_LITERAL, "bar",
+                              newcnode_switch(&A, 0, SJP_STRING, newcnode_valid(), SJP_NONE)),
                             NULL),
+                          NULL),
           SJP_NONE),
 
       newir_frame(&A,
@@ -831,7 +874,7 @@ void test_ir_minproperties_2(void)
       )
     },
 
-    { NULL },
+    { STOP },
   };
 
   RUNTESTS(tests);
@@ -845,6 +888,7 @@ void test_ir_required(void)
   // together).  Reduction will occur on a later pass.
   const struct ir_test tests[] = {
     {
+      TRANSLATE,
       // schema:
       // {
       //   "properties" : {
@@ -945,7 +989,7 @@ void test_ir_required(void)
       )
     },
 
-    { NULL },
+    { STOP },
   };
 
   RUNTESTS(tests);
@@ -959,6 +1003,7 @@ void test_ir_dependencies(void)
   // together).  Reduction will occur on a later pass.
   const struct ir_test tests[] = {
     {
+      TRANSLATE,
       // schema: { "dependencies": {"bar": ["foo"]} }
       newcnode_switch(&A, 1,
         SJP_OBJECT_BEG, newcnode_bool(&A, JVST_CNODE_OR,
@@ -1083,6 +1128,7 @@ void test_ir_dependencies(void)
     },
 
     {
+      TRANSLATE,
       // schema: { "dependencies": {"quux": ["foo", "bar"]} }
       newcnode_switch(&A, 1,
         SJP_OBJECT_BEG, newcnode_bool(&A, JVST_CNODE_OR,
@@ -1217,6 +1263,7 @@ void test_ir_dependencies(void)
     },
 
     {
+      TRANSLATE,
       // schema: { "dependencies": {"quux": ["foo", "bar"], "this": ["that"]} }
       newcnode_switch(&A, 1,
         SJP_OBJECT_BEG, newcnode_bool(&A, JVST_CNODE_AND,
@@ -1458,11 +1505,12 @@ void test_ir_dependencies(void)
       )
     },
 
-    { NULL },
+    { STOP },
   };
 
   const struct ir_test unfinished_tests[] = {
     {
+      TRANSLATE,
       // schema: {
       //   "dependencies": {
       //     "bar": {
@@ -1507,7 +1555,7 @@ void test_ir_dependencies(void)
       NULL
     },
 
-    { NULL },
+    { STOP },
   };
 
   RUNTESTS(tests);
@@ -1575,6 +1623,7 @@ void test_ir_minproperties_3(void)
   // together).  Reduction will occur on a later pass.
   const struct ir_test tests[] = {
     {
+      TRANSLATE,
       newcnode_switch(&A, 1,
         SJP_OBJECT_BEG, newcnode_bool(&A,JVST_CNODE_AND,
                           newcnode_counts(&A, 1, 0),
@@ -1598,7 +1647,7 @@ void test_ir_minproperties_3(void)
       NULL
     },
 
-    { NULL },
+    { STOP },
   };
 
   UNIMPLEMENTED(tests);
@@ -1615,6 +1664,7 @@ void test_ir_maxproperties_1(void)
   // together).  Reduction will occur on a later pass.
   const struct ir_test tests[] = {
     {
+      TRANSLATE,
       newcnode_switch(&A, 1,
         SJP_OBJECT_BEG, newcnode_bool(&A,JVST_CNODE_AND,
                           newcnode_counts(&A, 0, 2),
@@ -1625,7 +1675,7 @@ void test_ir_maxproperties_1(void)
       NULL
     },
 
-    { NULL },
+    { STOP },
   };
 
   UNIMPLEMENTED(tests);
@@ -1648,6 +1698,7 @@ void test_ir_maxproperties_2(void)
   // together).  Reduction will occur on a later pass.
   const struct ir_test tests[] = {
     {
+      TRANSLATE,
       newcnode_switch(&A, 1,
         SJP_OBJECT_BEG, newcnode_bool(&A,JVST_CNODE_AND,
                           newcnode_counts(&A, 0, 1),
@@ -1671,7 +1722,7 @@ void test_ir_maxproperties_2(void)
       NULL
     },
 
-    { NULL },
+    { STOP },
   };
 
   UNIMPLEMENTED(tests);
@@ -1696,6 +1747,7 @@ void test_ir_minmax_properties_2(void)
   // together).  Reduction will occur on a later pass.
   const struct ir_test tests[] = {
     {
+      TRANSLATE,
       newcnode_switch(&A, 1,
         SJP_OBJECT_BEG, newcnode_bool(&A,JVST_CNODE_AND,
                           newcnode_counts(&A, 1, 1),
@@ -1719,7 +1771,7 @@ void test_ir_minmax_properties_2(void)
       NULL
     },
 
-    { NULL },
+    { STOP },
   };
 
   UNIMPLEMENTED(tests);
@@ -1731,6 +1783,7 @@ void test_ir_anyof_allof_oneof_1(void)
 
   const struct ir_test tests[] = {
     {
+      TRANSLATE,
       newcnode_bool(&A, JVST_CNODE_AND,
         newcnode_bool(&A, JVST_CNODE_OR,
           newcnode_switch(&A, 0,
@@ -1750,6 +1803,7 @@ void test_ir_anyof_allof_oneof_1(void)
     },
 
     {
+      TRANSLATE,
       newcnode_bool(&A, JVST_CNODE_AND,
         newcnode_bool(&A, JVST_CNODE_AND,
           newcnode_switch(&A, 0,
@@ -1769,6 +1823,7 @@ void test_ir_anyof_allof_oneof_1(void)
     },
 
     {
+      TRANSLATE,
       newcnode_bool(&A, JVST_CNODE_AND,
         newcnode_bool(&A, JVST_CNODE_XOR,
           newcnode_switch(&A, 0,
@@ -1787,7 +1842,7 @@ void test_ir_anyof_allof_oneof_1(void)
       NULL
     },
 
-    { NULL },
+    { STOP },
   };
 
   UNIMPLEMENTED(tests);
@@ -1799,6 +1854,7 @@ void test_ir_anyof_2(void)
 
   const struct ir_test tests[] = {
     {
+      TRANSLATE,
       newcnode_bool(&A, JVST_CNODE_AND,
           newcnode_bool(&A, JVST_CNODE_OR,
             newcnode_switch(&A, 0,
@@ -1830,7 +1886,7 @@ void test_ir_anyof_2(void)
       NULL
     },
 
-    { NULL },
+    { STOP },
   };
 
   UNIMPLEMENTED(tests);
@@ -1843,6 +1899,7 @@ static void test_ir_simplify_ands(void)
   const struct ir_test tests[] = {
     // handle AND with only one level...
     {
+      TRANSLATE,
       newcnode_switch(&A, 1,
           SJP_NUMBER, newcnode_range(&A, JVST_CNODE_RANGE_MIN, 1.1, 0.0),
           SJP_NONE),
@@ -1852,6 +1909,7 @@ static void test_ir_simplify_ands(void)
 
     // handle nested ANDs
     {
+      TRANSLATE,
       newcnode_switch(&A, 1,
           SJP_NUMBER, newcnode_bool(&A, JVST_CNODE_AND,
                         newcnode_range(&A, JVST_CNODE_RANGE_MIN, 1.1, 0.0),
@@ -1864,6 +1922,7 @@ static void test_ir_simplify_ands(void)
 
     // handle more complex nested ANDs
     {
+      TRANSLATE,
       newcnode_switch(&A, 1,
           SJP_NUMBER, newcnode_bool(&A, JVST_CNODE_AND,
                         newcnode_range(&A, JVST_CNODE_RANGE_MIN, 1.1, 0.0),
@@ -1875,7 +1934,7 @@ static void test_ir_simplify_ands(void)
       NULL
     },
 
-    { NULL },
+    { STOP },
   };
 
   UNIMPLEMENTED(tests);
@@ -1886,27 +1945,29 @@ void test_ir_simplify_ored_schema(void)
   struct arena_info A = {0};
   const struct ir_test tests[] = {
     {
-        newcnode_switch(&A, 0,
-          SJP_OBJECT_BEG, newcnode_bool(&A, JVST_CNODE_OR,
-                            newcnode_propset(&A, 
-                              newcnode_prop_match(&A, RE_LITERAL, "foo",
-                                newcnode_switch(&A, 0, SJP_NUMBER, newcnode_valid(), SJP_NONE)),
-                              newcnode_prop_match(&A, RE_LITERAL, "bar",
-                                newcnode_switch(&A, 0, SJP_STRING, newcnode_valid(), SJP_NONE)),
-                              NULL),
-                            newcnode_propset(&A,
-                              newcnode_prop_match(&A, RE_LITERAL, "foo",
-                                newcnode_switch(&A, 0, SJP_STRING, newcnode_valid(), SJP_NONE)),
-                              newcnode_prop_match(&A, RE_LITERAL, "bar",
-                                newcnode_switch(&A, 0, SJP_NUMBER, newcnode_valid(), SJP_NONE)),
-                              NULL),
+      TRANSLATE,
+      newcnode_switch(&A, 0,
+        SJP_OBJECT_BEG, newcnode_bool(&A, JVST_CNODE_OR,
+                          newcnode_propset(&A, 
+                            newcnode_prop_match(&A, RE_LITERAL, "foo",
+                              newcnode_switch(&A, 0, SJP_NUMBER, newcnode_valid(), SJP_NONE)),
+                            newcnode_prop_match(&A, RE_LITERAL, "bar",
+                              newcnode_switch(&A, 0, SJP_STRING, newcnode_valid(), SJP_NONE)),
                             NULL),
-          SJP_NONE),
+                          newcnode_propset(&A,
+                            newcnode_prop_match(&A, RE_LITERAL, "foo",
+                              newcnode_switch(&A, 0, SJP_STRING, newcnode_valid(), SJP_NONE)),
+                            newcnode_prop_match(&A, RE_LITERAL, "bar",
+                              newcnode_switch(&A, 0, SJP_NUMBER, newcnode_valid(), SJP_NONE)),
+                            NULL),
+                          NULL),
+        SJP_NONE),
 
-        NULL
+      NULL
     },
 
     {
+      TRANSLATE,
       newcnode_switch(&A, 1, 
           SJP_OBJECT_BEG, newcnode_bool(&A, JVST_CNODE_OR,
                             newcnode_bool(&A, JVST_CNODE_AND,
@@ -1931,7 +1992,7 @@ void test_ir_simplify_ored_schema(void)
       NULL
     },
 
-    { NULL },
+    { STOP },
   };
 
   UNIMPLEMENTED(tests);

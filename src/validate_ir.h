@@ -44,6 +44,12 @@ enum jvst_ir_stmt_type {
 
 	JVST_IR_STMT_SPLITVEC,		// Splits the validator, stores
 					// results for each subvalidator in a bitvec
+
+	JVST_IR_STMT_BLOCK,
+	JVST_IR_STMT_BRANCH,
+	JVST_IR_STMT_CBRANCH,
+	JVST_IR_STMT_MOVE,
+	JVST_IR_STMT_CALL,
 };
 
 // expressions
@@ -90,6 +96,11 @@ enum jvst_ir_expr_type {
 	JVST_IR_EXPR_SPLIT,		// SPLITs the validator.  each sub-validator moves in lock-step.
 					// children must be FRAMEs.  result is the number of FRAMEs that
 					// return valid.
+
+	JVST_IR_EXPR_SLOT,		// SLOT(n), value at slot n
+	JVST_IR_EXPR_ITEMP,		// ITEMP(n) integer temporary n
+	JVST_IR_EXPR_FTEMP,		// FTEMP(n) floating point temporary n
+	JVST_IR_EXPR_SEQ,		// ESEQ(s, e) statement s, then return expression e
 };
 
 enum jvst_invalid_code {
@@ -120,12 +131,14 @@ struct jvst_ir_frame {
 	struct jvst_ir_stmt *counters;
 	struct jvst_ir_stmt *matchers;
 	struct jvst_ir_stmt *bitvecs;
+	struct jvst_ir_stmt *blocks;
 	struct jvst_ir_stmt *stmts;
 
 	size_t nloops;
 	size_t nmatchers;
 	size_t ncounters;
 	size_t nbitvecs;
+	size_t nblocks;
 };
 
 struct jvst_ir_stmt {
@@ -214,6 +227,21 @@ struct jvst_ir_stmt {
 			struct jvst_ir_stmt *bitvec;
 			struct jvst_ir_stmt *split_frames;
 		} splitvec;
+
+		struct {
+			struct jvst_ir_stmt *block_next;
+			size_t lindex;
+			const char *prefix;
+			struct jvst_ir_stmt *stmts;
+		} block;
+
+		struct jvst_ir_stmt *branch;
+
+		struct {
+			struct jvst_ir_expr *cond;
+			struct jvst_ir_stmt *br_true;
+			struct jvst_ir_stmt *br_false;
+		} cbranch;
 	} u;
 };
 
@@ -262,6 +290,7 @@ struct jvst_ir_expr {
 		struct {
 			struct jvst_ir_stmt *frames;
 		} split;
+
 	} u;
 };
 
@@ -269,6 +298,9 @@ struct jvst_cnode;
 
 struct jvst_ir_stmt *
 jvst_ir_translate(struct jvst_cnode *ctree);
+
+struct jvst_ir_stmt *
+jvst_ir_linearize(struct jvst_ir_stmt *ir);
 
 int
 jvst_ir_dump(struct jvst_ir_stmt *ir, char *buf, size_t nb);

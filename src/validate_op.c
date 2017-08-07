@@ -1484,6 +1484,10 @@ emit_cond_arg(struct op_assembler *opasm, struct jvst_ir_expr *arg)
 	case JVST_IR_EXPR_BTESTALL:
 	case JVST_IR_EXPR_BTESTANY:
 	case JVST_IR_EXPR_BTESTONE:
+	case JVST_IR_EXPR_SLOT:
+	case JVST_IR_EXPR_ITEMP:
+	case JVST_IR_EXPR_FTEMP:
+	case JVST_IR_EXPR_SEQ:
 		fprintf(stderr, "%s:%d (%s) expression %s not yet implemented\n",
 				__FILE__, __LINE__, __func__,
 				jvst_ir_expr_type_name(arg->type));
@@ -1577,6 +1581,10 @@ emit_cmp(struct op_assembler *opasm, struct jvst_ir_expr *expr,
 	case JVST_IR_EXPR_COUNT:
 	case JVST_IR_EXPR_BCOUNT:
 	case JVST_IR_EXPR_SPLIT:
+	case JVST_IR_EXPR_SLOT:
+	case JVST_IR_EXPR_ITEMP:
+	case JVST_IR_EXPR_FTEMP:
+	case JVST_IR_EXPR_SEQ:
 		fprintf(stderr, "%s:%d (%s) IR expression %s is not a comparison\n",
 			__FILE__, __LINE__, __func__, jvst_ir_expr_type_name(expr->type));
 		abort();
@@ -1745,6 +1753,10 @@ op_assemble_cond(struct op_assembler *opasm, struct jvst_ir_expr *cond,
 	case JVST_IR_EXPR_COUNT:
 	case JVST_IR_EXPR_BCOUNT:
 	case JVST_IR_EXPR_SPLIT:
+	case JVST_IR_EXPR_SLOT:
+	case JVST_IR_EXPR_ITEMP:
+	case JVST_IR_EXPR_FTEMP:
+	case JVST_IR_EXPR_SEQ:
 		fprintf(stderr, "%s:%d (%s) expression %s is not a boolean condition\n",
 				__FILE__, __LINE__, __func__,
 				jvst_ir_expr_type_name(cond->type));
@@ -1822,6 +1834,10 @@ op_assemble_if_inner(struct op_assembler *opasm, struct jvst_ir_expr *cond,
 	case JVST_IR_EXPR_COUNT:
 	case JVST_IR_EXPR_BCOUNT:
 	case JVST_IR_EXPR_SPLIT:
+	case JVST_IR_EXPR_SLOT:
+	case JVST_IR_EXPR_ITEMP:
+	case JVST_IR_EXPR_FTEMP:
+	case JVST_IR_EXPR_SEQ:
 		fprintf(stderr, "%s:%d (%s) expression %s is not a boolean condition\n",
 				__FILE__, __LINE__, __func__,
 				jvst_ir_expr_type_name(cond->type));
@@ -2058,11 +2074,16 @@ op_assemble(struct op_assembler *opasm, struct jvst_ir_stmt *stmt)
 		}
 		return;
 
+	case JVST_IR_STMT_BLOCK:
+	case JVST_IR_STMT_BRANCH:
+	case JVST_IR_STMT_CBRANCH:
 	case JVST_IR_STMT_COUNTER:
 	case JVST_IR_STMT_MATCHER:
 	case JVST_IR_STMT_BITVECTOR:
 	case JVST_IR_STMT_BCLEAR:
 	case JVST_IR_STMT_DECR:
+	case JVST_IR_STMT_MOVE:
+	case JVST_IR_STMT_CALL:
 		fprintf(stderr, "%s:%d (%s) IR statement %s not yet implemented\n",
 			__FILE__, __LINE__, __func__, jvst_ir_stmt_type_name(stmt->type));
 		abort();

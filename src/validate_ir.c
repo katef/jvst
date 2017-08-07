@@ -158,8 +158,28 @@ ir_stmt_frame(void)
 	frame->u.frame.nloops    = 0;
 	frame->u.frame.ncounters = 0;
 	frame->u.frame.nbitvecs  = 0;
+
+	frame->u.frame.nblocks   = 0;
+
+	frame->u.frame.blocks = NULL;
 	frame->u.frame.stmts = NULL;
 	return frame;
+}
+
+static inline struct jvst_ir_stmt *
+ir_stmt_block(struct jvst_ir_stmt *frame, const char *prefix)
+{
+	struct jvst_ir_stmt *blk;
+	assert(frame != NULL);
+	assert(frame->type == JVST_IR_STMT_FRAME);
+
+	blk = ir_stmt_new(JVST_IR_STMT_BLOCK);
+	blk->u.block.block_next = NULL;
+	blk->u.block.lindex     = frame->u.frame.nblocks++;
+	blk->u.block.prefix     = prefix;
+	blk->u.block.stmts      = NULL;
+
+	return blk;
 }
 
 static inline struct jvst_ir_stmt *
@@ -424,6 +444,10 @@ ir_expr_op(enum jvst_ir_expr_type op,
 	case JVST_IR_EXPR_ISINT:
 	case JVST_IR_EXPR_NOT:
 	case JVST_IR_EXPR_SPLIT:
+	case JVST_IR_EXPR_SLOT:
+	case JVST_IR_EXPR_ITEMP:
+	case JVST_IR_EXPR_FTEMP:
+	case JVST_IR_EXPR_SEQ:
 		fprintf(stderr, "invalid OP type: %s\n", jvst_ir_expr_type_name(op));
 		abort();
 	}
@@ -561,6 +585,16 @@ jvst_ir_stmt_type_name(enum jvst_ir_stmt_type type)
 		return "MATCH";    	
 	case JVST_IR_STMT_SPLITVEC:
 		return "SPLITVEC";
+	case JVST_IR_STMT_BLOCK:
+		return "BLOCK";
+	case JVST_IR_STMT_BRANCH:
+		return "BRANCH";
+	case JVST_IR_STMT_CBRANCH:
+		return "CBRANCH";
+	case JVST_IR_STMT_MOVE:
+		return "MOVE";
+	case JVST_IR_STMT_CALL:
+		return "CALL";
 	}
 
 	fprintf(stderr, "%s:%d unknown IR statement type %d in %s\n",
@@ -651,6 +685,17 @@ jvst_ir_expr_type_name(enum jvst_ir_expr_type type)
 	case JVST_IR_EXPR_BOOL:
 		return "BOOL";
 
+	case JVST_IR_EXPR_SLOT:
+		return "SLOT";
+
+	case JVST_IR_EXPR_ITEMP:
+		return "ITEMP";
+
+	case JVST_IR_EXPR_FTEMP:
+		return "FTEMP";
+
+	case JVST_IR_EXPR_SEQ:
+		return "ESEQ";
 	}
 
 	fprintf(stderr, "%s:%d (%s) unknown IR expression node type %d\n",
@@ -841,18 +886,18 @@ jvst_ir_dump_inner(struct sbuf *buf, struct jvst_ir_stmt *ir, int indent)
 			"INVALID(%d, \"%s\")",
 			ir->u.invalid.code,
 			ir->u.invalid.msg);
-		break;
+		return;
 
 	case JVST_IR_STMT_NOP:	
 	case JVST_IR_STMT_VALID:		
 	case JVST_IR_STMT_TOKEN:		
 	case JVST_IR_STMT_CONSUME:		
 		sbuf_snprintf(buf, "%s", jvst_ir_stmt_type_name(ir->type));
-		break;
+		return;
 
 	case JVST_IR_STMT_SEQ:
 		dump_stmt_list(buf, ir->type, ir->u.stmt_list, indent);
-		break;
+		return;
 
 	case JVST_IR_STMT_FRAME:		
 		{
@@ -888,7 +933,7 @@ jvst_ir_dump_inner(struct sbuf *buf, struct jvst_ir_stmt *ir, int indent)
 			sbuf_indent(buf, indent);
 			sbuf_snprintf(buf, ")");
 		}
-		break;
+		return;
 
 	case JVST_IR_STMT_LOOP:		
 		{
@@ -899,7 +944,7 @@ jvst_ir_dump_inner(struct sbuf *buf, struct jvst_ir_stmt *ir, int indent)
 			sbuf_indent(buf, indent);
 			sbuf_snprintf(buf, ")");
 		}
-		break;
+		return;
 
 	case JVST_IR_STMT_IF:
 		sbuf_snprintf(buf, "IF(\n");
@@ -911,16 +956,16 @@ jvst_ir_dump_inner(struct sbuf *buf, struct jvst_ir_stmt *ir, int indent)
 		sbuf_snprintf(buf, "\n");
 		sbuf_indent(buf, indent);
 		sbuf_snprintf(buf, ")");
-		break;
+		return;
 
 	case JVST_IR_STMT_MATCHER:
 		sbuf_snprintf(buf, "MATCHER(%zu, \"%s_%zu\")",
 			ir->u.matcher.ind, ir->u.matcher.name, ir->u.matcher.ind);
-		break;
+		return;
 
 	case JVST_IR_STMT_BREAK:
 		sbuf_snprintf(buf, "BREAK(\"%s_%zu\")", ir->u.break_.name, ir->u.break_.ind);
-		break;
+		return;
 
 	case JVST_IR_STMT_MATCH:
 		{
@@ -967,12 +1012,12 @@ jvst_ir_dump_inner(struct sbuf *buf, struct jvst_ir_stmt *ir, int indent)
 			sbuf_indent(buf, indent);
 			sbuf_snprintf(buf, ")");
 		}
-		break;
+		return;
 
 	case JVST_IR_STMT_COUNTER:		
 		sbuf_snprintf(buf, "COUNTER(%zu, \"%s_%zu\")",
 			ir->u.counter.ind, ir->u.counter.label, ir->u.counter.ind);
-		break;
+		return;
 
 	case JVST_IR_STMT_INCR:		
 	case JVST_IR_STMT_DECR:		
@@ -981,7 +1026,7 @@ jvst_ir_dump_inner(struct sbuf *buf, struct jvst_ir_stmt *ir, int indent)
 			ir->u.counter_op.ind,
 			ir->u.counter_op.label,
 			ir->u.counter_op.ind);
-		break;
+		return;
 
 	case JVST_IR_STMT_BSET:
 	case JVST_IR_STMT_BCLEAR:
@@ -995,7 +1040,7 @@ jvst_ir_dump_inner(struct sbuf *buf, struct jvst_ir_stmt *ir, int indent)
 				bv->u.bitvec.ind,
 				ir->u.bitop.bit);
 		}
-		break;
+		return;
 
 	case JVST_IR_STMT_BITVECTOR:		
 		sbuf_snprintf(buf, "%s(%zu, \"%s_%zu\", nbits=%zu)",
@@ -1004,7 +1049,7 @@ jvst_ir_dump_inner(struct sbuf *buf, struct jvst_ir_stmt *ir, int indent)
 			ir->u.bitvec.label,
 			ir->u.bitvec.ind,
 			ir->u.bitvec.nbits);
-		break;
+		return;
 
 	case JVST_IR_STMT_SPLITVEC:
 		{
@@ -1023,13 +1068,79 @@ jvst_ir_dump_inner(struct sbuf *buf, struct jvst_ir_stmt *ir, int indent)
 			sbuf_indent(buf, indent);
 			sbuf_snprintf(buf, ")");
 		}
-		break;
+		return;
 
-	default:
-		fprintf(stderr, "%s:%d unknown IR statement type %d in %s\n",
-			__FILE__, __LINE__, ir->type, __func__);
+	case JVST_IR_STMT_BLOCK:
+		{
+			struct jvst_ir_stmt *stmts;
+
+			stmts = ir->u.block.stmts;
+			if (stmts == NULL) {
+				sbuf_snprintf(buf, "BLOCK(%s_%zu)",
+					ir->u.block.prefix,
+					ir->u.block.lindex);
+			} else {
+				sbuf_snprintf(buf, "BLOCK(%s_%zu, \n",
+						ir->u.block.prefix,
+						ir->u.block.lindex);
+				dump_stmt_list_inner(buf, stmts, indent);
+				sbuf_indent(buf, indent);
+				sbuf_snprintf(buf, ")");
+			}
+		}
+		return;
+
+	case JVST_IR_STMT_BRANCH:
+		{
+			assert(ir->u.branch != NULL);
+			assert(ir->u.branch->type == JVST_IR_STMT_BLOCK);
+			sbuf_snprintf(buf, "BRANCH(%s_%zu)",
+					ir->u.branch->u.block.prefix,
+					ir->u.branch->u.block.lindex);
+
+		}
+		return;
+
+	case JVST_IR_STMT_CBRANCH:
+		{
+			struct jvst_ir_stmt *br_true, *br_false;
+			assert(ir->u.cbranch.cond     != NULL);
+			assert(ir->u.cbranch.br_true  != NULL);
+			assert(ir->u.cbranch.br_false != NULL);
+			assert(ir->u.cbranch.br_true->type  == JVST_IR_STMT_BLOCK);
+			assert(ir->u.cbranch.br_false->type == JVST_IR_STMT_BLOCK);
+
+			br_true  = ir->u.cbranch.br_true;
+			br_false = ir->u.cbranch.br_false;
+
+			sbuf_snprintf(buf, "CBRANCH(\n");
+			jvst_ir_dump_expr(buf, ir->u.cbranch.cond, indent+2);
+			sbuf_snprintf(buf, ",\n");
+			sbuf_indent(buf, indent+2);
+			sbuf_snprintf(buf, "%s_%zu,\n",
+				br_true->u.block.prefix,
+				br_true->u.block.lindex);
+			sbuf_indent(buf, indent+2);
+			sbuf_snprintf(buf, "%s_%zu,\n",
+				br_false->u.block.prefix,
+				br_false->u.block.lindex);
+			sbuf_indent(buf, indent);
+			sbuf_snprintf(buf, ")");
+		}
+		return;
+
+	case JVST_IR_STMT_MOVE:
+	case JVST_IR_STMT_CALL:
+		fprintf(stderr, "%s:%d (%s) IR statement %s not yet implemented\n",
+				__FILE__, __LINE__, __func__, 
+				jvst_ir_stmt_type_name(ir->type));
 		abort();
+
 	}
+
+	fprintf(stderr, "%s:%d unknown IR statement type %d in %s\n",
+		__FILE__, __LINE__, ir->type, __func__);
+	abort();
 }
 
 int
@@ -2220,6 +2331,12 @@ jvst_ir_translate(struct jvst_cnode *ctree)
 		;
 
 	return frame;
+}
+
+struct jvst_ir_stmt *
+jvst_ir_linearize(struct jvst_ir_stmt *ir)
+{
+	return ir;
 }
 
 void
