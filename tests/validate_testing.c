@@ -758,6 +758,34 @@ newir_frame(struct arena_info *A, ...)
 }
 
 struct jvst_ir_stmt *
+newir_program(struct arena_info *A, ...)
+{
+	struct jvst_ir_stmt *prog, **fpp;
+	va_list args;
+
+	prog = newir_stmt(A,JVST_IR_STMT_PROGRAM);
+	fpp = &prog->u.program.frames;
+
+	va_start(args, A);
+	for(;;) {
+		struct jvst_ir_stmt *fr;
+
+		fr = va_arg(args, struct jvst_ir_stmt *);
+		if (fr == NULL) {
+			break;
+		}
+
+		assert(fr->type == JVST_IR_STMT_FRAME);
+		*fpp = fr;
+		fpp = &fr->next;
+	}
+	va_end(args);
+
+	assert(prog->u.program.frames != NULL);
+	return prog;
+}
+
+struct jvst_ir_stmt *
 newir_seq(struct arena_info *A, ...)
 {
 	struct jvst_ir_stmt *seq;

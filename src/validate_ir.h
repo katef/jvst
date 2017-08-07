@@ -50,6 +50,8 @@ enum jvst_ir_stmt_type {
 	JVST_IR_STMT_CBRANCH,
 	JVST_IR_STMT_MOVE,
 	JVST_IR_STMT_CALL,
+
+	JVST_IR_STMT_PROGRAM,
 };
 
 // expressions
@@ -127,6 +129,10 @@ struct jvst_ir_mcase {
 	struct jvst_ir_stmt *stmt;
 };
 
+struct jvst_ir_program {
+	struct jvst_ir_stmt *frames;
+};
+
 struct jvst_ir_frame {
 	struct jvst_ir_stmt *counters;
 	struct jvst_ir_stmt *matchers;
@@ -177,6 +183,7 @@ struct jvst_ir_stmt {
 		} loop;
 
 		struct jvst_ir_frame frame;
+		struct jvst_ir_program program;
 
 		struct {
 			const char *label;

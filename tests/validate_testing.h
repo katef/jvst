@@ -130,6 +130,9 @@ struct jvst_ir_stmt *
 newir_frame(struct arena_info *A, ...);
 
 struct jvst_ir_stmt *
+newir_program(struct arena_info *A, ...);
+
+struct jvst_ir_stmt *
 newir_seq(struct arena_info *A, ...);
 
 struct jvst_ir_stmt *

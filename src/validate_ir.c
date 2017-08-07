@@ -595,6 +595,8 @@ jvst_ir_stmt_type_name(enum jvst_ir_stmt_type type)
 		return "MOVE";
 	case JVST_IR_STMT_CALL:
 		return "CALL";
+	case JVST_IR_STMT_PROGRAM:
+		return "PROGRAM";
 	}
 
 	fprintf(stderr, "%s:%d unknown IR statement type %d in %s\n",
@@ -897,6 +899,10 @@ jvst_ir_dump_inner(struct sbuf *buf, struct jvst_ir_stmt *ir, int indent)
 
 	case JVST_IR_STMT_SEQ:
 		dump_stmt_list(buf, ir->type, ir->u.stmt_list, indent);
+		return;
+
+	case JVST_IR_STMT_PROGRAM:
+		dump_stmt_list(buf, ir->type, ir->u.program.frames, indent);
 		return;
 
 	case JVST_IR_STMT_FRAME:		
@@ -2385,6 +2391,21 @@ jvst_ir_expr_copy(struct jvst_ir_expr *ir)
 	abort();
 }
 
+static struct jvst_ir_stmt *
+ir_deepcopy_stmtlist(struct jvst_ir_stmt *l)
+{
+	struct jvst_ir_stmt *n, *copy = NULL, **spp = &copy;
+
+	for (n = l; n != NULL; n = n->next) {
+		struct jvst_ir_stmt *c;
+		c = jvst_ir_stmt_copy(n);
+		*spp = c;
+		spp = &c->next;
+	}
+
+	return copy;
+}
+
 struct jvst_ir_stmt *
 jvst_ir_stmt_copy(struct jvst_ir_stmt *ir)
 {
@@ -2455,8 +2476,15 @@ jvst_ir_stmt_copy(struct jvst_ir_stmt *ir)
 		}
 		return copy;
 
-	case JVST_IR_STMT_LOOP:
+	case JVST_IR_STMT_PROGRAM:
+		copy->u.program.frames = ir_deepcopy_stmtlist(ir->u.program.frames);
+		return copy;
+
 	case JVST_IR_STMT_SEQ:
+		copy->u.stmt_list = ir_deepcopy_stmtlist(ir->u.stmt_list);
+		return copy;
+
+	case JVST_IR_STMT_LOOP:
 	case JVST_IR_STMT_BREAK:
 	case JVST_IR_STMT_CONSUME:
 	case JVST_IR_STMT_COUNTER:
@@ -2679,6 +2707,7 @@ ir_linearize_stmt(struct op_linearizer *oplin, struct jvst_ir_stmt *stmt)
 	case JVST_IR_STMT_CBRANCH:
 	case JVST_IR_STMT_MOVE:
 	case JVST_IR_STMT_CALL:
+	case JVST_IR_STMT_PROGRAM:
 		fprintf(stderr, "%s:%d (%s) linearizing IR statement %s not yet implemented\n",
 				__FILE__, __LINE__, __func__, 
 				jvst_ir_stmt_type_name(stmt->type));
@@ -2693,7 +2722,7 @@ ir_linearize_stmt(struct op_linearizer *oplin, struct jvst_ir_stmt *stmt)
 struct jvst_ir_stmt *
 jvst_ir_linearize(struct jvst_ir_stmt *ir)
 {
-	struct jvst_ir_stmt *copy;
+	struct jvst_ir_stmt *prog;
 	struct op_linearizer oplin = { 0 };
 
 	assert(ir->type == JVST_IR_STMT_FRAME);
@@ -2701,7 +2730,12 @@ jvst_ir_linearize(struct jvst_ir_stmt *ir)
 	oplin.fpp = &oplin.frame;
 	oplin.ipp = NULL;
 
-	return ir_linearize_frame(&oplin, ir);
+	ir_linearize_frame(&oplin, ir);
+
+	prog = ir_stmt_new(JVST_IR_STMT_PROGRAM);
+	prog->u.program.frames = oplin.frame;
+
+	return prog;
 }
 
 void
