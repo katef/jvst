@@ -320,6 +320,49 @@ static void test_ir_type_constraints(void)
     },
 
     {
+      LINEARIZE,
+      newcnode_switch(&A, 0, SJP_NUMBER, newcnode_valid(), SJP_NONE),
+
+      newir_frame(&A,
+          newir_stmt(&A, JVST_IR_STMT_TOKEN),
+          newir_if(&A, newir_istok(&A, SJP_NUMBER),
+            newir_stmt(&A, JVST_IR_STMT_VALID),
+            newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token")
+          ),
+          NULL
+      ),
+
+      newir_program(&A,
+        newir_frame(&A,
+          newir_block(&A, 0, "entry",
+            newir_stmt(&A, JVST_IR_STMT_TOKEN),
+            newir_cbranch(&A, newir_istok(&A, SJP_NUMBER),
+              2, "true",
+              3, "false"
+            ),
+            newir_block(&A, 2, "true",
+              newir_stmt(&A, JVST_IR_STMT_VALID),
+              newir_branch(&A, 1, "join"),
+              NULL
+            ),
+            newir_block(&A, 3, "false",
+              newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token"),
+              newir_branch(&A, 1, "join"),
+              NULL
+            ),
+            newir_block(&A, 1, "join",
+              newir_stmt(&A, JVST_IR_STMT_NOP),
+              NULL
+            ),
+            NULL
+          ),
+          NULL
+        ),
+        NULL
+      )
+    },
+
+    {
       TRANSLATE,
       newcnode_switch(&A, 0, SJP_OBJECT_BEG, newcnode_valid(), SJP_NONE),
       newir_frame(&A,
@@ -329,6 +372,48 @@ static void test_ir_type_constraints(void)
             newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token")
           ),
           NULL
+      )
+    },
+
+    {
+      LINEARIZE,
+      newcnode_switch(&A, 0, SJP_OBJECT_BEG, newcnode_valid(), SJP_NONE),
+      newir_frame(&A,
+          newir_stmt(&A, JVST_IR_STMT_TOKEN),
+          newir_if(&A, newir_istok(&A, SJP_OBJECT_BEG),
+            newir_stmt(&A, JVST_IR_STMT_VALID),
+            newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token")
+          ),
+          NULL
+      ),
+
+      newir_program(&A,
+        newir_frame(&A,
+          newir_block(&A, 0, "entry",
+            newir_stmt(&A, JVST_IR_STMT_TOKEN),
+            newir_cbranch(&A, newir_istok(&A, SJP_OBJECT_BEG),
+              2, "true",
+              3, "false"
+            ),
+            newir_block(&A, 2, "true",
+              newir_stmt(&A, JVST_IR_STMT_VALID),
+              newir_branch(&A, 1, "join"),
+              NULL
+            ),
+            newir_block(&A, 3, "false",
+              newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token"),
+              newir_branch(&A, 1, "join"),
+              NULL
+            ),
+            newir_block(&A, 1, "join",
+              newir_stmt(&A, JVST_IR_STMT_NOP),
+              NULL
+            ),
+            NULL
+          ),
+          NULL
+        ),
+        NULL
       )
     },
 
@@ -349,6 +434,71 @@ static void test_ir_type_constraints(void)
             )
           ),
           NULL
+      )
+    },
+
+    {
+      LINEARIZE,
+      newcnode_switch(&A, 0,
+        SJP_OBJECT_BEG, newcnode_valid(),
+        SJP_STRING, newcnode_valid(),
+        SJP_NONE),
+
+      newir_frame(&A,
+          newir_stmt(&A, JVST_IR_STMT_TOKEN),
+          newir_if(&A, newir_istok(&A, SJP_STRING),
+            newir_stmt(&A, JVST_IR_STMT_VALID),
+            newir_if(&A, newir_istok(&A, SJP_OBJECT_BEG),
+              newir_stmt(&A, JVST_IR_STMT_VALID),
+              newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token")
+            )
+          ),
+          NULL
+      ),
+
+      newir_program(&A,
+        newir_frame(&A,
+          newir_block(&A, 0, "entry",
+            newir_stmt(&A, JVST_IR_STMT_TOKEN),
+            newir_cbranch(&A, newir_istok(&A, SJP_STRING),
+              2, "true",
+              3, "false"
+            ),
+            newir_block(&A, 2, "true",
+              newir_stmt(&A, JVST_IR_STMT_VALID),
+              newir_branch(&A, 1, "join"),
+              NULL
+            ),
+            newir_block(&A, 3, "false",
+              newir_cbranch(&A, newir_istok(&A, SJP_OBJECT_BEG),
+                5, "true",
+                6, "false"
+              ),
+              newir_block(&A, 5, "true",
+                newir_stmt(&A, JVST_IR_STMT_VALID),
+                newir_branch(&A, 4, "join"),
+                NULL
+              ),
+              newir_block(&A, 6, "false",
+                newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token"),
+                newir_branch(&A, 4, "join"),
+                NULL
+              ),
+              newir_block(&A, 4, "join",
+                newir_branch(&A, 1, "join"),
+                NULL
+              ),
+              NULL
+            ),
+            newir_block(&A, 1, "join",
+              newir_stmt(&A, JVST_IR_STMT_NOP),
+              NULL
+            ),
+            NULL
+          ),
+          NULL
+        ),
+        NULL
       )
     },
 
@@ -383,6 +533,81 @@ static void test_ir_type_integer(void)
           ),
           NULL
       )
+    },
+
+    {
+      LINEARIZE,
+      newcnode_switch(&A, 0,
+        SJP_NUMBER,
+        newcnode(&A,JVST_CNODE_NUM_INTEGER),
+        SJP_NONE),
+
+      newir_frame(&A,
+          newir_stmt(&A, JVST_IR_STMT_TOKEN),
+          newir_if(&A, newir_istok(&A, SJP_NUMBER),
+            newir_if(&A, newir_isint(&A, newir_expr(&A, JVST_IR_EXPR_TOK_NUM)),
+              newir_stmt(&A, JVST_IR_STMT_VALID),
+              newir_invalid(&A, JVST_INVALID_NOT_INTEGER, "number is not an integer")),
+            newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token")
+          ),
+          NULL
+      ),
+
+      newir_program(&A,
+        newir_frame(&A,
+          newir_block(&A, 0, "entry",
+            newir_stmt(&A, JVST_IR_STMT_TOKEN),
+            newir_cbranch(&A, newir_istok(&A, SJP_NUMBER),
+              2, "true",
+              6, "false"
+            ),
+
+            newir_block(&A, 2, "true",
+              newir_cbranch(&A, newir_isint(&A, newir_expr(&A, JVST_IR_EXPR_TOK_NUM)),
+                4, "true",
+                5, "false"
+              ),
+
+              newir_block(&A, 4, "true",
+                newir_stmt(&A, JVST_IR_STMT_VALID),
+                newir_branch(&A, 3, "join"),
+                NULL
+              ),
+
+              newir_block(&A, 5, "false",
+                newir_invalid(&A, JVST_INVALID_NOT_INTEGER, "number is not an integer"),
+                newir_branch(&A, 3, "join"),
+                NULL
+              ),
+
+              newir_block(&A, 3, "join",
+                newir_branch(&A, 1, "join"),
+                NULL
+              ),
+
+              NULL
+            ),
+
+            newir_block(&A, 6, "false",
+              newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token"),
+              newir_branch(&A, 1, "join"),
+              NULL
+            ),
+
+            newir_block(&A, 1, "join",
+              newir_stmt(&A, JVST_IR_STMT_NOP),
+              NULL
+            ),
+
+            NULL
+          ),
+
+          NULL
+        ),
+
+        NULL
+      )
+
     },
 
     { STOP },
