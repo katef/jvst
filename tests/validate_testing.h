@@ -177,6 +177,9 @@ newir_cbranch(struct arena_info *A, struct jvst_ir_expr *cond,
 	size_t tind, const char *tprefix,
 	size_t find, const char *fprefix);
 
+struct jvst_ir_stmt *
+newir_move(struct arena_info *A, struct jvst_ir_expr *tmp, struct jvst_ir_expr *expr);
+
 struct jvst_ir_mcase *
 newir_case(struct arena_info *A, size_t ind, struct jvst_cnode_matchset *mset, struct jvst_ir_stmt *frame);
 
@@ -211,6 +214,15 @@ newir_btestany(struct arena_info *A, size_t ind, const char *label, size_t b0, s
 
 struct jvst_ir_expr *
 newir_split(struct arena_info *A, ...);
+
+struct jvst_ir_expr *
+newir_ftemp(struct arena_info *A, size_t ind);
+
+struct jvst_ir_expr *
+newir_itemp(struct arena_info *A, size_t ind);
+
+struct jvst_ir_expr *
+newir_eseq(struct arena_info *A, struct jvst_ir_stmt *stmt, struct jvst_ir_expr *expr);
 
 struct jvst_op_program *
 newop_program(struct arena_info *A, ...);

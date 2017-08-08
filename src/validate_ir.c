@@ -159,7 +159,8 @@ ir_stmt_frame(void)
 	frame->u.frame.ncounters = 0;
 	frame->u.frame.nbitvecs  = 0;
 
-	frame->u.frame.nblocks   = 0;
+	frame->u.frame.nblocks = 0;
+	frame->u.frame.ntemps  = 0;
 
 	frame->u.frame.blocks = NULL;
 	frame->u.frame.stmts = NULL;
@@ -372,6 +373,26 @@ ir_expr_new(enum jvst_ir_expr_type type)
 	expr->type = type;
 
 	return expr;
+}
+
+static struct jvst_ir_expr *
+ir_expr_ftemp(struct jvst_ir_stmt *frame)
+{
+	struct jvst_ir_expr *tmp;
+	assert(frame->type == JVST_IR_STMT_FRAME);
+	tmp = ir_expr_new(JVST_IR_EXPR_FTEMP);
+	tmp->u.temp.ind = frame->u.frame.ntemps++;
+	return tmp;
+}
+
+static struct jvst_ir_expr *
+ir_expr_itemp(struct jvst_ir_stmt *frame)
+{
+	struct jvst_ir_expr *tmp;
+	assert(frame->type == JVST_IR_STMT_FRAME);
+	tmp = ir_expr_new(JVST_IR_EXPR_ITEMP);
+	tmp->u.temp.ind = frame->u.frame.ntemps++;
+	return tmp;
 }
 
 static struct jvst_ir_expr *
@@ -746,24 +767,24 @@ jvst_ir_dump_expr(struct sbuf *buf, struct jvst_ir_expr *expr, int indent)
 	case JVST_IR_EXPR_TOK_COMPLETE:
 	case JVST_IR_EXPR_TOK_LEN:
 		sbuf_snprintf(buf, "%s", jvst_ir_expr_type_name(expr->type));
-		break;
+		return;
 
 	case JVST_IR_EXPR_ISTOK:
 		sbuf_snprintf(buf, "ISTOK($%s)",
 				evt2name(expr->u.istok.tok_type));
-		break;
+		return;
 
 	case JVST_IR_EXPR_NUM:
 		sbuf_snprintf(buf, "%.1f", expr->u.vnum);
-		break;
+		return;
 
 	case JVST_IR_EXPR_SIZE:
 		sbuf_snprintf(buf, "%zu", expr->u.vsize);
-		break;
+		return;
 
 	case JVST_IR_EXPR_BOOL:
 		sbuf_snprintf(buf, "%s", expr->u.vbool ? "TRUE" : "FALSE" );
-		break;
+		return;
 
 	case JVST_IR_EXPR_AND:
 	case JVST_IR_EXPR_OR:
@@ -777,7 +798,7 @@ jvst_ir_dump_expr(struct sbuf *buf, struct jvst_ir_expr *expr, int indent)
 			sbuf_indent(buf, indent);
 			sbuf_snprintf(buf, ")");
 		}
-		break;
+		return;
 
 	case JVST_IR_EXPR_NOT:
 		{
@@ -788,7 +809,7 @@ jvst_ir_dump_expr(struct sbuf *buf, struct jvst_ir_expr *expr, int indent)
 			sbuf_indent(buf, indent);
 			sbuf_snprintf(buf, ")");
 		}
-		break;
+		return;
 
 	case JVST_IR_EXPR_NE:
 	case JVST_IR_EXPR_LT:
@@ -806,7 +827,7 @@ jvst_ir_dump_expr(struct sbuf *buf, struct jvst_ir_expr *expr, int indent)
 			sbuf_indent(buf, indent);
 			sbuf_snprintf(buf, ")");
 		}
-		break;
+		return;
 
 	case JVST_IR_EXPR_ISINT:
 		sbuf_snprintf(buf, "ISINT(\n");
@@ -814,7 +835,7 @@ jvst_ir_dump_expr(struct sbuf *buf, struct jvst_ir_expr *expr, int indent)
 		sbuf_snprintf(buf, "\n");
 		sbuf_indent(buf, indent);
 		sbuf_snprintf(buf, ")");
-		break;
+		return;
 
 	case JVST_IR_EXPR_SPLIT:
 		{
@@ -836,14 +857,14 @@ jvst_ir_dump_expr(struct sbuf *buf, struct jvst_ir_expr *expr, int indent)
 				sbuf_snprintf(buf, ")");
 			}
 		}
-		break;
+		return;
 
 	case JVST_IR_EXPR_COUNT:
 		sbuf_snprintf(buf, "COUNT(%zu, \"%s_%zu\")",
 			expr->u.count.ind,
 			expr->u.count.label,
 			expr->u.count.ind);
-		break;
+		return;
 
 	case JVST_IR_EXPR_BTEST:
 	case JVST_IR_EXPR_BTESTANY:
@@ -862,14 +883,37 @@ jvst_ir_dump_expr(struct sbuf *buf, struct jvst_ir_expr *expr, int indent)
 				expr->u.btest.b0,
 				expr->u.btest.b1);
 		}
-		break;
+		return;
 
-	default:
-		fprintf(stderr, "unknown IR expression type %d\n", expr->type);
+	case JVST_IR_EXPR_SEQ:
+		sbuf_snprintf(buf, "%s(\n", jvst_ir_expr_type_name(expr->type));
+		sbuf_indent(buf, indent+2);
+		jvst_ir_dump_inner(buf,expr->u.seq.stmt,indent+2);
+
+		sbuf_snprintf(buf, ",\n", jvst_ir_expr_type_name(expr->type));
+		sbuf_indent(buf, indent+2);
+		jvst_ir_dump_expr(buf,expr->u.seq.expr,indent+2);
+		sbuf_snprintf(buf, "\n", jvst_ir_expr_type_name(expr->type));
+		sbuf_indent(buf, indent);
+		sbuf_snprintf(buf, ")", jvst_ir_expr_type_name(expr->type));
+		return;
+
+	case JVST_IR_EXPR_ITEMP:
+	case JVST_IR_EXPR_FTEMP:
+		sbuf_snprintf(buf, "%s(%zu)",
+			jvst_ir_expr_type_name(expr->type),
+			expr->u.temp.ind);
+		return;
+
+	case JVST_IR_EXPR_SLOT:
+		fprintf(stderr, "%s:%d (%s) IR expression %s not yet implemented\n",
+				__FILE__, __LINE__, __func__, jvst_ir_expr_type_name(expr->type));
 		abort();
 	}
 
-
+	fprintf(stderr, "%s:%d (%s) unknown IR expression type %d\n",
+			__FILE__, __LINE__, __func__, expr->type);
+	abort();
 }
 
 // definition in validate_constraints.c
@@ -1136,6 +1180,20 @@ jvst_ir_dump_inner(struct sbuf *buf, struct jvst_ir_stmt *ir, int indent)
 		return;
 
 	case JVST_IR_STMT_MOVE:
+		{
+			sbuf_snprintf(buf, "%s(\n", jvst_ir_stmt_type_name(ir->type));
+			sbuf_indent(buf, indent+2);
+			jvst_ir_dump_expr(buf, ir->u.move.dst, indent+2);
+
+			sbuf_snprintf(buf, ",\n");
+			sbuf_indent(buf, indent+2);
+			jvst_ir_dump_expr(buf, ir->u.move.src, indent+2);
+			sbuf_snprintf(buf, "\n");
+			sbuf_indent(buf, indent);
+			sbuf_snprintf(buf, ")");
+		}
+		return;
+
 	case JVST_IR_STMT_CALL:
 		fprintf(stderr, "%s:%d (%s) IR statement %s not yet implemented\n",
 				__FILE__, __LINE__, __func__, 
@@ -2614,16 +2672,188 @@ ir_linearize_block(struct op_linearizer *oplin, const char *prefix, struct jvst_
 	return blk;
 }
 
+static struct jvst_ir_expr *
+ir_linearize_operand(struct op_linearizer *oplin, struct jvst_ir_expr *expr)
+{
+	switch (expr->type) {
+	case JVST_IR_EXPR_BOOL:
+	case JVST_IR_EXPR_ISTOK:
+	case JVST_IR_EXPR_TOK_COMPLETE:
+	case JVST_IR_EXPR_ISINT:
+	case JVST_IR_EXPR_NE:
+	case JVST_IR_EXPR_LT:
+	case JVST_IR_EXPR_LE:
+	case JVST_IR_EXPR_EQ:
+	case JVST_IR_EXPR_GE:
+	case JVST_IR_EXPR_GT:
+	case JVST_IR_EXPR_BTEST:
+	case JVST_IR_EXPR_BTESTALL:
+	case JVST_IR_EXPR_BTESTANY:
+	case JVST_IR_EXPR_BTESTONE:
+	case JVST_IR_EXPR_AND:
+	case JVST_IR_EXPR_OR:
+	case JVST_IR_EXPR_NOT:
+	case JVST_IR_EXPR_SEQ:
+		fprintf(stderr, "%s:%d (%s) expression %s is not a comparison operand\n",
+				__FILE__, __LINE__, __func__,
+				jvst_ir_expr_type_name(expr->type));
+		abort();
+
+	case JVST_IR_EXPR_TOK_TYPE:
+	case JVST_IR_EXPR_TOK_NUM:
+	case JVST_IR_EXPR_TOK_LEN:
+	case JVST_IR_EXPR_SLOT:
+	case JVST_IR_EXPR_ITEMP:
+	case JVST_IR_EXPR_FTEMP:
+		return expr;
+
+	case JVST_IR_EXPR_NUM:
+		{
+			struct jvst_ir_expr *eseq, *tmp;
+			struct jvst_ir_stmt *mv;
+
+			mv = ir_stmt_new(JVST_IR_STMT_MOVE);
+			tmp = ir_expr_ftemp(oplin->frame);
+			mv->u.move.dst = tmp;
+			mv->u.move.src = expr;
+
+			eseq = ir_expr_new(JVST_IR_EXPR_SEQ);
+			eseq->u.seq.stmt = mv;
+			eseq->u.seq.expr = tmp;
+
+			return eseq;
+		}
+
+	case JVST_IR_EXPR_SIZE:
+		{
+			struct jvst_ir_expr *eseq, *tmp;
+			struct jvst_ir_stmt *mv;
+
+			mv = ir_stmt_new(JVST_IR_STMT_MOVE);
+			tmp = ir_expr_itemp(oplin->frame);
+			mv->u.move.dst = tmp;
+			mv->u.move.src = expr;
+
+			eseq = ir_expr_new(JVST_IR_EXPR_SEQ);
+			eseq->u.seq.stmt = mv;
+			eseq->u.seq.expr = tmp;
+
+			return eseq;
+		}
+
+	case JVST_IR_EXPR_COUNT:
+	case JVST_IR_EXPR_BCOUNT:
+	case JVST_IR_EXPR_SPLIT:
+		/* need to handle remapping things here ... */
+
+	case JVST_IR_EXPR_NONE:
+		fprintf(stderr, "%s:%d (%s) expression %s is not yet implemented\n",
+				__FILE__, __LINE__, __func__,
+				jvst_ir_expr_type_name(expr->type));
+		abort();
+
+	default:
+		fprintf(stderr, "%s:%d (%s) unknown expression type %s\n",
+				__FILE__, __LINE__, __func__,
+				jvst_ir_expr_type_name(expr->type));
+		abort();
+
+	}
+}
+
+static struct jvst_ir_expr *
+ir_linearize_cmp(struct op_linearizer *oplin, struct jvst_ir_expr *cond)
+{
+	struct jvst_ir_expr *lhs, *rhs, *lin_cond;
+	assert(cond->type == JVST_IR_EXPR_NE  || cond->type == JVST_IR_EXPR_LT ||
+		cond->type == JVST_IR_EXPR_LE || cond->type == JVST_IR_EXPR_EQ ||
+		cond->type == JVST_IR_EXPR_GE || cond->type == JVST_IR_EXPR_GT);
+
+	lhs = ir_linearize_operand(oplin, cond->u.cmp.left);
+	rhs = ir_linearize_operand(oplin, cond->u.cmp.right);
+
+	if (lhs == cond->u.cmp.left && rhs == cond->u.cmp.right) {
+		return cond;
+	}
+
+	lin_cond = ir_expr_new(cond->type);
+	lin_cond->u.cmp.left  = lhs;
+	lin_cond->u.cmp.right = rhs;
+
+	return lin_cond;
+}
+
 static struct jvst_ir_stmt *
 ir_linearize_cond(struct op_linearizer *oplin, struct jvst_ir_expr *cond, struct jvst_ir_stmt *btrue, struct jvst_ir_stmt *bfalse)
 {
 	struct jvst_ir_stmt *cbr;
+	struct jvst_ir_expr *brcond;
 
 	(void)oplin;
 
+	switch (cond->type) {
+	case JVST_IR_EXPR_BOOL:
+	case JVST_IR_EXPR_ISTOK:
+	case JVST_IR_EXPR_TOK_COMPLETE:
+	case JVST_IR_EXPR_ISINT:
+		brcond = cond;
+		break;
+
+	case JVST_IR_EXPR_NE:
+	case JVST_IR_EXPR_LT:
+	case JVST_IR_EXPR_LE:
+	case JVST_IR_EXPR_EQ:
+	case JVST_IR_EXPR_GE:
+	case JVST_IR_EXPR_GT:
+		brcond = ir_linearize_cmp(oplin, cond);
+		break;
+
+	case JVST_IR_EXPR_BTEST:
+	case JVST_IR_EXPR_BTESTALL:
+	case JVST_IR_EXPR_BTESTANY:
+	case JVST_IR_EXPR_BTESTONE:
+		fprintf(stderr, "%s:%d (%s) complex condition %s not yet implemented\n",
+				__FILE__, __LINE__, __func__,
+				jvst_ir_expr_type_name(cond->type));
+		abort();
+
+	case JVST_IR_EXPR_AND:
+	case JVST_IR_EXPR_OR:
+	case JVST_IR_EXPR_NOT:
+	case JVST_IR_EXPR_SEQ:
+		fprintf(stderr, "%s:%d (%s) complex condition %s not yet implemented\n",
+				__FILE__, __LINE__, __func__,
+				jvst_ir_expr_type_name(cond->type));
+		abort();
+
+	case JVST_IR_EXPR_NONE:
+	case JVST_IR_EXPR_NUM:
+	case JVST_IR_EXPR_SIZE:
+	case JVST_IR_EXPR_TOK_TYPE:
+	case JVST_IR_EXPR_TOK_NUM:
+	case JVST_IR_EXPR_TOK_LEN:
+	case JVST_IR_EXPR_COUNT:
+	case JVST_IR_EXPR_BCOUNT:
+	case JVST_IR_EXPR_SPLIT:
+	case JVST_IR_EXPR_SLOT:
+	case JVST_IR_EXPR_ITEMP:
+	case JVST_IR_EXPR_FTEMP:
+		fprintf(stderr, "%s:%d (%s) expression %s is not a boolean condition\n",
+				__FILE__, __LINE__, __func__,
+				jvst_ir_expr_type_name(cond->type));
+		abort();
+
+	default:
+		fprintf(stderr, "%s:%d (%s) unknown expression type %s\n",
+				__FILE__, __LINE__, __func__,
+				jvst_ir_expr_type_name(cond->type));
+		abort();
+
+	}
+
 	// XXX - this doesn't handle AND/OR/XOR/NOT &c
 	cbr = ir_stmt_new(JVST_IR_STMT_CBRANCH);
-	cbr->u.cbranch.cond = cond; // FIXME: linearize!
+	cbr->u.cbranch.cond = brcond; // FIXME: linearize!
 	cbr->u.cbranch.br_true = btrue;
 	cbr->u.cbranch.br_false = bfalse;
 

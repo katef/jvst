@@ -1024,6 +1024,21 @@ newir_bitop(struct arena_info *A, enum jvst_ir_stmt_type op, size_t ind, const c
 	return stmt;
 }
 
+struct jvst_ir_stmt *
+newir_move(struct arena_info *A, struct jvst_ir_expr *tmp, struct jvst_ir_expr *expr)
+{
+	struct jvst_ir_stmt *mv;
+
+	assert(tmp->type == JVST_IR_EXPR_FTEMP || tmp->type == JVST_IR_EXPR_ITEMP);
+
+	// should really link this up, but we currently cheese it...
+	mv = newir_stmt(A,JVST_IR_STMT_MOVE);
+	mv->u.move.dst = tmp;
+	mv->u.move.src = expr;
+
+	return mv;
+}
+
 struct jvst_ir_mcase *
 newir_case(struct arena_info *A, size_t ind, struct jvst_cnode_matchset *mset, struct jvst_ir_stmt *frame)
 {
@@ -1165,6 +1180,40 @@ newir_split(struct arena_info *A, ...)
 	va_end(args);
 
 	return expr;
+}
+
+struct jvst_ir_expr *
+newir_itemp(struct arena_info *A, size_t ind)
+{
+	struct jvst_ir_expr *expr;
+
+	expr = newir_expr(A,JVST_IR_EXPR_ITEMP);
+	expr->u.temp.ind = ind;
+
+	return expr;
+}
+
+struct jvst_ir_expr *
+newir_ftemp(struct arena_info *A, size_t ind)
+{
+	struct jvst_ir_expr *expr;
+
+	expr = newir_expr(A,JVST_IR_EXPR_FTEMP);
+	expr->u.temp.ind = ind;
+
+	return expr;
+}
+
+struct jvst_ir_expr *
+newir_eseq(struct arena_info *A, struct jvst_ir_stmt *stmt, struct jvst_ir_expr *expr)
+{
+	struct jvst_ir_expr *eseq;
+
+	eseq = newir_expr(A,JVST_IR_EXPR_SEQ);
+	eseq->u.seq.stmt = stmt;
+	eseq->u.seq.expr = expr;
+
+	return eseq;
 }
 
 struct jvst_ir_expr *

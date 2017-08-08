@@ -145,6 +145,7 @@ struct jvst_ir_frame {
 	size_t ncounters;
 	size_t nbitvecs;
 	size_t nblocks;
+	size_t ntemps;
 };
 
 struct jvst_ir_stmt {
@@ -249,6 +250,11 @@ struct jvst_ir_stmt {
 			struct jvst_ir_stmt *br_true;
 			struct jvst_ir_stmt *br_false;
 		} cbranch;
+
+		struct {
+			struct jvst_ir_expr *src;
+			struct jvst_ir_expr *dst;
+		} move;
 	} u;
 };
 
@@ -297,6 +303,15 @@ struct jvst_ir_expr {
 		struct {
 			struct jvst_ir_stmt *frames;
 		} split;
+
+		struct {
+			struct jvst_ir_stmt *stmt;
+			struct jvst_ir_expr *expr;
+		} seq;
+
+		struct {
+			size_t ind;
+		} temp;
 
 	} u;
 };
