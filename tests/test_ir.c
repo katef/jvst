@@ -250,7 +250,7 @@ static void test_ir_empty_schema(void)
             newir_block(&A, 0, "entry",
               newir_stmt(&A, JVST_IR_STMT_TOKEN),
               newir_cbranch(&A, newir_istok(&A, SJP_OBJECT_END),
-                2, "true",
+                3, "invalid_1",
                 4, "false"
               ),
               NULL
@@ -263,14 +263,13 @@ static void test_ir_empty_schema(void)
 
             newir_block(&A, 2, "true",
               newir_branch(&A, 3, "invalid_1"),
-              newir_branch(&A, 1, "join"),
               NULL
             ),
 
             newir_block(&A, 4, "false",
               newir_cbranch(&A, newir_istok(&A, SJP_ARRAY_END),
-                6, "true",
-                7, "false"
+                3, "invalid_1",
+                8, "valid"
               ),
               NULL
             ),
@@ -282,13 +281,11 @@ static void test_ir_empty_schema(void)
 
             newir_block(&A, 6, "true",
               newir_branch(&A, 3, "invalid_1"),
-              newir_branch(&A, 5, "join"),
               NULL
             ),
 
             newir_block(&A, 7, "false",
               newir_branch(&A, 8, "valid"),
-              newir_branch(&A, 5, "join"),
               NULL
             ),
 
@@ -355,8 +352,8 @@ static void test_ir_type_constraints(void)
           newir_block(&A, 0, "entry",
             newir_stmt(&A, JVST_IR_STMT_TOKEN),
             newir_cbranch(&A, newir_istok(&A, SJP_NUMBER),
-              2, "true",
-              4, "false"
+              3, "valid",
+              5, "invalid_1"
             ),
             NULL
           ),
@@ -368,13 +365,11 @@ static void test_ir_type_constraints(void)
 
           newir_block(&A, 2, "true",
             newir_branch(&A, 3, "valid"),
-            newir_branch(&A, 1, "join"),
             NULL
           ),
 
           newir_block(&A, 4, "false",
             newir_branch(&A, 5, "invalid_1"),
-            newir_branch(&A, 1, "join"),
             NULL
           ),
 
@@ -424,8 +419,8 @@ static void test_ir_type_constraints(void)
           newir_block(&A, 0, "entry",
             newir_stmt(&A, JVST_IR_STMT_TOKEN),
             newir_cbranch(&A, newir_istok(&A, SJP_OBJECT_BEG),
-              2, "true",
-              4, "false"
+              3, "valid",
+              5, "invalid_1"
             ),
             NULL
           ),
@@ -437,13 +432,11 @@ static void test_ir_type_constraints(void)
 
           newir_block(&A, 2, "true",
             newir_branch(&A, 3, "valid"),
-            newir_branch(&A, 1, "join"),
             NULL
           ),
 
           newir_block(&A, 4, "false",
             newir_branch(&A, 5, "invalid_1"),
-            newir_branch(&A, 1, "join"),
             NULL
           ),
 
@@ -508,7 +501,7 @@ static void test_ir_type_constraints(void)
           newir_block(&A, 0, "entry",
             newir_stmt(&A, JVST_IR_STMT_TOKEN),
             newir_cbranch(&A, newir_istok(&A, SJP_STRING),
-              2, "true",
+              3, "valid",
               4, "false"
             ),
             NULL
@@ -521,14 +514,13 @@ static void test_ir_type_constraints(void)
 
           newir_block(&A, 2, "true",
             newir_branch(&A, 3, "valid"),
-            newir_branch(&A, 1, "join"),
             NULL
           ),
 
           newir_block(&A, 4, "false",
             newir_cbranch(&A, newir_istok(&A, SJP_OBJECT_BEG),
-              6, "true",
-              7, "false"
+              3, "valid",
+              8, "invalid_1"
             ),
             NULL
           ),
@@ -540,13 +532,11 @@ static void test_ir_type_constraints(void)
 
           newir_block(&A, 6, "true",
             newir_branch(&A, 3, "valid"),
-            newir_branch(&A, 5, "join"),
             NULL
           ),
 
           newir_block(&A, 7, "false",
             newir_branch(&A, 8, "invalid_1"),
-            newir_branch(&A, 5, "join"),
             NULL
           ),
 
@@ -623,7 +613,7 @@ static void test_ir_type_integer(void)
             newir_stmt(&A, JVST_IR_STMT_TOKEN),
             newir_cbranch(&A, newir_istok(&A, SJP_NUMBER),
               2, "true",
-              8, "false"
+              9, "invalid_1"
             ),
             NULL
           ),
@@ -635,8 +625,8 @@ static void test_ir_type_integer(void)
 
           newir_block(&A, 2, "true",
             newir_cbranch(&A, newir_isint(&A, newir_expr(&A, JVST_IR_EXPR_TOK_NUM)),
-              4, "true",
-              6, "false"
+              5, "valid",
+              7, "invalid_2"
             ),
             NULL
           ),
@@ -648,19 +638,16 @@ static void test_ir_type_integer(void)
 
           newir_block(&A, 4, "true",
             newir_branch(&A, 5, "valid"),
-            newir_branch(&A, 3, "join"),
             NULL
           ),
 
           newir_block(&A, 6, "false",
             newir_branch(&A, 7, "invalid_2"),
-            newir_branch(&A, 3, "join"),
             NULL
           ),
 
           newir_block(&A, 8, "false",
             newir_branch(&A, 9, "invalid_1"),
-            newir_branch(&A, 1, "join"),
             NULL
           ),
 
@@ -748,7 +735,7 @@ void test_ir_minimum(void)
             newir_stmt(&A, JVST_IR_STMT_TOKEN),
             newir_cbranch(&A, newir_istok(&A, SJP_NUMBER),
               2, "true",
-              8, "false"
+              9, "invalid_1"
             ),
             NULL
           ),
@@ -767,8 +754,8 @@ void test_ir_minimum(void)
                   newir_ftemp(&A, 0)
                 )
               ),
-              4, "true",
-              6, "false"
+              5, "valid",
+              7, "invalid_3"
             ),
             NULL
           ),
@@ -780,19 +767,16 @@ void test_ir_minimum(void)
 
           newir_block(&A, 4, "true",
             newir_branch(&A, 5, "valid"),
-            newir_branch(&A, 3, "join"),
             NULL
           ),
 
           newir_block(&A, 6, "false",
             newir_branch(&A, 7, "invalid_3"),
-            newir_branch(&A, 3, "join"),
             NULL
           ),
 
           newir_block(&A, 8, "false",
             newir_branch(&A, 9, "invalid_1"),
-            newir_branch(&A, 1, "join"),
             NULL
           ),
 
@@ -929,7 +913,7 @@ void test_ir_properties(void)
             newir_stmt(&A, JVST_IR_STMT_TOKEN),
             newir_cbranch(&A,
               newir_istok(&A, SJP_OBJECT_BEG),
-              2, "true",
+              4, "loop",
               16, "false"),
             NULL
           ),
@@ -940,23 +924,19 @@ void test_ir_properties(void)
           ),
 
           newir_block(&A, 2, "true",
-            newir_seq(&A,
-              newir_branch(&A, 4, "loop"),
-              NULL
-            ),
+            newir_branch(&A, 4, "loop"),
             NULL
           ),
 
           newir_block(&A, 3, "loop_end",
             newir_branch(&A, 15, "valid"),
-            newir_branch(&A, 1, "join"),
             NULL
           ),
 
           newir_block(&A, 4, "loop",
             newir_stmt(&A, JVST_IR_STMT_TOKEN),
             newir_cbranch(&A, newir_istok(&A, SJP_OBJECT_END),
-              6, "true",
+              15, "valid",
               7, "false"
             ),
             NULL
@@ -968,32 +948,28 @@ void test_ir_properties(void)
           ),
 
           newir_block(&A, 6, "true",
-            newir_branch(&A, 3, "loop_end"),
-            newir_branch(&A, 5, "join"),
+            newir_branch(&A, 15, "valid"),
             NULL
           ),
 
           newir_block(&A, 7, "false",
-            newir_seq(&A,
-              newir_move(&A, newir_itemp(&A, 0), newir_ematch(&A, 0)),
-              newir_cbranch(&A, 
-                newir_op(&A, JVST_IR_EXPR_EQ, newir_itemp(&A, 0), newir_size(&A, 0)),
-                9, "M",
-                10, "M_next"
-              ),
-              NULL
+            newir_move(&A, newir_itemp(&A, 0), newir_ematch(&A, 0)),
+            newir_cbranch(&A, 
+              newir_op(&A, JVST_IR_EXPR_EQ, newir_itemp(&A, 0), newir_size(&A, 0)),
+              9, "M",
+              10, "M_next"
             ),
             NULL
           ),
 
           newir_block(&A, 8, "M_join",
-            newir_branch(&A, 5, "join"),
+            newir_branch(&A, 4, "loop"),
             NULL
           ),
 
           newir_block(&A, 9, "M",
             newir_stmt(&A, JVST_IR_STMT_CONSUME),
-            newir_branch(&A, 8, "M_join"),
+            newir_branch(&A, 4, "loop"),
             NULL
           ),
 
@@ -1008,7 +984,7 @@ void test_ir_properties(void)
 
           newir_block(&A, 11, "M",
             newir_call(&A, 2),
-            newir_branch(&A, 8, "M_join"),
+            newir_branch(&A, 4, "loop"),
             NULL
           ),
 
@@ -1023,14 +999,14 @@ void test_ir_properties(void)
 
           newir_block(&A, 13, "M",
             newir_call(&A, 3),
-            newir_branch(&A, 8, "M_join"),
+            newir_branch(&A, 4, "loop"),
             NULL
           ),
 
           newir_block(&A, 16, "false",
             newir_cbranch(&A,
               newir_istok(&A, SJP_OBJECT_END),
-              18, "true",
+              19, "invalid_1",
               20, "false"),
             NULL
           ),
@@ -1042,32 +1018,29 @@ void test_ir_properties(void)
 
           newir_block(&A, 18, "true",
             newir_branch(&A, 19, "invalid_1"),
-            newir_branch(&A, 17, "join"),
             NULL
           ),
 
           newir_block(&A, 20, "false",
             newir_cbranch(&A,
               newir_istok(&A, SJP_ARRAY_END),
-              22, "true",
-              23, "false"),
+              19, "invalid_1",
+              15, "valid"),
             NULL
           ),
 
           newir_block(&A, 21, "join",
-            newir_branch(&A, 17, "join"),
+            newir_branch(&A, 1, "join"),
             NULL
           ),
 
           newir_block(&A, 22, "true",
             newir_branch(&A, 19, "invalid_1"),
-            newir_branch(&A, 21, "join"),
             NULL
           ),
 
           newir_block(&A, 23, "false",
             newir_branch(&A, 15, "valid"),
-            newir_branch(&A, 21, "join"),
             NULL
           ),
 
@@ -1093,8 +1066,8 @@ void test_ir_properties(void)
           newir_block(&A, 0, "entry",
             newir_stmt(&A, JVST_IR_STMT_TOKEN),
             newir_cbranch(&A, newir_istok(&A, SJP_STRING),
-              2, "true",
-              4, "false"
+              3, "valid",
+              5, "invalid_1"
             ),
             NULL
           ),
@@ -1106,13 +1079,11 @@ void test_ir_properties(void)
 
           newir_block(&A, 2, "true",
             newir_branch(&A, 3, "valid"),
-            newir_branch(&A, 1, "join"),
             NULL
           ),
 
           newir_block(&A, 4, "false",
             newir_branch(&A, 5, "invalid_1"),
-            newir_branch(&A, 1, "join"),
             NULL
           ),
 
@@ -1133,8 +1104,8 @@ void test_ir_properties(void)
           newir_block(&A, 0, "entry",
             newir_stmt(&A, JVST_IR_STMT_TOKEN),
             newir_cbranch(&A, newir_istok(&A, SJP_NUMBER),
-              2, "true",
-              4, "false"
+              3, "valid",
+              5, "invalid_1"
             ),
             NULL
           ),
@@ -1146,13 +1117,11 @@ void test_ir_properties(void)
 
           newir_block(&A, 2, "true",
             newir_branch(&A, 3, "valid"),
-            newir_branch(&A, 1, "join"),
             NULL
           ),
 
           newir_block(&A, 4, "false",
             newir_branch(&A, 5, "invalid_1"),
-            newir_branch(&A, 1, "join"),
             NULL
           ),
 

@@ -2712,6 +2712,82 @@ ir_linearize_stmtlist(struct op_linearizer *oplin, struct jvst_ir_stmt *stmt)
 	}
 }
 
+static void
+ir_linearize_flatten_block(struct jvst_ir_stmt *block)
+{
+	struct jvst_ir_stmt **spp;
+	assert(block != NULL);
+	assert(block->type == JVST_IR_STMT_BLOCK);
+
+	for (spp = &block->u.block.stmts; *spp != NULL; ) {
+		struct jvst_ir_stmt *next, **slpp;
+
+		if ((*spp)->type != JVST_IR_STMT_SEQ) {
+			spp = &(*spp)->next;
+			continue;
+		}
+
+		next = (*spp)->next;
+		*spp = (*spp)->u.stmt_list;
+		for (slpp = spp; *slpp != NULL; slpp = &(*slpp)->next) {
+			continue;
+		}
+
+		*slpp = next;
+
+		// NB: don't update spp because it now points at the head of
+		// the SEQ() statement list
+	}
+}
+
+static struct jvst_ir_stmt *
+ir_linearize_branch_final_dest(struct jvst_ir_stmt *dest)
+{
+	struct jvst_ir_stmt *stmt;
+
+follow:
+	assert(dest != NULL);
+	assert(dest->type == JVST_IR_STMT_BLOCK);
+
+	stmt = dest->u.block.stmts;
+	assert(stmt != NULL);
+
+	if (stmt->type != JVST_IR_STMT_BRANCH) {
+		return dest;
+	}
+
+	dest = stmt->u.branch;
+	goto follow;
+}
+
+static void
+ir_linearize_prune_block(struct jvst_ir_stmt *block)
+{
+	struct jvst_ir_stmt *stmt;
+
+	assert(block != NULL);
+	assert(block->type == JVST_IR_STMT_BLOCK);
+
+	for (stmt = block->u.block.stmts; stmt != NULL; stmt = stmt->next) {
+		switch (stmt->type) {
+		case JVST_IR_STMT_CBRANCH:
+			stmt->u.cbranch.br_true = ir_linearize_branch_final_dest(stmt->u.cbranch.br_true);
+			stmt->u.cbranch.br_false = ir_linearize_branch_final_dest(stmt->u.cbranch.br_false);
+			stmt->next = NULL;
+			return;
+
+		case JVST_IR_STMT_BRANCH:
+			stmt->u.branch = ir_linearize_branch_final_dest(stmt->u.branch);
+			stmt->next = NULL;
+			return;
+
+		default:
+			/* nop */
+			break;
+		}
+	}
+}
+
 static struct jvst_ir_stmt *
 ir_linearize_frame(struct op_linearizer *oplin, struct jvst_ir_stmt *fr)
 {
@@ -2801,6 +2877,20 @@ ir_linearize_frame(struct op_linearizer *oplin, struct jvst_ir_stmt *fr)
 		 */
 		for (blk = entry; blk != NULL; blk = blk->u.block.block_next) {
 			assert(blk->next == NULL);
+		}
+
+		// some small optimizations before we schedule the
+		// blocks
+
+		// flatten SEQs
+		for (blk = entry; blk != NULL; blk = blk->u.block.block_next) {
+			ir_linearize_flatten_block(blk);
+		}
+
+		// prune any code after the first branch or
+		// cbranch
+		for (blk = entry; blk != NULL; blk = blk->u.block.block_next) {
+			ir_linearize_prune_block(blk);
 		}
 
 		ipp = &copy->u.frame.stmts;
