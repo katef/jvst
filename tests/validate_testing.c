@@ -662,6 +662,9 @@ newir_expr(struct arena_info *A, enum jvst_ir_expr_type type)
 	return expr;
 }
 
+struct jvst_ir_stmt v_frameindex;
+const struct jvst_ir_stmt *const frameindex = &v_frameindex;
+
 struct jvst_ir_stmt *
 newir_stmt(struct arena_info *A, enum jvst_ir_stmt_type type)
 {
@@ -707,51 +710,56 @@ static void ir_stmt_list(struct jvst_ir_stmt **spp, va_list args)
 struct jvst_ir_stmt *
 newir_frame(struct arena_info *A, ...)
 {
-	struct jvst_ir_stmt *fr, **spp, **mpp, **cpp, **bvpp;
+	struct jvst_ir_stmt *fr, **spp, **cpp, **mpp, **bvpp;
 	va_list args;
 
 	fr = newir_stmt(A,JVST_IR_STMT_FRAME);
 	va_start(args, A);
-	ir_stmt_list(&fr->u.frame.stmts, args);
-	va_end(args);
+	spp = &fr->u.frame.stmts;
+	*spp = NULL;
 
-	// filter out initial counters and matchers
 	cpp = &fr->u.frame.counters;
 	mpp = &fr->u.frame.matchers;
 	bvpp = &fr->u.frame.bitvecs;
-	spp = &fr->u.frame.stmts;
 
-	while (*spp != NULL) {
-		switch ((*spp)->type) {
+	for (;;) {
+		struct jvst_ir_stmt *stmt;
+
+		stmt = va_arg(args, struct jvst_ir_stmt *);
+		if (stmt == NULL) {
+			goto end_loop;
+		}
+
+		if (stmt == frameindex) {
+			fr->u.frame.frame_ind = (size_t)va_arg(args, int);
+			continue;
+		}
+
+		switch (stmt->type) {
 		case JVST_IR_STMT_COUNTER:
-			*cpp = *spp;
-			(*spp)->u.counter.frame = fr;
-			*spp = (*spp)->next;
-
-			cpp = &(*cpp)->next;
-			*cpp = NULL;
+			*cpp = stmt;
+			cpp = &stmt->next;
 			break;
 
 		case JVST_IR_STMT_MATCHER:
-			*mpp = *spp;
-			*spp = (*spp)->next;
-
-			mpp = &(*mpp)->next;
-			*mpp = NULL;
+			*mpp = stmt;
+			mpp = &stmt->next;
 			break;
 
 		case JVST_IR_STMT_BITVECTOR:
-			*bvpp = *spp;
-			*spp = (*spp)->next;
-
-			bvpp = &(*bvpp)->next;
-			*bvpp = NULL;
+			*bvpp = stmt;
+			bvpp = &stmt->next;
 			break;
 
 		default:
-			return fr;
+			*spp = stmt;
+			spp = &stmt->next;
+			break;
 		}
 	}
+
+end_loop:
+	va_end(args);
 
 	assert(fr->u.frame.stmts != NULL);
 	return fr;
@@ -1039,6 +1047,23 @@ newir_move(struct arena_info *A, struct jvst_ir_expr *tmp, struct jvst_ir_expr *
 	return mv;
 }
 
+struct jvst_ir_stmt *
+newir_call(struct arena_info *A, size_t frame_ind)
+{
+	struct jvst_ir_stmt *stmt, *fr;
+
+	assert(frame_ind > 0);
+
+	// should really link this up, but we currently cheese it...
+	fr = newir_stmt(A,JVST_IR_STMT_FRAME);
+	fr->u.frame.frame_ind = frame_ind;
+
+	stmt = newir_stmt(A,JVST_IR_STMT_CALL);
+	stmt->u.call.frame = fr;
+
+	return stmt;
+}
+
 struct jvst_ir_mcase *
 newir_case(struct arena_info *A, size_t ind, struct jvst_cnode_matchset *mset, struct jvst_ir_stmt *frame)
 {
@@ -1214,6 +1239,17 @@ newir_eseq(struct arena_info *A, struct jvst_ir_stmt *stmt, struct jvst_ir_expr 
 	eseq->u.seq.expr = expr;
 
 	return eseq;
+}
+
+struct jvst_ir_expr *
+newir_ematch(struct arena_info *A, size_t mind)
+{
+	struct jvst_ir_expr *ematch;
+
+	ematch = newir_expr(A,JVST_IR_EXPR_MATCH);
+	ematch->u.match.ind = mind;
+
+	return ematch;
 }
 
 struct jvst_ir_expr *

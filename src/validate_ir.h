@@ -60,6 +60,7 @@ enum jvst_ir_expr_type {
 
 	// literal values
 	JVST_IR_EXPR_NUM,		// literal number
+	JVST_IR_EXPR_INT,		// literal integer
 	JVST_IR_EXPR_SIZE,		// literal size
 	JVST_IR_EXPR_BOOL,		// literal boolean
 
@@ -99,6 +100,8 @@ enum jvst_ir_expr_type {
 					// children must be FRAMEs.  result is the number of FRAMEs that
 					// return valid.
 
+	JVST_IR_EXPR_MATCH,
+
 	JVST_IR_EXPR_SLOT,		// SLOT(n), value at slot n
 	JVST_IR_EXPR_ITEMP,		// ITEMP(n) integer temporary n
 	JVST_IR_EXPR_FTEMP,		// FTEMP(n) floating point temporary n
@@ -114,6 +117,7 @@ enum jvst_invalid_code {
 	JVST_INVALID_MISSING_REQUIRED_PROPERTIES = 0x0006,
 	JVST_INVALID_SPLIT_CONDITION  = 0x0007,
 	JVST_INVALID_BAD_PROPERTY_NAME = 0x0008,
+	JVST_INVALID_MATCH_CASE       = 0x0009,
 };
 
 const char *
@@ -139,6 +143,8 @@ struct jvst_ir_frame {
 	struct jvst_ir_stmt *bitvecs;
 	struct jvst_ir_stmt *blocks;
 	struct jvst_ir_stmt *stmts;
+
+	size_t frame_ind;
 
 	size_t nloops;
 	size_t nmatchers;
@@ -180,6 +186,8 @@ struct jvst_ir_stmt {
 		struct {
 			const char *name;
 			size_t ind;
+			struct jvst_ir_stmt *loop_block;
+			struct jvst_ir_stmt *end_block;
 			struct jvst_ir_stmt *stmts;
 		} loop;
 
@@ -255,6 +263,10 @@ struct jvst_ir_stmt {
 			struct jvst_ir_expr *src;
 			struct jvst_ir_expr *dst;
 		} move;
+
+		struct {
+			struct jvst_ir_stmt *frame;
+		} call;
 	} u;
 };
 
@@ -264,6 +276,7 @@ struct jvst_ir_expr {
 	union {
 		// literals
 		double vnum;
+		int64_t vint;
 		size_t vsize;
 		int vbool;
 
@@ -312,6 +325,12 @@ struct jvst_ir_expr {
 		struct {
 			size_t ind;
 		} temp;
+
+		struct {
+			struct fsm *dfa;
+			const char *name;
+			size_t ind;
+		} match;
 
 	} u;
 };

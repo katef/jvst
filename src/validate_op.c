@@ -1488,6 +1488,7 @@ emit_cond_arg(struct op_assembler *opasm, struct jvst_ir_expr *arg)
 	case JVST_IR_EXPR_ITEMP:
 	case JVST_IR_EXPR_FTEMP:
 	case JVST_IR_EXPR_SEQ:
+	case JVST_IR_EXPR_MATCH:
 		fprintf(stderr, "%s:%d (%s) expression %s not yet implemented\n",
 				__FILE__, __LINE__, __func__,
 				jvst_ir_expr_type_name(arg->type));
@@ -1509,6 +1510,11 @@ emit_cond_arg(struct op_assembler *opasm, struct jvst_ir_expr *arg)
 				jvst_ir_expr_type_name(arg->type));
 		abort();
 	}
+
+	fprintf(stderr, "%s:%d (%s) unknown expression type %d\n",
+			__FILE__, __LINE__, __func__,
+			arg->type);
+	abort();
 }
 
 static struct jvst_op_instr *
@@ -1585,6 +1591,7 @@ emit_cmp(struct op_assembler *opasm, struct jvst_ir_expr *expr,
 	case JVST_IR_EXPR_ITEMP:
 	case JVST_IR_EXPR_FTEMP:
 	case JVST_IR_EXPR_SEQ:
+	case JVST_IR_EXPR_MATCH:
 		fprintf(stderr, "%s:%d (%s) IR expression %s is not a comparison\n",
 			__FILE__, __LINE__, __func__, jvst_ir_expr_type_name(expr->type));
 		abort();
@@ -1757,6 +1764,7 @@ op_assemble_cond(struct op_assembler *opasm, struct jvst_ir_expr *cond,
 	case JVST_IR_EXPR_ITEMP:
 	case JVST_IR_EXPR_FTEMP:
 	case JVST_IR_EXPR_SEQ:
+	case JVST_IR_EXPR_MATCH:
 		fprintf(stderr, "%s:%d (%s) expression %s is not a boolean condition\n",
 				__FILE__, __LINE__, __func__,
 				jvst_ir_expr_type_name(cond->type));
@@ -1838,6 +1846,7 @@ op_assemble_if_inner(struct op_assembler *opasm, struct jvst_ir_expr *cond,
 	case JVST_IR_EXPR_ITEMP:
 	case JVST_IR_EXPR_FTEMP:
 	case JVST_IR_EXPR_SEQ:
+	case JVST_IR_EXPR_MATCH:
 		fprintf(stderr, "%s:%d (%s) expression %s is not a boolean condition\n",
 				__FILE__, __LINE__, __func__,
 				jvst_ir_expr_type_name(cond->type));
@@ -2084,6 +2093,7 @@ op_assemble(struct op_assembler *opasm, struct jvst_ir_stmt *stmt)
 	case JVST_IR_STMT_DECR:
 	case JVST_IR_STMT_MOVE:
 	case JVST_IR_STMT_CALL:
+	case JVST_IR_STMT_PROGRAM:
 		fprintf(stderr, "%s:%d (%s) IR statement %s not yet implemented\n",
 			__FILE__, __LINE__, __func__, jvst_ir_stmt_type_name(stmt->type));
 		abort();

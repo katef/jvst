@@ -117,6 +117,8 @@ newmatchset(struct arena_info *A, ...);
 
 
 /* IR-related */
+extern const struct jvst_ir_stmt *const frameindex;
+
 struct jvst_ir_stmt *
 newir_stmt(struct arena_info *A, enum jvst_ir_stmt_type type);
 
@@ -180,6 +182,9 @@ newir_cbranch(struct arena_info *A, struct jvst_ir_expr *cond,
 struct jvst_ir_stmt *
 newir_move(struct arena_info *A, struct jvst_ir_expr *tmp, struct jvst_ir_expr *expr);
 
+struct jvst_ir_stmt *
+newir_call(struct arena_info *A, size_t frame_ind);
+
 struct jvst_ir_mcase *
 newir_case(struct arena_info *A, size_t ind, struct jvst_cnode_matchset *mset, struct jvst_ir_stmt *frame);
 
@@ -223,6 +228,9 @@ newir_itemp(struct arena_info *A, size_t ind);
 
 struct jvst_ir_expr *
 newir_eseq(struct arena_info *A, struct jvst_ir_stmt *stmt, struct jvst_ir_expr *expr);
+
+struct jvst_ir_expr *
+newir_ematch(struct arena_info *A, size_t mind);
 
 struct jvst_op_program *
 newop_program(struct arena_info *A, ...);
