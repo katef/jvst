@@ -2788,6 +2788,48 @@ ir_linearize_prune_block(struct jvst_ir_stmt *block)
 	}
 }
 
+static void
+ir_linearize_mark_reachable(struct jvst_ir_stmt *entry)
+{
+	struct jvst_ir_stmt *stmt;
+
+	assert(entry != NULL);
+	assert(entry->type == JVST_IR_STMT_BLOCK);
+
+	entry->u.block.reachable = true;
+	for (stmt = entry->u.block.stmts; stmt != NULL; stmt = stmt->next) {
+		switch (stmt->type) {
+		case JVST_IR_STMT_BRANCH:
+			assert(stmt->u.branch != NULL);
+			assert(stmt->u.branch->type == JVST_IR_STMT_BLOCK);
+
+			if (!stmt->u.branch->u.block.reachable) {
+				ir_linearize_mark_reachable(stmt->u.branch);
+			}
+			break;
+
+		case JVST_IR_STMT_CBRANCH:
+			assert(stmt->u.cbranch.br_true != NULL);
+			assert(stmt->u.cbranch.br_true->type == JVST_IR_STMT_BLOCK);
+
+			if (!stmt->u.cbranch.br_true->u.block.reachable) {
+				ir_linearize_mark_reachable(stmt->u.cbranch.br_true);
+			}
+
+			assert(stmt->u.cbranch.br_false != NULL);
+			assert(stmt->u.cbranch.br_false->type == JVST_IR_STMT_BLOCK);
+
+			if (!stmt->u.cbranch.br_false->u.block.reachable) {
+				ir_linearize_mark_reachable(stmt->u.cbranch.br_false);
+			}
+			break;
+
+		default:
+			break;
+		}
+	}
+}
+
 static struct jvst_ir_stmt *
 ir_linearize_frame(struct op_linearizer *oplin, struct jvst_ir_stmt *fr)
 {
@@ -2867,7 +2909,7 @@ ir_linearize_frame(struct op_linearizer *oplin, struct jvst_ir_stmt *fr)
 	}
 
 	{
-		struct jvst_ir_stmt **ipp, *blk;
+		struct jvst_ir_stmt **ipp, *blk, **bpp;
 
 		/* first a quick check to ensure that blocks aren't
 		 * connected to other statements
@@ -2876,6 +2918,7 @@ ir_linearize_frame(struct op_linearizer *oplin, struct jvst_ir_stmt *fr)
 		 * probably sufficient
 		 */
 		for (blk = entry; blk != NULL; blk = blk->u.block.block_next) {
+			assert(blk->type == JVST_IR_STMT_BLOCK);
 			assert(blk->next == NULL);
 		}
 
@@ -2893,6 +2936,28 @@ ir_linearize_frame(struct op_linearizer *oplin, struct jvst_ir_stmt *fr)
 			ir_linearize_prune_block(blk);
 		}
 
+		// Mark all blocks as unvisited.  Then mark reachable blocks.
+		// Then eliminate unreachable blocks.
+		for (blk = entry; blk != NULL; blk = blk->next) {
+			assert(blk->type == JVST_IR_STMT_BLOCK);
+			blk->u.block.reachable = false;
+		}
+
+		ir_linearize_mark_reachable(entry);
+
+		for (bpp=&entry; *bpp != NULL; ) {
+			if ((*bpp)->u.block.reachable) {
+				bpp = &(*bpp)->u.block.block_next;
+				continue;
+			}
+
+			// unreachable, remove block
+			*bpp = (*bpp)->u.block.block_next;
+		}
+
+		copy->u.frame.blocks = entry;
+
+		// now wire together the blocks
 		ipp = &copy->u.frame.stmts;
 		for (blk = entry; blk != NULL; blk = blk->u.block.block_next) {
 			// reassert to ensure that wiring the blocks

@@ -1,6 +1,7 @@
 #ifndef JVST_VALIDATE_IR_H
 #define JVST_VALIDATE_IR_H
 
+#include <stdbool.h>
 #include <stdint.h>
 
 #include "sjp_parser.h"
@@ -249,6 +250,8 @@ struct jvst_ir_stmt {
 			size_t lindex;
 			const char *prefix;
 			struct jvst_ir_stmt *stmts;
+
+			bool reachable;
 		} block;
 
 		struct jvst_ir_stmt *branch;
