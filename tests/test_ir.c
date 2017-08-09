@@ -333,13 +333,13 @@ static void test_ir_type_constraints(void)
             NULL
           ),
 
-          newir_block(&A, 3, "valid",
-            newir_stmt(&A, JVST_IR_STMT_VALID),
+          newir_block(&A, 5, "invalid_1",
+            newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token"),
             NULL
           ),
 
-          newir_block(&A, 5, "invalid_1",
-            newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token"),
+          newir_block(&A, 3, "valid",
+            newir_stmt(&A, JVST_IR_STMT_VALID),
             NULL
           ),
 
@@ -385,13 +385,13 @@ static void test_ir_type_constraints(void)
             NULL
           ),
 
-          newir_block(&A, 3, "valid",
-            newir_stmt(&A, JVST_IR_STMT_VALID),
+          newir_block(&A, 5, "invalid_1",
+            newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token"),
             NULL
           ),
 
-          newir_block(&A, 5, "invalid_1",
-            newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token"),
+          newir_block(&A, 3, "valid",
+            newir_stmt(&A, JVST_IR_STMT_VALID),
             NULL
           ),
 
@@ -460,13 +460,13 @@ static void test_ir_type_constraints(void)
             NULL
           ),
 
-          newir_block(&A, 3, "valid",
-            newir_stmt(&A, JVST_IR_STMT_VALID),
+          newir_block(&A, 8, "invalid_1",
+            newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token"),
             NULL
           ),
 
-          newir_block(&A, 8, "invalid_1",
-            newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token"),
+          newir_block(&A, 3, "valid",
+            newir_stmt(&A, JVST_IR_STMT_VALID),
             NULL
           ),
 
@@ -538,6 +538,11 @@ static void test_ir_type_integer(void)
             NULL
           ),
 
+          newir_block(&A, 9, "invalid_1",
+            newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token"),
+            NULL
+          ),
+
           newir_block(&A, 2, "true",
             newir_cbranch(&A, newir_isint(&A, newir_expr(&A, JVST_IR_EXPR_TOK_NUM)),
               5, "valid",
@@ -546,18 +551,13 @@ static void test_ir_type_integer(void)
             NULL
           ),
 
-          newir_block(&A, 5, "valid",
-            newir_stmt(&A, JVST_IR_STMT_VALID),
-            NULL
-          ),
-
-          newir_block(&A, 9, "invalid_1",
-            newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token"),
-            NULL
-          ),
-
           newir_block(&A, 7, "invalid_2",
             newir_invalid(&A, JVST_INVALID_NOT_INTEGER, "number is not an integer"),
+            NULL
+          ),
+
+          newir_block(&A, 5, "valid",
+            newir_stmt(&A, JVST_IR_STMT_VALID),
             NULL
           ),
 
@@ -635,6 +635,11 @@ void test_ir_minimum(void)
             NULL
           ),
 
+          newir_block(&A, 9, "invalid_1",
+            newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token"),
+            NULL
+          ),
+
           newir_block(&A, 2, "true",
             newir_cbranch(&A,
               newir_op(&A, JVST_IR_EXPR_GE, 
@@ -650,18 +655,13 @@ void test_ir_minimum(void)
             NULL
           ),
 
-          newir_block(&A, 5, "valid",
-            newir_stmt(&A, JVST_IR_STMT_VALID),
-            NULL
-          ),
-
-          newir_block(&A, 9, "invalid_1",
-            newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token"),
-            NULL
-          ),
-
           newir_block(&A, 7, "invalid_3",
             newir_invalid(&A, JVST_INVALID_NUMBER, "number not valid"),
+            NULL
+          ),
+
+          newir_block(&A, 5, "valid",
+            newir_stmt(&A, JVST_IR_STMT_VALID),
             NULL
           ),
 
@@ -788,61 +788,6 @@ void test_ir_properties(void)
             NULL
           ),
 
-          newir_block(&A, 4, "loop",
-            newir_stmt(&A, JVST_IR_STMT_TOKEN),
-            newir_cbranch(&A, newir_istok(&A, SJP_OBJECT_END),
-              15, "valid",
-              7, "false"
-            ),
-            NULL
-          ),
-
-          newir_block(&A, 7, "false",
-            newir_move(&A, newir_itemp(&A, 0), newir_ematch(&A, 0)),
-            newir_cbranch(&A, 
-              newir_op(&A, JVST_IR_EXPR_EQ, newir_itemp(&A, 0), newir_size(&A, 0)),
-              9, "M",
-              10, "M_next"
-            ),
-            NULL
-          ),
-
-          newir_block(&A, 9, "M",
-            newir_stmt(&A, JVST_IR_STMT_CONSUME),
-            newir_branch(&A, 4, "loop"),
-            NULL
-          ),
-
-          newir_block(&A, 10, "M_next",
-              newir_cbranch(&A, 
-                newir_op(&A, JVST_IR_EXPR_EQ, newir_itemp(&A, 0), newir_size(&A, 1)),
-                11, "M",
-                12, "M_next"
-              ),
-            NULL
-          ),
-
-          newir_block(&A, 11, "M",
-            newir_call(&A, 2),
-            newir_branch(&A, 4, "loop"),
-            NULL
-          ),
-
-          newir_block(&A, 12, "M_next",
-              newir_cbranch(&A, 
-                newir_op(&A, JVST_IR_EXPR_EQ, newir_itemp(&A, 0), newir_size(&A, 2)),
-                13, "M",
-                14, "invalid_9"
-              ),
-            NULL
-          ),
-
-          newir_block(&A, 13, "M",
-            newir_call(&A, 3),
-            newir_branch(&A, 4, "loop"),
-            NULL
-          ),
-
           newir_block(&A, 16, "false",
             newir_cbranch(&A,
               newir_istok(&A, SJP_OBJECT_END),
@@ -864,13 +809,68 @@ void test_ir_properties(void)
             NULL
           ),
 
-          newir_block(&A, 19, "invalid_1",
-            newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token"),
+          newir_block(&A, 4, "loop",
+            newir_stmt(&A, JVST_IR_STMT_TOKEN),
+            newir_cbranch(&A, newir_istok(&A, SJP_OBJECT_END),
+              15, "valid",
+              7, "false"
+            ),
+            NULL
+          ),
+
+          newir_block(&A, 7, "false",
+            newir_move(&A, newir_itemp(&A, 0), newir_ematch(&A, 0)),
+            newir_cbranch(&A, 
+              newir_op(&A, JVST_IR_EXPR_EQ, newir_itemp(&A, 0), newir_size(&A, 0)),
+              9, "M",
+              10, "M_next"
+            ),
+            NULL
+          ),
+
+          newir_block(&A, 10, "M_next",
+              newir_cbranch(&A, 
+                newir_op(&A, JVST_IR_EXPR_EQ, newir_itemp(&A, 0), newir_size(&A, 1)),
+                11, "M",
+                12, "M_next"
+              ),
+            NULL
+          ),
+
+          newir_block(&A, 12, "M_next",
+              newir_cbranch(&A, 
+                newir_op(&A, JVST_IR_EXPR_EQ, newir_itemp(&A, 0), newir_size(&A, 2)),
+                13, "M",
+                14, "invalid_9"
+              ),
             NULL
           ),
 
           newir_block(&A, 14, "invalid_9",
             newir_invalid(&A, JVST_INVALID_MATCH_CASE, "invalid match case (internal error)"),
+            NULL
+          ),
+
+          newir_block(&A, 9, "M",
+            newir_stmt(&A, JVST_IR_STMT_CONSUME),
+            newir_branch(&A, 4, "loop"),
+            NULL
+          ),
+
+          newir_block(&A, 11, "M",
+            newir_call(&A, 2),
+            newir_branch(&A, 4, "loop"),
+            NULL
+          ),
+
+          newir_block(&A, 13, "M",
+            newir_call(&A, 3),
+            newir_branch(&A, 4, "loop"),
+            NULL
+          ),
+
+          newir_block(&A, 19, "invalid_1",
+            newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token"),
             NULL
           ),
 
@@ -887,13 +887,13 @@ void test_ir_properties(void)
             NULL
           ),
 
-          newir_block(&A, 3, "valid",
-            newir_stmt(&A, JVST_IR_STMT_VALID),
+          newir_block(&A, 5, "invalid_1",
+            newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token"),
             NULL
           ),
 
-          newir_block(&A, 5, "invalid_1",
-            newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token"),
+          newir_block(&A, 3, "valid",
+            newir_stmt(&A, JVST_IR_STMT_VALID),
             NULL
           ),
 
@@ -910,13 +910,13 @@ void test_ir_properties(void)
             NULL
           ),
 
-          newir_block(&A, 3, "valid",
-            newir_stmt(&A, JVST_IR_STMT_VALID),
+          newir_block(&A, 5, "invalid_1",
+            newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token"),
             NULL
           ),
 
-          newir_block(&A, 5, "invalid_1",
-            newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token"),
+          newir_block(&A, 3, "valid",
+            newir_stmt(&A, JVST_IR_STMT_VALID),
             NULL
           ),
 

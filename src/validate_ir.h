@@ -252,6 +252,7 @@ struct jvst_ir_stmt {
 			struct jvst_ir_stmt *stmts;
 
 			bool reachable;
+			bool sorted;
 		} block;
 
 		struct jvst_ir_stmt *branch;

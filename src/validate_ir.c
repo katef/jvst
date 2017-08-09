@@ -2788,6 +2788,126 @@ ir_linearize_prune_block(struct jvst_ir_stmt *block)
 	}
 }
 
+static struct jvst_ir_stmt *
+block_find_branch(struct jvst_ir_stmt *blk)
+{
+	struct jvst_ir_stmt *stmt;
+	for (stmt = blk->u.block.stmts; stmt != NULL; stmt = stmt->next) {
+		switch (stmt->type) {
+		case JVST_IR_STMT_BRANCH:
+		case JVST_IR_STMT_CBRANCH:
+			return stmt;
+
+		default:
+			break; /* nop */
+		}
+	}
+
+	return NULL;
+}
+
+static struct jvst_ir_stmt **
+sort_unsorted_blocks(struct jvst_ir_stmt *blk, struct jvst_ir_stmt **bpp)
+{
+	struct jvst_ir_stmt *b, *succ;
+
+	for (b = blk; b != NULL; b = succ) {
+		struct jvst_ir_stmt *stmt;
+
+		assert(bpp != &b->u.block.block_next); // guard against loops
+
+		*bpp = b;
+		bpp = &b->u.block.block_next;
+		b->u.block.sorted = true;
+
+		succ = NULL;
+
+		stmt = block_find_branch(b);
+		if (stmt == NULL) {
+			continue;
+		}
+
+		switch (stmt->type) {
+		case JVST_IR_STMT_BRANCH:
+			assert(stmt->u.branch != NULL);
+			assert(stmt->u.branch->type == JVST_IR_STMT_BLOCK);
+
+			if (!stmt->u.branch->u.block.sorted) {
+				succ = stmt->u.branch;
+			}
+			break;
+
+		case JVST_IR_STMT_CBRANCH:
+			assert(stmt->u.cbranch.br_false != NULL);
+			assert(stmt->u.cbranch.br_false->type == JVST_IR_STMT_BLOCK);
+
+			if (!stmt->u.cbranch.br_false->u.block.sorted) {
+				succ = stmt->u.cbranch.br_false;
+				continue;
+			}
+
+			assert(stmt->u.cbranch.br_true != NULL);
+			assert(stmt->u.cbranch.br_true->type == JVST_IR_STMT_BLOCK);
+
+			if (!stmt->u.cbranch.br_true->u.block.sorted) {
+				succ = stmt->u.cbranch.br_true;
+			}
+			break;
+
+		default:
+			assert(! "should not reach");
+		}
+	}
+
+	return bpp;
+}
+
+static struct jvst_ir_stmt *
+ir_linearize_sort_blocks(struct jvst_ir_stmt *blist)
+{
+	struct jvst_ir_stmt **q, *b, *next, *ordered, **bpp;
+	size_t i,n;
+
+	for (n=0, b=blist; b != NULL; b = b->u.block.block_next) {
+		assert(b->type == JVST_IR_STMT_BLOCK);
+		n++;
+	}
+
+	// avoid trivial cases
+	if (n < 3) {
+		return blist;
+	}
+
+	q = xmalloc(n * sizeof *q);
+
+	for (i=0, b=blist; b != NULL; i++, b = next) {
+		next = b->u.block.block_next;
+		b->u.block.block_next = NULL;
+		b->u.block.sorted = false;
+
+		assert(i < n);
+		q[i] = b;
+	}
+
+	ordered = NULL;
+	bpp = &ordered;
+
+	for (i=0; i < n; i++) {
+		struct jvst_ir_stmt *blk;
+
+		blk = q[i];
+		if (blk->u.block.sorted) {
+			continue;
+		}
+		
+		bpp = sort_unsorted_blocks(blk, bpp);
+	}
+
+	free(q);
+
+	return ordered;
+}
+
 static void
 ir_linearize_mark_reachable(struct jvst_ir_stmt *entry)
 {
@@ -2954,6 +3074,9 @@ ir_linearize_frame(struct op_linearizer *oplin, struct jvst_ir_stmt *fr)
 			// unreachable, remove block
 			*bpp = (*bpp)->u.block.block_next;
 		}
+
+		// generate traces, sort blocks pseudo-topologically
+		entry = ir_linearize_sort_blocks(entry);
 
 		copy->u.frame.blocks = entry;
 
