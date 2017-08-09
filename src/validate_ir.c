@@ -443,6 +443,69 @@ ir_expr_itemp(struct jvst_ir_stmt *frame)
 	return tmp;
 }
 
+// Returns a temporary whose type matches that of expr
+static struct jvst_ir_expr *
+ir_expr_tmp(struct jvst_ir_stmt *frame, struct jvst_ir_expr *expr)
+{
+	switch (expr->type) {
+	case JVST_IR_EXPR_NUM:
+	case JVST_IR_EXPR_FTEMP:
+		return ir_expr_ftemp(frame);
+
+	case JVST_IR_EXPR_INT:
+	case JVST_IR_EXPR_SIZE:
+	case JVST_IR_EXPR_TOK_TYPE:
+	case JVST_IR_EXPR_TOK_NUM:
+	case JVST_IR_EXPR_TOK_LEN:
+	case JVST_IR_EXPR_ITEMP:
+	case JVST_IR_EXPR_SLOT:
+	case JVST_IR_EXPR_COUNT:
+	case JVST_IR_EXPR_BCOUNT:
+	case JVST_IR_EXPR_SPLIT:
+	case JVST_IR_EXPR_MATCH:
+		return ir_expr_itemp(frame);
+
+	case JVST_IR_EXPR_SEQ:
+		return ir_expr_tmp(frame, expr->u.seq.expr);
+
+		/*
+		fprintf(stderr, "%s:%d (%s) condition %s not yet implemented\n",
+			__FILE__, __LINE__, __func__, jvst_ir_expr_type_name(expr->type));
+		abort();
+		*/
+
+	case JVST_IR_EXPR_NONE:
+		fprintf(stderr, "%s:%d (%s) cannot assign temporary to expression %s\n",
+			__FILE__, __LINE__, __func__, jvst_ir_expr_type_name(expr->type));
+		abort();
+
+	case JVST_IR_EXPR_NE:
+	case JVST_IR_EXPR_LT:
+	case JVST_IR_EXPR_LE:
+	case JVST_IR_EXPR_EQ:
+	case JVST_IR_EXPR_GE:
+	case JVST_IR_EXPR_GT:
+	case JVST_IR_EXPR_BTEST:
+	case JVST_IR_EXPR_BTESTALL:
+	case JVST_IR_EXPR_BTESTANY:
+	case JVST_IR_EXPR_BTESTONE:
+	case JVST_IR_EXPR_BOOL:
+	case JVST_IR_EXPR_ISTOK:
+	case JVST_IR_EXPR_TOK_COMPLETE:
+	case JVST_IR_EXPR_ISINT:
+	case JVST_IR_EXPR_AND:
+	case JVST_IR_EXPR_OR:
+	case JVST_IR_EXPR_NOT:
+		fprintf(stderr, "%s:%d (%s) cannot assign temporary to boolean expression %s\n",
+			__FILE__, __LINE__, __func__, jvst_ir_expr_type_name(expr->type));
+		abort();
+	}
+
+	fprintf(stderr, "%s:%d (%s) unknown expression type %d\n",
+		__FILE__, __LINE__, __func__, expr->type);
+	abort();
+}
+
 static struct jvst_ir_expr *
 ir_expr_num(double num)
 {
@@ -2504,15 +2567,36 @@ jvst_ir_expr_copy(struct jvst_ir_expr *ir)
 		copy->u.istok = ir->u.istok;
 		return copy;
 
-	case JVST_IR_EXPR_NONE:
-	case JVST_IR_EXPR_NUM:
-	case JVST_IR_EXPR_INT:
-	case JVST_IR_EXPR_SIZE:
-	case JVST_IR_EXPR_BOOL:
+	case JVST_IR_EXPR_ITEMP:
+	case JVST_IR_EXPR_FTEMP:
+		copy->u.temp = ir->u.temp;
+		return copy;
+
+	case JVST_IR_EXPR_SEQ:
+		return ir_expr_seq(
+			jvst_ir_stmt_copy(ir->u.seq.stmt),
+			jvst_ir_expr_copy(ir->u.seq.expr));
+
 	case JVST_IR_EXPR_TOK_TYPE:
 	case JVST_IR_EXPR_TOK_NUM:
 	case JVST_IR_EXPR_TOK_COMPLETE:
 	case JVST_IR_EXPR_TOK_LEN:
+		return copy;
+
+	case JVST_IR_EXPR_NUM:
+		copy->u.vnum = ir->u.vnum;
+		return copy;
+
+	case JVST_IR_EXPR_INT:
+		copy->u.vint = ir->u.vint;
+		return copy;
+
+	case JVST_IR_EXPR_SIZE:
+		copy->u.vsize = ir->u.vsize;
+		return copy;
+
+	case JVST_IR_EXPR_NONE:
+	case JVST_IR_EXPR_BOOL:
 	case JVST_IR_EXPR_COUNT:
 	case JVST_IR_EXPR_BCOUNT:
 	case JVST_IR_EXPR_BTEST:
@@ -2531,9 +2615,6 @@ jvst_ir_expr_copy(struct jvst_ir_expr *ir)
 	case JVST_IR_EXPR_ISINT:
 	case JVST_IR_EXPR_SPLIT:
 	case JVST_IR_EXPR_SLOT:
-	case JVST_IR_EXPR_ITEMP:
-	case JVST_IR_EXPR_FTEMP:
-	case JVST_IR_EXPR_SEQ:
 	case JVST_IR_EXPR_MATCH:
 		fprintf(stderr, "%s:%d (%s) copying IR expression %s not yet implemented\n",
 				__FILE__, __LINE__, __func__, 
@@ -2648,6 +2729,14 @@ jvst_ir_stmt_copy(struct jvst_ir_stmt *ir)
 	case JVST_IR_STMT_BITVECTOR:
 		/* need to fixup frame references */
 
+	case JVST_IR_STMT_MOVE:
+		{
+			struct jvst_ir_expr *dst, *src;
+			dst = jvst_ir_expr_copy(ir->u.move.dst);
+			src = jvst_ir_expr_copy(ir->u.move.src);
+			return ir_stmt_move(dst,src);
+		}
+
 	case JVST_IR_STMT_LOOP:
 	case JVST_IR_STMT_BREAK:
 	case JVST_IR_STMT_BSET:
@@ -2659,7 +2748,6 @@ jvst_ir_stmt_copy(struct jvst_ir_stmt *ir)
 	case JVST_IR_STMT_BLOCK:
 	case JVST_IR_STMT_BRANCH:
 	case JVST_IR_STMT_CBRANCH:
-	case JVST_IR_STMT_MOVE:
 	case JVST_IR_STMT_CALL:
 		fprintf(stderr, "%s:%d (%s) copying IR statement %s not yet implemented\n",
 				__FILE__, __LINE__, __func__, 
@@ -3323,6 +3411,144 @@ ir_linearize_cond(struct op_linearizer *oplin, struct jvst_ir_expr *cond, struct
 	return cbr;
 }
 
+static struct jvst_ir_expr *
+ir_linearize_rewrite_expr(struct jvst_ir_stmt *frame, struct jvst_ir_expr *expr)
+{
+	struct jvst_ir_expr *copy;
+
+	switch (expr->type) {
+	case JVST_IR_EXPR_BOOL:
+	case JVST_IR_EXPR_ISTOK:
+	case JVST_IR_EXPR_TOK_COMPLETE:
+	case JVST_IR_EXPR_ISINT:
+	case JVST_IR_EXPR_NONE:
+	case JVST_IR_EXPR_NUM:
+	case JVST_IR_EXPR_INT:
+	case JVST_IR_EXPR_SIZE:
+	case JVST_IR_EXPR_TOK_TYPE:
+	case JVST_IR_EXPR_TOK_NUM:
+	case JVST_IR_EXPR_TOK_LEN:
+	case JVST_IR_EXPR_ITEMP:
+	case JVST_IR_EXPR_FTEMP:
+	case JVST_IR_EXPR_SLOT:
+	case JVST_IR_EXPR_MATCH:
+		return expr;
+
+	case JVST_IR_EXPR_NE:
+	case JVST_IR_EXPR_LT:
+	case JVST_IR_EXPR_LE:
+	case JVST_IR_EXPR_EQ:
+	case JVST_IR_EXPR_GE:
+	case JVST_IR_EXPR_GT:
+		{
+			struct jvst_ir_expr *lhs, *rhs, *cmp;
+
+			lhs = ir_linearize_rewrite_expr(frame, expr->u.cmp.left);
+			rhs = ir_linearize_rewrite_expr(frame, expr->u.cmp.right);
+
+			if (lhs->type == JVST_IR_EXPR_SEQ) {
+				cmp = ir_expr_op(expr->type, lhs->u.seq.expr, rhs);
+				cmp = ir_linearize_rewrite_expr(frame, cmp);
+
+				copy = ir_expr_seq(lhs->u.seq.stmt, cmp);
+				return ir_linearize_rewrite_expr(frame, copy);
+			}
+
+			if (rhs->type == JVST_IR_EXPR_SEQ) {
+				struct jvst_ir_expr *tmp, *eseq1, *cmp;
+				struct jvst_ir_stmt *mv;
+
+				tmp = ir_expr_tmp(frame, lhs);
+				mv = ir_stmt_move(tmp, lhs);
+
+				cmp = ir_expr_op(expr->type, tmp, rhs->u.seq.expr);
+				cmp = ir_linearize_rewrite_expr(frame, cmp);
+
+				eseq1 = ir_expr_seq(rhs->u.seq.stmt, cmp);
+				eseq1 = ir_linearize_rewrite_expr(frame, eseq1);
+
+				copy = ir_expr_seq(mv, eseq1);
+				return ir_linearize_rewrite_expr(frame, copy);
+			}
+
+			if (lhs == expr->u.cmp.left && rhs == expr->u.cmp.right) {
+				return expr;
+			}
+
+			return ir_expr_op(expr->type, lhs, rhs);
+		}
+		break;
+
+	case JVST_IR_EXPR_SEQ:
+		{
+			struct jvst_ir_expr *subexpr;
+			struct jvst_ir_stmt *seq, **ipp;
+
+			subexpr = expr->u.seq.expr;
+			if (subexpr->type != JVST_IR_EXPR_SEQ) {
+				return expr;
+			}
+
+			seq = ir_stmt_new(JVST_IR_STMT_SEQ);
+			ipp = &seq->u.stmt_list;
+			*ipp = expr->u.seq.stmt;
+			ipp = &(*ipp)->next;
+			*ipp = subexpr->u.seq.stmt;
+
+			copy = ir_expr_seq(seq, subexpr->u.seq.expr);
+			return ir_linearize_rewrite_expr(frame, copy);
+		}
+
+	case JVST_IR_EXPR_BTEST:
+	case JVST_IR_EXPR_BTESTALL:
+	case JVST_IR_EXPR_BTESTANY:
+	case JVST_IR_EXPR_BTESTONE:
+	case JVST_IR_EXPR_COUNT:
+	case JVST_IR_EXPR_BCOUNT:
+	case JVST_IR_EXPR_SPLIT:
+		fprintf(stderr, "%s:%d (%s) condition %s not yet implemented\n",
+				__FILE__, __LINE__, __func__,
+				jvst_ir_expr_type_name(expr->type));
+		abort();
+
+	case JVST_IR_EXPR_AND:
+	case JVST_IR_EXPR_OR:
+	case JVST_IR_EXPR_NOT:
+		fprintf(stderr, "%s:%d (%s) cannot rewrite complex condition %s\n",
+				__FILE__, __LINE__, __func__,
+				jvst_ir_expr_type_name(expr->type));
+		abort();
+	}
+
+	fprintf(stderr, "%s:%d (%s) unknown expression type %s\n",
+			__FILE__, __LINE__, __func__,
+			jvst_ir_expr_type_name(expr->type));
+	abort();
+}
+
+static void
+ir_linearize_emit_expr(struct op_linearizer *oplin, struct jvst_ir_stmt *cbr)
+{
+	struct jvst_ir_expr *cond;
+
+	assert(cbr != NULL);
+	assert(cbr->type == JVST_IR_STMT_CBRANCH);
+
+	cond = ir_linearize_rewrite_expr(oplin->frame, cbr->u.cbranch.cond);
+	if (cond->type == JVST_IR_EXPR_SEQ) {
+		struct jvst_ir_stmt *pre;
+
+		pre = jvst_ir_stmt_copy(cond->u.seq.stmt);
+		*oplin->ipp = pre;
+		oplin->ipp = &pre->next;
+
+		cbr->u.cbranch.cond = cond->u.seq.expr;
+	}
+
+	*oplin->ipp = cbr;
+	oplin->ipp = &cbr->next;
+}
+
 static struct jvst_ir_stmt *
 ir_linearize_if(struct op_linearizer *oplin, struct jvst_ir_stmt *stmt)
 {
@@ -3339,8 +3565,8 @@ ir_linearize_if(struct op_linearizer *oplin, struct jvst_ir_stmt *stmt)
 	br_false = ir_linearize_block(oplin, "false", stmt->u.if_.br_false, br_join);
 
 	cbr = ir_linearize_cond(oplin, stmt->u.if_.cond, br_true, br_false);
-	*oplin->ipp = cbr;
-	oplin->ipp = &cbr->next;
+
+	ir_linearize_emit_expr(oplin, cbr);
 
 	oplin->ipp = &br_join->u.block.stmts;
 	*oplin->ipp = ir_stmt_new(JVST_IR_STMT_NOP);
