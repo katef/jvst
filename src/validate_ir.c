@@ -1804,7 +1804,7 @@ ir_translate_obj_inner(struct jvst_cnode *top, struct ir_object_builder *builder
 			allbits->u.btest.frame = bitvec->u.bitvec.frame;
 			allbits->u.btest.bitvec = bitvec;
 			allbits->u.btest.b0 = 0;
-			allbits->u.btest.b1 = -1;
+			allbits->u.btest.b1 = bitvec->u.bitvec.nbits-1;
 
 			checkpp = builder->post_loop;
 			*checkpp = ir_stmt_if(allbits,

@@ -1972,7 +1972,7 @@ void test_ir_required(void)
                 NULL
               ),
               newir_if(&A,
-                  newir_btestall(&A, 1, "reqmask", 0,-1),
+                  newir_btestall(&A, 1, "reqmask", 0,0),
                   newir_stmt(&A, JVST_IR_STMT_VALID),
                   newir_invalid(&A, JVST_INVALID_MISSING_REQUIRED_PROPERTIES,
                     "missing required properties")
@@ -2101,7 +2101,7 @@ void test_ir_dependencies(void)
                           NULL
                         ),
                         newir_if(&A,
-                            newir_btestall(&A, 0, "reqmask", 0, -1),
+                            newir_btestall(&A, 0, "reqmask", 0, 1),
                             newir_stmt(&A, JVST_IR_STMT_VALID),
                             newir_invalid(&A, JVST_INVALID_MISSING_REQUIRED_PROPERTIES,
                               "missing required properties")
@@ -2236,7 +2236,7 @@ void test_ir_dependencies(void)
                           NULL
                         ),
                         newir_if(&A,
-                            newir_btestall(&A, 0, "reqmask", 0, -1),
+                            newir_btestall(&A, 0, "reqmask", 0, 2),
                             newir_stmt(&A, JVST_IR_STMT_VALID),
                             newir_invalid(&A, JVST_INVALID_MISSING_REQUIRED_PROPERTIES,
                               "missing required properties")
@@ -2379,7 +2379,7 @@ void test_ir_dependencies(void)
                         NULL
                       ),
                       newir_if(&A,
-                          newir_btestall(&A, 0, "reqmask", 0, -1),
+                          newir_btestall(&A, 0, "reqmask", 0, 2),
                           newir_stmt(&A, JVST_IR_STMT_VALID),
                           newir_invalid(&A, JVST_INVALID_MISSING_REQUIRED_PROPERTIES,
                             "missing required properties")
@@ -2467,7 +2467,7 @@ void test_ir_dependencies(void)
                         NULL
                       ),
                       newir_if(&A,
-                          newir_btestall(&A, 0, "reqmask", 0, -1),
+                          newir_btestall(&A, 0, "reqmask", 0, 1),
                           newir_stmt(&A, JVST_IR_STMT_VALID),
                           newir_invalid(&A, JVST_INVALID_MISSING_REQUIRED_PROPERTIES,
                             "missing required properties")
