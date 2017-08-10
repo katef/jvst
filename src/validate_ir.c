@@ -3612,15 +3612,17 @@ ir_linearize_if(struct op_linearizer *oplin, struct jvst_ir_stmt *stmt)
 
 	br_join  = ir_stmt_block(oplin->frame, "join");
 
-	*oplin->bpp = br_join;
-	oplin->bpp = &br_join->u.block.block_next;
-
 	br_true  = ir_linearize_block(oplin, "true", stmt->u.if_.br_true, br_join);
 	br_false = ir_linearize_block(oplin, "false", stmt->u.if_.br_false, br_join);
 
 	cbr = ir_linearize_cond(oplin, stmt->u.if_.cond, br_true, br_false);
 
 	ir_linearize_emit_expr(oplin, cbr);
+
+	// add to the block list after br_true and br_false to help the
+	// block sorter place the join after the true/false branches
+	*oplin->bpp = br_join;
+	oplin->bpp = &br_join->u.block.block_next;
 
 	oplin->ipp = &br_join->u.block.stmts;
 	*oplin->ipp = ir_stmt_new(JVST_IR_STMT_NOP);
@@ -3781,11 +3783,14 @@ ir_linearize_stmt(struct op_linearizer *oplin, struct jvst_ir_stmt *stmt)
 			end_block = ir_stmt_block(oplin->frame, "loop_end");
 			stmt->u.loop.end_block = end_block;
 
-			*oplin->bpp = end_block;
-			oplin->bpp = &end_block->u.block.block_next;
-
 			block = ir_linearize_block(oplin, "loop", stmt->u.loop.stmts, &LOOP_BLOCK);
 			stmt->u.loop.loop_block = block;
+
+			// add to the block list after the loop block to
+			// help block sorter order the loop end after
+			// the loop body
+			*oplin->bpp = end_block;
+			oplin->bpp = &end_block->u.block.block_next;
 
 			loopjmp = ir_stmt_branch(block);
 			*oplin->ipp = loopjmp;
@@ -3831,8 +3836,6 @@ ir_linearize_stmt(struct op_linearizer *oplin, struct jvst_ir_stmt *stmt)
 			oplin->ipp = &mv->next;
 
 			join = ir_stmt_block(oplin->frame, "M_join");
-			*oplin->bpp = join;
-			oplin->bpp = &join->u.block.block_next;
 
 			{
 				struct jvst_ir_stmt *cblk, *cbr;
@@ -3882,6 +3885,12 @@ ir_linearize_stmt(struct op_linearizer *oplin, struct jvst_ir_stmt *stmt)
 
 				blkpp = &cbr->u.cbranch.br_false;
 			}
+
+			// add to the block list after the default and
+			// non-default cases to help block sorter place
+			// the join after all the cases
+			*oplin->bpp = join;
+			oplin->bpp = &join->u.block.block_next;
 
 			{
 				struct jvst_ir_stmt *eblk;

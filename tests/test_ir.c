@@ -1143,23 +1143,6 @@ void test_ir_minmax_properties_1(void)
             NULL
           ),
 
-          newir_block(&A, 3, "loop_end",
-            // Post-loop check of number of properties
-            newir_move(&A, newir_itemp(&A, 1), newir_count(&A, 0, "num_props")),
-            newir_move(&A, newir_itemp(&A, 3), newir_itemp(&A, 1)),
-            newir_move(&A, newir_itemp(&A, 2), newir_size(&A, 1)),
-            newir_cbranch(&A, newir_op(&A, JVST_IR_EXPR_GE, newir_itemp(&A, 3), newir_itemp(&A,2)),
-              13, "valid",
-              15, "invalid_4"
-            ),
-            NULL
-          ),
-
-          newir_block(&A, 15, "invalid_4",
-            newir_invalid(&A, JVST_INVALID_TOO_FEW_PROPS, "too few properties"),
-            NULL
-          ),
-
           newir_block(&A, 4, "loop",
             newir_stmt(&A, JVST_IR_STMT_TOKEN),
             newir_cbranch(&A, newir_istok(&A, SJP_OBJECT_END),
@@ -1184,15 +1167,32 @@ void test_ir_minmax_properties_1(void)
             NULL
           ),
 
+          newir_block(&A, 9, "M",
+            newir_stmt(&A, JVST_IR_STMT_CONSUME),
+            newir_branch(&A, 8, "M_join"),
+            NULL
+          ),
+
           newir_block(&A, 8, "M_join",
             newir_incr(&A, 0, "num_props"),
             newir_branch(&A, 4, "loop"),
             NULL
           ),
 
-          newir_block(&A, 9, "M",
-            newir_stmt(&A, JVST_IR_STMT_CONSUME),
-            newir_branch(&A, 8, "M_join"),
+          newir_block(&A, 3, "loop_end",
+            // Post-loop check of number of properties
+            newir_move(&A, newir_itemp(&A, 1), newir_count(&A, 0, "num_props")),
+            newir_move(&A, newir_itemp(&A, 3), newir_itemp(&A, 1)),
+            newir_move(&A, newir_itemp(&A, 2), newir_size(&A, 1)),
+            newir_cbranch(&A, newir_op(&A, JVST_IR_EXPR_GE, newir_itemp(&A, 3), newir_itemp(&A,2)),
+              13, "valid",
+              15, "invalid_4"
+            ),
+            NULL
+          ),
+
+          newir_block(&A, 15, "invalid_4",
+            newir_invalid(&A, JVST_INVALID_TOO_FEW_PROPS, "too few properties"),
             NULL
           ),
 
