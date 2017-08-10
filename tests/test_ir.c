@@ -1099,6 +1099,117 @@ void test_ir_minmax_properties_1(void)
     },
 
     {
+      LINEARIZE,
+      newcnode_switch(&A, 1,
+        SJP_OBJECT_BEG, newcnode_counts(&A, 1, 0),
+        SJP_NONE),
+
+      NULL,
+
+      // XXX
+      // this IR is not as compact as it could be we should be able to
+      // short-circuit the loop when we've encountered one property
+      // instead of keeping a full count
+      newir_program(&A,
+        newir_frame(&A, frameindex, 1,
+          newir_counter(&A, 0, "num_props"),
+          newir_block(&A, 0, "entry",
+            newir_stmt(&A, JVST_IR_STMT_TOKEN),
+            newir_cbranch(&A, newir_istok(&A, SJP_OBJECT_BEG),
+              4, "loop",
+              16, "false"
+            ),
+            NULL
+          ),
+
+          newir_block(&A, 16, "false",
+            newir_cbranch(&A, newir_istok(&A, SJP_OBJECT_END),
+              19, "invalid_1",
+              20, "false"
+            ),
+            NULL
+          ),
+
+          newir_block(&A, 20, "false",
+            newir_cbranch(&A, newir_istok(&A, SJP_ARRAY_END),
+              19, "invalid_1",
+              13, "valid"
+            ),
+            NULL
+          ),
+
+          newir_block(&A, 13, "valid",
+            newir_stmt(&A, JVST_IR_STMT_VALID),
+            NULL
+          ),
+
+          newir_block(&A, 3, "loop_end",
+            // Post-loop check of number of properties
+            newir_move(&A, newir_itemp(&A, 1), newir_count(&A, 0, "num_props")),
+            newir_move(&A, newir_itemp(&A, 3), newir_itemp(&A, 1)),
+            newir_move(&A, newir_itemp(&A, 2), newir_size(&A, 1)),
+            newir_cbranch(&A, newir_op(&A, JVST_IR_EXPR_GE, newir_itemp(&A, 3), newir_itemp(&A,2)),
+              13, "valid",
+              15, "invalid_4"
+            ),
+            NULL
+          ),
+
+          newir_block(&A, 15, "invalid_4",
+            newir_invalid(&A, JVST_INVALID_TOO_FEW_PROPS, "too few properties"),
+            NULL
+          ),
+
+          newir_block(&A, 4, "loop",
+            newir_stmt(&A, JVST_IR_STMT_TOKEN),
+            newir_cbranch(&A, newir_istok(&A, SJP_OBJECT_END),
+              3, "loop_end",
+              7, "false"
+            ),
+            NULL
+          ),
+
+          newir_block(&A, 7, "false",
+            newir_move(&A, newir_itemp(&A, 0), newir_ematch(&A, 0)),
+            newir_cbranch(&A, 
+              newir_op(&A, JVST_IR_EXPR_EQ, newir_itemp(&A, 0), newir_size(&A, 0)),
+              9, "M",
+              10, "invalid_9"
+            ),
+            NULL
+          ),
+
+          newir_block(&A, 10, "invalid_9",
+            newir_invalid(&A, JVST_INVALID_MATCH_CASE, "invalid match case (internal error)"),
+            NULL
+          ),
+
+          newir_block(&A, 8, "M_join",
+            newir_incr(&A, 0, "num_props"),
+            newir_branch(&A, 4, "loop"),
+            NULL
+          ),
+
+          newir_block(&A, 9, "M",
+            newir_stmt(&A, JVST_IR_STMT_CONSUME),
+            newir_branch(&A, 8, "M_join"),
+            NULL
+          ),
+
+          newir_block(&A, 19, "invalid_1",
+            newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token"),
+            NULL
+          ),
+
+          NULL
+        ),
+
+        NULL
+      )
+
+    },
+
+    {
       TRANSLATE,
       newcnode_switch(&A, 1,
         SJP_OBJECT_BEG, newcnode_counts(&A, 0, 2),

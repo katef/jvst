@@ -2595,9 +2595,20 @@ jvst_ir_expr_copy(struct jvst_ir_expr *ir)
 		copy->u.vsize = ir->u.vsize;
 		return copy;
 
+	case JVST_IR_EXPR_COUNT:
+		{
+			assert(ir->u.count.counter != NULL);
+			assert(ir->u.count.counter->type == JVST_IR_STMT_COUNTER);
+			assert(ir->u.count.counter->data != NULL);
+
+			copy->u.count = ir->u.count;
+			copy->u.count.counter = copy->u.count.counter->data;
+
+			return copy;
+		}
+
 	case JVST_IR_EXPR_NONE:
 	case JVST_IR_EXPR_BOOL:
-	case JVST_IR_EXPR_COUNT:
 	case JVST_IR_EXPR_BCOUNT:
 	case JVST_IR_EXPR_BTEST:
 	case JVST_IR_EXPR_BTESTALL:
@@ -2725,10 +2736,6 @@ jvst_ir_stmt_copy(struct jvst_ir_stmt *ir)
 		copy->u.matcher = ir->u.matcher;
 		return copy;
 
-	case JVST_IR_STMT_COUNTER:
-	case JVST_IR_STMT_BITVECTOR:
-		/* need to fixup frame references */
-
 	case JVST_IR_STMT_MOVE:
 		{
 			struct jvst_ir_expr *dst, *src;
@@ -2737,11 +2744,26 @@ jvst_ir_stmt_copy(struct jvst_ir_stmt *ir)
 			return ir_stmt_move(dst,src);
 		}
 
+	case JVST_IR_STMT_INCR:
+		{
+			assert(ir->u.counter_op.counter != NULL);
+			assert(ir->u.counter_op.counter->type == JVST_IR_STMT_COUNTER);
+			assert(ir->u.counter_op.counter->data != NULL);
+
+			copy->u.counter_op = ir->u.counter_op;
+			copy->u.counter_op.counter = copy->u.counter_op.counter->data;
+
+			return copy;
+		}
+
+	case JVST_IR_STMT_COUNTER:
+	case JVST_IR_STMT_BITVECTOR:
+		/* need to fixup frame references */
+
 	case JVST_IR_STMT_LOOP:
 	case JVST_IR_STMT_BREAK:
 	case JVST_IR_STMT_BSET:
 	case JVST_IR_STMT_BCLEAR:
-	case JVST_IR_STMT_INCR:
 	case JVST_IR_STMT_DECR:
 	case JVST_IR_STMT_MATCH:
 	case JVST_IR_STMT_SPLITVEC:
@@ -3063,6 +3085,9 @@ ir_linearize_frame(struct op_linearizer *oplin, struct jvst_ir_stmt *fr)
 		*cpp = NULL;
 		for (c = fr->u.frame.counters; c != NULL; c = c->next) {
 			struct jvst_ir_stmt *cc;
+
+			assert(c->data == NULL);
+
 			cc = ir_stmt_new(JVST_IR_STMT_COUNTER);
 			cc->u.counter.label = c->u.counter.label;
 			cc->u.counter.ind   = c->u.counter.ind;
@@ -3072,6 +3097,11 @@ ir_linearize_frame(struct op_linearizer *oplin, struct jvst_ir_stmt *fr)
 			assert(c->u.counter.frame->data != NULL);
 			assert(((struct jvst_ir_stmt *)c->u.counter.frame->data)->type == JVST_IR_STMT_FRAME);
 			cc->u.counter.frame = c->u.counter.frame->data;
+
+			c->data = cc;
+
+			*cpp = cc;
+			cpp = &cc->next;
 		}
 	}
 
@@ -3081,6 +3111,9 @@ ir_linearize_frame(struct op_linearizer *oplin, struct jvst_ir_stmt *fr)
 		*bvpp = NULL;
 		for (bv = fr->u.frame.bitvecs; bv != NULL; bv = bv->next) {
 			struct jvst_ir_stmt *bvc;
+
+			assert(bv->data == NULL);
+
 			bvc = ir_stmt_new(JVST_IR_STMT_COUNTER);
 			bvc->u.bitvec.label = bv->u.bitvec.label;
 			bvc->u.bitvec.ind   = bv->u.bitvec.ind;
@@ -3091,6 +3124,11 @@ ir_linearize_frame(struct op_linearizer *oplin, struct jvst_ir_stmt *fr)
 			assert(bv->u.bitvec.frame->data != NULL);
 			assert(((struct jvst_ir_stmt *)bv->u.bitvec.frame->data)->type == JVST_IR_STMT_FRAME);
 			bvc->u.counter.frame = bv->u.counter.frame->data;
+
+			bv->data = bvc;
+
+			*bvpp = bvc;
+			bvpp = &bvc->next;
 		}
 	}
 
@@ -3293,6 +3331,22 @@ ir_linearize_operand(struct op_linearizer *oplin, struct jvst_ir_expr *expr)
 		}
 
 	case JVST_IR_EXPR_COUNT:
+		{
+			struct jvst_ir_expr *eseq, *tmp;
+			struct jvst_ir_stmt *mv;
+
+			mv = ir_stmt_new(JVST_IR_STMT_MOVE);
+			tmp = ir_expr_itemp(oplin->frame);
+			mv->u.move.dst = tmp;
+			mv->u.move.src = expr;
+
+			eseq = ir_expr_new(JVST_IR_EXPR_SEQ);
+			eseq->u.seq.stmt = mv;
+			eseq->u.seq.expr = tmp;
+
+			return eseq;
+		}
+
 	case JVST_IR_EXPR_BCOUNT:
 	case JVST_IR_EXPR_SPLIT:
 		/* need to handle remapping things here ... */
@@ -3665,6 +3719,7 @@ ir_linearize_stmt(struct op_linearizer *oplin, struct jvst_ir_stmt *stmt)
 	case JVST_IR_STMT_NOP:
 	case JVST_IR_STMT_TOKEN:
 	case JVST_IR_STMT_CONSUME:
+	case JVST_IR_STMT_INCR:
 		linstmt = jvst_ir_stmt_copy(stmt);
 		*oplin->ipp = linstmt;
 		oplin->ipp = &linstmt->next;
@@ -3845,7 +3900,6 @@ ir_linearize_stmt(struct op_linearizer *oplin, struct jvst_ir_stmt *stmt)
 	case JVST_IR_STMT_BITVECTOR:
 	case JVST_IR_STMT_BSET:
 	case JVST_IR_STMT_BCLEAR:
-	case JVST_IR_STMT_INCR:
 	case JVST_IR_STMT_DECR:
 	case JVST_IR_STMT_SPLITVEC:
 	case JVST_IR_STMT_BLOCK:
