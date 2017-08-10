@@ -3114,7 +3114,7 @@ ir_linearize_frame(struct op_linearizer *oplin, struct jvst_ir_stmt *fr)
 
 			assert(bv->data == NULL);
 
-			bvc = ir_stmt_new(JVST_IR_STMT_COUNTER);
+			bvc = ir_stmt_new(JVST_IR_STMT_BITVECTOR);
 			bvc->u.bitvec.label = bv->u.bitvec.label;
 			bvc->u.bitvec.ind   = bv->u.bitvec.ind;
 			bvc->u.bitvec.nbits = bv->u.bitvec.nbits;
@@ -3123,7 +3123,7 @@ ir_linearize_frame(struct op_linearizer *oplin, struct jvst_ir_stmt *fr)
 			assert(bv->u.bitvec.frame != NULL);
 			assert(bv->u.bitvec.frame->data != NULL);
 			assert(((struct jvst_ir_stmt *)bv->u.bitvec.frame->data)->type == JVST_IR_STMT_FRAME);
-			bvc->u.counter.frame = bv->u.counter.frame->data;
+			bvc->u.bitvec.frame = bv->u.bitvec.frame->data;
 
 			bv->data = bvc;
 
