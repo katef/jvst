@@ -731,6 +731,8 @@ jvst_ir_stmt_type_name(enum jvst_ir_stmt_type type)
 		return "MATCHER";  	
 	case JVST_IR_STMT_BITVECTOR:
 		return "BITVECTOR";	
+	case JVST_IR_STMT_SPLITLIST:
+		return "SPLITLIST";	
 	case JVST_IR_STMT_BSET:
 		return "BSET";
 	case JVST_IR_STMT_BCLEAR:
@@ -988,6 +990,15 @@ jvst_ir_dump_expr(struct sbuf *buf, struct jvst_ir_expr *expr, int indent)
 	case JVST_IR_EXPR_SPLIT:
 		{
 			struct jvst_ir_stmt *stmts;
+			if (expr->u.split.split_list != NULL) {
+				struct jvst_ir_stmt *split_list;
+				split_list = expr->u.split.split_list;
+				assert(split_list->type == JVST_IR_STMT_SPLITLIST);
+				sbuf_snprintf(buf, "SPLIT(list=%zu)",
+					split_list->u.split_list.ind);
+				return;
+			}
+
 			stmts = expr->u.split.frames;
 			if (stmts == NULL) {
 				sbuf_snprintf(buf, "SPLIT()");
@@ -1132,6 +1143,15 @@ jvst_ir_dump_inner(struct sbuf *buf, struct jvst_ir_stmt *ir, int indent)
 				sbuf_snprintf(buf, "],\n");
 			}
 
+			if (ir->u.frame.splits) {
+				struct jvst_ir_stmt *spl;
+				sbuf_indent(buf, indent+2);
+				sbuf_snprintf(buf, "SPLITS[\n");
+				dump_stmt_list_inner(buf, ir->u.frame.splits, indent+2);
+				sbuf_indent(buf, indent+2);
+				sbuf_snprintf(buf, "],\n");
+			}
+
 			dump_stmt_list_inner(buf, ir->u.frame.stmts, indent);
 
 			sbuf_indent(buf, indent);
@@ -1253,6 +1273,20 @@ jvst_ir_dump_inner(struct sbuf *buf, struct jvst_ir_stmt *ir, int indent)
 			ir->u.bitvec.label,
 			ir->u.bitvec.ind,
 			ir->u.bitvec.nbits);
+		return;
+
+	case JVST_IR_STMT_SPLITLIST:		
+		{
+			struct jvst_ir_stmt *fr;
+			sbuf_snprintf(buf, "%s(%zu, %zu",
+				jvst_ir_stmt_type_name(ir->type),
+				ir->u.split_list.ind,
+				ir->u.split_list.nframes);
+			for (fr=ir->u.split_list.frames; fr != NULL; fr = fr->u.frame.split_next) {
+				sbuf_snprintf(buf, ", %zu", fr->u.frame.frame_ind);
+			}
+			sbuf_snprintf(buf, ")");
+		}
 		return;
 
 	case JVST_IR_STMT_SPLITVEC:
@@ -2600,10 +2634,30 @@ jvst_ir_expr_copy(struct jvst_ir_expr *ir)
 			assert(ir->u.count.counter != NULL);
 			assert(ir->u.count.counter->type == JVST_IR_STMT_COUNTER);
 			assert(ir->u.count.counter->data != NULL);
+			assert(ir->u.count.counter->data != ir->u.count.counter);
+			assert(((struct jvst_ir_stmt *)ir->u.count.counter->data)->type == JVST_IR_STMT_COUNTER);
 
 			copy->u.count = ir->u.count;
 			copy->u.count.counter = copy->u.count.counter->data;
 
+			return copy;
+		}
+
+	case JVST_IR_EXPR_SPLIT:
+		{
+			assert(ir->u.split.frames == NULL);
+			assert(ir->u.split.split_list != NULL);
+			assert(ir->u.split.split_list->type == JVST_IR_STMT_SPLITLIST);
+
+			// XXX - not sure if we need to use ir->u.split.split_list->data
+			//
+			// We should only copy SPLIT after linearization and during an 
+			// optimization phase, so the split list shouldn't need to be
+			// copied.
+			//
+			// This would probably be safer if split lists just stored the
+			// frame index.
+			copy->u.split = ir->u.split;
 			return copy;
 		}
 
@@ -2624,7 +2678,6 @@ jvst_ir_expr_copy(struct jvst_ir_expr *ir)
 	case JVST_IR_EXPR_GE:
 	case JVST_IR_EXPR_GT:
 	case JVST_IR_EXPR_ISINT:
-	case JVST_IR_EXPR_SPLIT:
 	case JVST_IR_EXPR_SLOT:
 	case JVST_IR_EXPR_MATCH:
 		fprintf(stderr, "%s:%d (%s) copying IR expression %s not yet implemented\n",
@@ -2771,6 +2824,7 @@ jvst_ir_stmt_copy(struct jvst_ir_stmt *ir)
 
 	case JVST_IR_STMT_COUNTER:
 	case JVST_IR_STMT_BITVECTOR:
+	case JVST_IR_STMT_SPLITLIST:
 		/* need to fixup frame references */
 
 	case JVST_IR_STMT_LOOP:
@@ -3144,6 +3198,10 @@ ir_linearize_frame(struct op_linearizer *oplin, struct jvst_ir_stmt *fr)
 		}
 	}
 
+	// splitlists should only be present after linearization
+	assert(fr->u.frame.splits == NULL);
+	assert(fr->u.frame.nsplits == 0);
+
 	copy->u.frame.stmts = NULL;
 
 	frame_oplin.orig_frame = fr;
@@ -3359,8 +3417,42 @@ ir_linearize_operand(struct op_linearizer *oplin, struct jvst_ir_expr *expr)
 			return eseq;
 		}
 
-	case JVST_IR_EXPR_BCOUNT:
 	case JVST_IR_EXPR_SPLIT:
+		{
+			struct jvst_ir_stmt *splitlist, *fr, **fpp, *mv, *eseq;
+			struct jvst_ir_expr *tmp, *spl;
+
+			splitlist = ir_stmt_new(JVST_IR_STMT_SPLITLIST);
+			splitlist->u.split_list.ind = oplin->frame->u.frame.nsplits++;
+			{
+				struct jvst_ir_stmt **slpp;
+				for (slpp=&oplin->frame->u.frame.splits; *slpp != NULL; slpp = &(*slpp)->next) {
+					continue;
+				}
+
+				*slpp = splitlist;
+			}
+
+			fpp = &splitlist->u.split_list.frames;
+			for (fr = expr->u.split.frames; fr != NULL; fr = fr->next) {
+				struct jvst_ir_stmt *newfr;
+
+				newfr = ir_linearize_frame(oplin, fr);
+				*fpp = newfr;
+				fpp = &newfr->u.frame.split_next;
+				splitlist->u.split_list.nframes++;
+			}
+
+			tmp = ir_expr_itemp(oplin->frame);
+			spl = ir_expr_new(JVST_IR_EXPR_SPLIT);
+			spl->u.split.frames = NULL;
+			spl->u.split.split_list = splitlist;
+
+			mv = ir_stmt_move(tmp, spl);
+			return ir_expr_seq(mv, tmp);
+		}
+
+	case JVST_IR_EXPR_BCOUNT:
 		/* need to handle remapping things here ... */
 
 	case JVST_IR_EXPR_NONE:
@@ -3945,6 +4037,7 @@ ir_linearize_stmt(struct op_linearizer *oplin, struct jvst_ir_stmt *stmt)
 	case JVST_IR_STMT_COUNTER:
 	case JVST_IR_STMT_MATCHER:
 	case JVST_IR_STMT_BITVECTOR:
+	case JVST_IR_STMT_SPLITLIST:
 		fprintf(stderr, "%s:%d (%s) IR statement %s should not be encountered while linearizing\n",
 				__FILE__, __LINE__, __func__, 
 				jvst_ir_stmt_type_name(stmt->type));

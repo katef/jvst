@@ -663,7 +663,9 @@ newir_expr(struct arena_info *A, enum jvst_ir_expr_type type)
 }
 
 struct jvst_ir_stmt v_frameindex;
+struct jvst_ir_stmt v_splitlist;
 const struct jvst_ir_stmt *const frameindex = &v_frameindex;
+const struct jvst_ir_stmt *const splitlist = &v_splitlist;
 
 struct jvst_ir_stmt *
 newir_stmt(struct arena_info *A, enum jvst_ir_stmt_type type)
@@ -710,7 +712,7 @@ static void ir_stmt_list(struct jvst_ir_stmt **spp, va_list args)
 struct jvst_ir_stmt *
 newir_frame(struct arena_info *A, ...)
 {
-	struct jvst_ir_stmt *fr, **spp, **cpp, **mpp, **bvpp;
+	struct jvst_ir_stmt *fr, **spp, **cpp, **mpp, **bvpp, **slpp;
 	va_list args;
 
 	fr = newir_stmt(A,JVST_IR_STMT_FRAME);
@@ -721,6 +723,7 @@ newir_frame(struct arena_info *A, ...)
 	cpp = &fr->u.frame.counters;
 	mpp = &fr->u.frame.matchers;
 	bvpp = &fr->u.frame.bitvecs;
+	slpp = &fr->u.frame.splits;
 
 	for (;;) {
 		struct jvst_ir_stmt *stmt;
@@ -737,18 +740,27 @@ newir_frame(struct arena_info *A, ...)
 
 		switch (stmt->type) {
 		case JVST_IR_STMT_COUNTER:
+			fr->u.frame.ncounters++;
 			*cpp = stmt;
 			cpp = &stmt->next;
 			break;
 
 		case JVST_IR_STMT_MATCHER:
+			fr->u.frame.nmatchers++;
 			*mpp = stmt;
 			mpp = &stmt->next;
 			break;
 
 		case JVST_IR_STMT_BITVECTOR:
+			fr->u.frame.nbitvecs++;
 			*bvpp = stmt;
 			bvpp = &stmt->next;
+			break;
+
+		case JVST_IR_STMT_SPLITLIST:
+			fr->u.frame.nsplits++;
+			*slpp = stmt;
+			slpp = &stmt->next;
 			break;
 
 		default:
@@ -976,6 +988,43 @@ newir_match(struct arena_info *A, size_t ind, ...)
 }
 
 struct jvst_ir_stmt *
+newir_splitlist(struct arena_info *A, size_t ind, size_t n, ...)
+{
+	size_t i;
+	va_list args;
+	struct jvst_ir_stmt *sl, **fpp;
+
+	sl = newir_stmt(A,JVST_IR_STMT_SPLITLIST);
+	sl->u.split_list.ind = ind;
+	sl->u.split_list.nframes = n;
+	fpp = &sl->u.split_list.frames;
+
+	if (n == 0) {
+		return sl;
+	}
+
+	va_start(args, n);
+	for (i=0; i < n; i++) {
+		size_t ind;
+		struct jvst_ir_stmt *fr;
+
+		ind = va_arg(args, int);
+
+		// cheesy, but avoids requiring us to wire things up for
+		// a test comparison
+		fr = newir_stmt(A,JVST_IR_STMT_FRAME);
+		fr->u.frame.frame_ind = ind;
+		*fpp = fr;
+		fpp = &fr->u.frame.split_next;
+	}
+	va_end(args);
+
+	*fpp = NULL;
+
+	return sl;
+}
+
+struct jvst_ir_stmt *
 newir_splitvec(struct arena_info *A, size_t ind, const char *label, ...)
 {
 	struct jvst_ir_stmt *stmt, **spp, *fr, *bv;
@@ -1198,6 +1247,18 @@ newir_split(struct arena_info *A, ...)
 
 	va_start(args, A);
 	while (fr = va_arg(args, struct jvst_ir_stmt *), fr != NULL) {
+		if (fr == splitlist) {
+			struct jvst_ir_stmt *sl;
+			size_t ind;
+
+			assert(expr->u.split.frames == NULL);
+
+			ind = va_arg(args, int);
+			assert(ind >= 0);
+			expr->u.split.split_list = newir_splitlist(A, (size_t)ind, 0);
+			return expr;
+		}
+
 		assert(fr->type == JVST_IR_STMT_FRAME);
 		*spp = fr;
 		spp = &(*spp)->next;
@@ -1280,6 +1341,7 @@ newir_op(struct arena_info *A, enum jvst_ir_expr_type op,
 
 	case JVST_IR_EXPR_NONE:
 	case JVST_IR_EXPR_NUM:
+	case JVST_IR_EXPR_INT:
 	case JVST_IR_EXPR_SIZE:
 	case JVST_IR_EXPR_BOOL:
 	case JVST_IR_EXPR_TOK_TYPE:
@@ -1300,6 +1362,7 @@ newir_op(struct arena_info *A, enum jvst_ir_expr_type op,
 	case JVST_IR_EXPR_ITEMP:
 	case JVST_IR_EXPR_FTEMP:
 	case JVST_IR_EXPR_SEQ:
+	case JVST_IR_EXPR_MATCH:
 		fprintf(stderr, "invalid OP type: %s\n", jvst_ir_expr_type_name(op));
 		abort();
 	}

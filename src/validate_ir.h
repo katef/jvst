@@ -31,6 +31,7 @@ enum jvst_ir_stmt_type {
 	JVST_IR_STMT_COUNTER,		// allocates a named counter in the current frame
 	JVST_IR_STMT_MATCHER,		// allocates a named matcher state in the current frame
 	JVST_IR_STMT_BITVECTOR,		// allocates a bitvector in the current frame
+	JVST_IR_STMT_SPLITLIST,		// allocates a list of frames involved in a split
 
 	JVST_IR_STMT_BSET,		// sets a bit in a bitmask
 	JVST_IR_STMT_BCLEAR,		// sets a bit in a bitmask
@@ -139,10 +140,13 @@ struct jvst_ir_program {
 };
 
 struct jvst_ir_frame {
+	struct jvst_ir_stmt *split_next;
+
 	struct jvst_ir_stmt *counters;
 	struct jvst_ir_stmt *matchers;
 	struct jvst_ir_stmt *bitvecs;
 	struct jvst_ir_stmt *blocks;
+	struct jvst_ir_stmt *splits;
 	struct jvst_ir_stmt *stmts;
 
 	size_t frame_ind;
@@ -152,6 +156,7 @@ struct jvst_ir_frame {
 	size_t ncounters;
 	size_t nbitvecs;
 	size_t nblocks;
+	size_t nsplits;
 	size_t ntemps;
 };
 
@@ -240,9 +245,17 @@ struct jvst_ir_stmt {
 		} match;
 
 		struct {
+			size_t ind;
+			size_t nframes;
+			struct jvst_ir_stmt *frames;
+			bool fixed_up;
+		} split_list;
+
+		struct {
 			struct jvst_ir_stmt *frame;
 			struct jvst_ir_stmt *bitvec;
 			struct jvst_ir_stmt *split_frames;
+			struct jvst_ir_stmt *split_list;
 		} splitvec;
 
 		struct {
@@ -319,6 +332,7 @@ struct jvst_ir_expr {
 
 		struct {
 			struct jvst_ir_stmt *frames;
+			struct jvst_ir_stmt *split_list;
 		} split;
 
 		struct {

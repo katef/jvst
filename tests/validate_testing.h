@@ -118,6 +118,7 @@ newmatchset(struct arena_info *A, ...);
 
 /* IR-related */
 extern const struct jvst_ir_stmt *const frameindex;
+extern const struct jvst_ir_stmt *const splitlist;
 
 struct jvst_ir_stmt *
 newir_stmt(struct arena_info *A, enum jvst_ir_stmt_type type);
@@ -161,6 +162,9 @@ newir_bitvec(struct arena_info *A, size_t ind, const char *label, size_t nbits);
 
 struct jvst_ir_stmt *
 newir_match(struct arena_info *A, size_t ind, ...);
+
+struct jvst_ir_stmt *
+newir_splitlist(struct arena_info *A, size_t ind, size_t n, ...);
 
 struct jvst_ir_stmt *
 newir_splitvec(struct arena_info *A, size_t ind, const char *label, ...);
