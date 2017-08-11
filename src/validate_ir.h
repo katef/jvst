@@ -151,11 +151,12 @@ struct jvst_ir_frame {
 
 	size_t frame_ind;
 
+	size_t blockind;
+
 	size_t nloops;
 	size_t nmatchers;
 	size_t ncounters;
 	size_t nbitvecs;
-	size_t nblocks;
 	size_t nsplits;
 	size_t ntemps;
 };

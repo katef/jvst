@@ -177,7 +177,7 @@ ir_stmt_frame(void)
 	frame->u.frame.ncounters = 0;
 	frame->u.frame.nbitvecs  = 0;
 
-	frame->u.frame.nblocks = 0;
+	frame->u.frame.blockind = 0;
 	frame->u.frame.ntemps  = 0;
 
 	frame->u.frame.blocks = NULL;
@@ -194,7 +194,7 @@ ir_stmt_block(struct jvst_ir_stmt *frame, const char *prefix)
 
 	blk = ir_stmt_new(JVST_IR_STMT_BLOCK);
 	blk->u.block.block_next = NULL;
-	blk->u.block.lindex     = frame->u.frame.nblocks++;
+	blk->u.block.lindex     = frame->u.frame.blockind++;
 	blk->u.block.prefix     = prefix;
 	blk->u.block.stmts      = NULL;
 
@@ -3281,7 +3281,7 @@ ir_linearize_frame(struct op_linearizer *oplin, struct jvst_ir_stmt *fr)
 
 	assert(fr->type == JVST_IR_STMT_FRAME);
 	assert(fr->u.frame.blocks == NULL);
-	assert(fr->u.frame.nblocks == 0);
+	assert(fr->u.frame.blockind == 0);
 
 	copy = ir_stmt_new(fr->type);
 	copy->u.frame = fr->u.frame;
