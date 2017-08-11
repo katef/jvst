@@ -2901,7 +2901,7 @@ ir_linearize_stmtlist(struct op_linearizer *oplin, struct jvst_ir_stmt *stmt)
 }
 
 static void
-ir_linearize_flatten_block(struct jvst_ir_stmt *block)
+ir_flatten_block(struct jvst_ir_stmt *block)
 {
 	struct jvst_ir_stmt **spp;
 	assert(block != NULL);
@@ -2949,7 +2949,7 @@ follow:
 }
 
 static void
-ir_linearize_prune_block(struct jvst_ir_stmt *block)
+ir_prune_block(struct jvst_ir_stmt *block)
 {
 	struct jvst_ir_stmt *stmt;
 
@@ -3051,7 +3051,7 @@ sort_unsorted_blocks(struct jvst_ir_stmt *blk, struct jvst_ir_stmt **bpp)
 }
 
 static struct jvst_ir_stmt *
-ir_linearize_sort_blocks(struct jvst_ir_stmt *blist)
+ir_topo_sort_blocks(struct jvst_ir_stmt *blist)
 {
 	struct jvst_ir_stmt **q, *b, *next, *ordered, **bpp;
 	size_t i,n;
@@ -3097,7 +3097,7 @@ ir_linearize_sort_blocks(struct jvst_ir_stmt *blist)
 }
 
 static void
-ir_linearize_mark_reachable(struct jvst_ir_stmt *entry)
+ir_mark_reachable(struct jvst_ir_stmt *entry)
 {
 	struct jvst_ir_stmt *stmt;
 
@@ -3112,7 +3112,7 @@ ir_linearize_mark_reachable(struct jvst_ir_stmt *entry)
 			assert(stmt->u.branch->type == JVST_IR_STMT_BLOCK);
 
 			if (!stmt->u.branch->u.block.reachable) {
-				ir_linearize_mark_reachable(stmt->u.branch);
+				ir_mark_reachable(stmt->u.branch);
 			}
 			break;
 
@@ -3121,14 +3121,14 @@ ir_linearize_mark_reachable(struct jvst_ir_stmt *entry)
 			assert(stmt->u.cbranch.br_true->type == JVST_IR_STMT_BLOCK);
 
 			if (!stmt->u.cbranch.br_true->u.block.reachable) {
-				ir_linearize_mark_reachable(stmt->u.cbranch.br_true);
+				ir_mark_reachable(stmt->u.cbranch.br_true);
 			}
 
 			assert(stmt->u.cbranch.br_false != NULL);
 			assert(stmt->u.cbranch.br_false->type == JVST_IR_STMT_BLOCK);
 
 			if (!stmt->u.cbranch.br_false->u.block.reachable) {
-				ir_linearize_mark_reachable(stmt->u.cbranch.br_false);
+				ir_mark_reachable(stmt->u.cbranch.br_false);
 			}
 			break;
 
@@ -3136,6 +3136,141 @@ ir_linearize_mark_reachable(struct jvst_ir_stmt *entry)
 			break;
 		}
 	}
+}
+
+static struct jvst_ir_stmt *
+ir_remove_unreachable_blocks(struct jvst_ir_stmt *entry)
+{
+	struct jvst_ir_stmt *blk, **bpp;
+
+	// mark all blocks as not reachable to start with
+	for (blk = entry; blk != NULL; blk = blk->next) {
+		assert(blk->type == JVST_IR_STMT_BLOCK);
+		blk->u.block.reachable = false;
+	}
+
+	ir_mark_reachable(entry);
+
+	for (bpp=&entry; *bpp != NULL; ) {
+		if ((*bpp)->u.block.reachable) {
+			bpp = &(*bpp)->u.block.block_next;
+			continue;
+		}
+
+		// unreachable, remove block
+		*bpp = (*bpp)->u.block.block_next;
+	}
+
+	return entry;
+}
+
+static void
+ir_assemble_basic_blocks(struct jvst_ir_stmt *frame)
+{
+	struct jvst_ir_stmt **ipp, *blk, **bpp, *entry;
+
+	entry = frame->u.frame.blocks;
+
+	/* first a quick check to ensure that blocks aren't
+	 * connected to other statements
+	 *
+	 * XXX - this only checks in one direction, but that's
+	 * probably sufficient
+	 */
+	for (blk = entry; blk != NULL; blk = blk->u.block.block_next) {
+		assert(blk->type == JVST_IR_STMT_BLOCK);
+		assert(blk->next == NULL);
+	}
+
+	// some small optimizations before we schedule the
+	// blocks
+
+	// flatten SEQs
+	for (blk = entry; blk != NULL; blk = blk->u.block.block_next) {
+		ir_flatten_block(blk);
+	}
+
+	// prune any code after the first branch or
+	// cbranch
+	for (blk = entry; blk != NULL; blk = blk->u.block.block_next) {
+		ir_prune_block(blk);
+	}
+
+	// Mark all blocks as unvisited.  Then mark reachable blocks.
+	// Then eliminate unreachable blocks.
+	entry = ir_remove_unreachable_blocks(entry);
+	assert(entry != NULL);
+
+	// generate traces, sort blocks pseudo-topologically
+	entry = ir_topo_sort_blocks(entry);
+	assert(entry != NULL);
+
+	frame->u.frame.blocks = entry;
+
+	// now wire together the blocks
+	ipp = &frame->u.frame.stmts;
+	for (blk = entry; blk != NULL; blk = blk->u.block.block_next) {
+		// reassert to ensure that wiring the blocks
+		// together hasn't done something weird
+		assert(blk->next == NULL);
+
+		*ipp = blk;
+		ipp = &blk->next;
+	}
+}
+
+static void
+ir_frame_copy_counters(struct jvst_ir_stmt **cpp, struct jvst_ir_stmt *c)
+{
+	for (; c != NULL; c = c->next) {
+		struct jvst_ir_stmt *cc;
+
+		assert(c->data == NULL);
+
+		cc = ir_stmt_new(JVST_IR_STMT_COUNTER);
+		cc->u.counter.label = c->u.counter.label;
+		cc->u.counter.ind   = c->u.counter.ind;
+		cc->u.counter.frame_off = c->u.counter.frame_off;
+
+		assert(c->u.counter.frame != NULL);
+		assert(c->u.counter.frame->data != NULL);
+		assert(((struct jvst_ir_stmt *)c->u.counter.frame->data)->type == JVST_IR_STMT_FRAME);
+		cc->u.counter.frame = c->u.counter.frame->data;
+
+		c->data = cc;
+
+		*cpp = cc;
+		cpp = &cc->next;
+	}
+
+	*cpp = NULL;
+}
+
+static void
+ir_frame_copy_bitvecs(struct jvst_ir_stmt **bvpp, struct jvst_ir_stmt *bv)
+{
+	for (; bv != NULL; bv = bv->next) {
+		struct jvst_ir_stmt *bvc;
+
+		assert(bv->data == NULL);
+
+		bvc = ir_stmt_new(JVST_IR_STMT_BITVECTOR);
+		bvc->u.bitvec.label = bv->u.bitvec.label;
+		bvc->u.bitvec.ind   = bv->u.bitvec.ind;
+		bvc->u.bitvec.nbits = bv->u.bitvec.nbits;
+		bvc->u.bitvec.frame_off = bv->u.counter.frame_off;
+
+		assert(bv->u.bitvec.frame != NULL);
+		assert(bv->u.bitvec.frame->data != NULL);
+		assert(((struct jvst_ir_stmt *)bv->u.bitvec.frame->data)->type == JVST_IR_STMT_FRAME);
+		bvc->u.bitvec.frame = bv->u.bitvec.frame->data;
+
+		bv->data = bvc;
+
+		*bvpp = bvc;
+		bvpp = &bvc->next;
+	}
+	*bvpp = NULL;
 }
 
 static struct jvst_ir_stmt *
@@ -3157,58 +3292,8 @@ ir_linearize_frame(struct op_linearizer *oplin, struct jvst_ir_stmt *fr)
 
 	copy->u.frame.matchers = ir_copy_stmtlist(fr->u.frame.matchers);
 
-	{
-		struct jvst_ir_stmt *c, **cpp;
-		cpp = &copy->u.frame.counters;
-		*cpp = NULL;
-		for (c = fr->u.frame.counters; c != NULL; c = c->next) {
-			struct jvst_ir_stmt *cc;
-
-			assert(c->data == NULL);
-
-			cc = ir_stmt_new(JVST_IR_STMT_COUNTER);
-			cc->u.counter.label = c->u.counter.label;
-			cc->u.counter.ind   = c->u.counter.ind;
-			cc->u.counter.frame_off = c->u.counter.frame_off;
-
-			assert(c->u.counter.frame != NULL);
-			assert(c->u.counter.frame->data != NULL);
-			assert(((struct jvst_ir_stmt *)c->u.counter.frame->data)->type == JVST_IR_STMT_FRAME);
-			cc->u.counter.frame = c->u.counter.frame->data;
-
-			c->data = cc;
-
-			*cpp = cc;
-			cpp = &cc->next;
-		}
-	}
-
-	{
-		struct jvst_ir_stmt *bv, **bvpp;
-		bvpp = &copy->u.frame.bitvecs;
-		*bvpp = NULL;
-		for (bv = fr->u.frame.bitvecs; bv != NULL; bv = bv->next) {
-			struct jvst_ir_stmt *bvc;
-
-			assert(bv->data == NULL);
-
-			bvc = ir_stmt_new(JVST_IR_STMT_BITVECTOR);
-			bvc->u.bitvec.label = bv->u.bitvec.label;
-			bvc->u.bitvec.ind   = bv->u.bitvec.ind;
-			bvc->u.bitvec.nbits = bv->u.bitvec.nbits;
-			bvc->u.bitvec.frame_off = bv->u.counter.frame_off;
-
-			assert(bv->u.bitvec.frame != NULL);
-			assert(bv->u.bitvec.frame->data != NULL);
-			assert(((struct jvst_ir_stmt *)bv->u.bitvec.frame->data)->type == JVST_IR_STMT_FRAME);
-			bvc->u.bitvec.frame = bv->u.bitvec.frame->data;
-
-			bv->data = bvc;
-
-			*bvpp = bvc;
-			bvpp = &bvc->next;
-		}
-	}
+	ir_frame_copy_counters(&copy->u.frame.counters, fr->u.frame.counters);
+	ir_frame_copy_bitvecs(&copy->u.frame.bitvecs, fr->u.frame.bitvecs);
 
 	// splitlists should only be present after linearization
 	assert(fr->u.frame.splits == NULL);
@@ -3236,69 +3321,7 @@ ir_linearize_frame(struct op_linearizer *oplin, struct jvst_ir_stmt *fr)
 		*frame_oplin.bpp = frame_oplin.invalid_blocks;
 	}
 
-	{
-		struct jvst_ir_stmt **ipp, *blk, **bpp;
-
-		/* first a quick check to ensure that blocks aren't
-		 * connected to other statements
-		 *
-		 * XXX - this only checks in one direction, but that's
-		 * probably sufficient
-		 */
-		for (blk = entry; blk != NULL; blk = blk->u.block.block_next) {
-			assert(blk->type == JVST_IR_STMT_BLOCK);
-			assert(blk->next == NULL);
-		}
-
-		// some small optimizations before we schedule the
-		// blocks
-
-		// flatten SEQs
-		for (blk = entry; blk != NULL; blk = blk->u.block.block_next) {
-			ir_linearize_flatten_block(blk);
-		}
-
-		// prune any code after the first branch or
-		// cbranch
-		for (blk = entry; blk != NULL; blk = blk->u.block.block_next) {
-			ir_linearize_prune_block(blk);
-		}
-
-		// Mark all blocks as unvisited.  Then mark reachable blocks.
-		// Then eliminate unreachable blocks.
-		for (blk = entry; blk != NULL; blk = blk->next) {
-			assert(blk->type == JVST_IR_STMT_BLOCK);
-			blk->u.block.reachable = false;
-		}
-
-		ir_linearize_mark_reachable(entry);
-
-		for (bpp=&entry; *bpp != NULL; ) {
-			if ((*bpp)->u.block.reachable) {
-				bpp = &(*bpp)->u.block.block_next;
-				continue;
-			}
-
-			// unreachable, remove block
-			*bpp = (*bpp)->u.block.block_next;
-		}
-
-		// generate traces, sort blocks pseudo-topologically
-		entry = ir_linearize_sort_blocks(entry);
-
-		copy->u.frame.blocks = entry;
-
-		// now wire together the blocks
-		ipp = &copy->u.frame.stmts;
-		for (blk = entry; blk != NULL; blk = blk->u.block.block_next) {
-			// reassert to ensure that wiring the blocks
-			// together hasn't done something weird
-			assert(blk->next == NULL);
-
-			*ipp = blk;
-			ipp = &blk->next;
-		}
-	}
+	ir_assemble_basic_blocks(copy);
 
 	oplin->fpp = frame_oplin.fpp;
 	return copy;
@@ -3314,8 +3337,10 @@ ir_linearize_block(struct op_linearizer *oplin, const char *prefix, struct jvst_
 
 	assert(blknext == NULL || blknext == &LOOP_BLOCK || blknext->type == JVST_IR_STMT_BLOCK);
 
-	blk = ir_stmt_block(oplin->frame, prefix);
 	block_oplin = *oplin;
+
+	blk = ir_stmt_block(oplin->frame, prefix);
+
 	*block_oplin.bpp = blk;
 	block_oplin.bpp = &blk->u.block.block_next;
 
@@ -3326,14 +3351,18 @@ ir_linearize_block(struct op_linearizer *oplin, const char *prefix, struct jvst_
 
 	if (blknext == &LOOP_BLOCK) {
 		struct jvst_ir_stmt *jmp;
+
 		jmp = ir_stmt_new(JVST_IR_STMT_BRANCH);
 		jmp->u.branch = blk;
+
 		*block_oplin.ipp = jmp;
 		block_oplin.ipp = &jmp->next;
 	} else if (blknext != NULL) {
 		struct jvst_ir_stmt *jmp;
+
 		jmp = ir_stmt_new(JVST_IR_STMT_BRANCH);
 		jmp->u.branch = blknext;
+
 		*block_oplin.ipp = jmp;
 		block_oplin.ipp = &jmp->next;
 	}
@@ -3633,9 +3662,8 @@ ir_linearize_cond(struct op_linearizer *oplin, struct jvst_ir_expr *cond, struct
 
 	}
 
-	// XXX - this doesn't handle AND/OR/XOR/NOT &c
 	cbr = ir_stmt_new(JVST_IR_STMT_CBRANCH);
-	cbr->u.cbranch.cond = brcond; // FIXME: linearize!
+	cbr->u.cbranch.cond = brcond;
 	cbr->u.cbranch.br_true = btrue;
 	cbr->u.cbranch.br_false = bfalse;
 
