@@ -1041,12 +1041,25 @@ newir_splitvec(struct arena_info *A, size_t ind, const char *label, ...)
 
 	va_start(args, label);
 	while (fr = va_arg(args, struct jvst_ir_stmt *), fr != NULL) {
+		if (fr == splitlist) {
+			struct jvst_ir_stmt *sl;
+			size_t ind;
+
+			assert(stmt->u.splitvec.split_frames == NULL);
+
+			ind = va_arg(args, int);
+			assert(ind >= 0);
+			stmt->u.splitvec.split_list = newir_splitlist(A, (size_t)ind, 0);
+			goto end;
+		}
+
 		assert(fr->type == JVST_IR_STMT_FRAME);
 		*spp = fr;
 		spp = &(*spp)->next;
 	}
-	va_end(args);
 
+end:
+	va_end(args);
 	return stmt;
 }
 
@@ -1256,15 +1269,16 @@ newir_split(struct arena_info *A, ...)
 			ind = va_arg(args, int);
 			assert(ind >= 0);
 			expr->u.split.split_list = newir_splitlist(A, (size_t)ind, 0);
-			return expr;
+			goto end;
 		}
 
 		assert(fr->type == JVST_IR_STMT_FRAME);
 		*spp = fr;
 		spp = &(*spp)->next;
 	}
-	va_end(args);
 
+end:
+	va_end(args);
 	return expr;
 }
 

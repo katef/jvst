@@ -1296,6 +1296,18 @@ jvst_ir_dump_inner(struct sbuf *buf, struct jvst_ir_stmt *ir, int indent)
 			bv = ir->u.splitvec.bitvec;
 			assert(bv != NULL);
 
+			if (ir->u.splitvec.split_list != NULL) {
+				struct jvst_ir_stmt *split_list;
+
+				split_list = ir->u.splitvec.split_list;
+				assert(split_list->type == JVST_IR_STMT_SPLITLIST);
+
+				sbuf_snprintf(buf, "SPLITVEC(%zu, \"%s_%zu\", list=%zu)",
+					bv->u.bitvec.ind, bv->u.bitvec.label, bv->u.bitvec.ind,
+					split_list->u.split_list.ind);
+				return;
+			}
+
 			sbuf_snprintf(buf, "SPLITVEC(%zu, \"%s_%zu\",\n",
 				bv->u.bitvec.ind,
 				bv->u.bitvec.label,
@@ -3542,7 +3554,53 @@ ir_linearize_cond(struct op_linearizer *oplin, struct jvst_ir_expr *cond, struct
 		break;
 
 	case JVST_IR_EXPR_AND:
+		{
+			struct jvst_ir_stmt *btrue1, *cbr1, *cbr2;
+			struct op_linearizer and_oplin;
+
+			btrue1 = ir_stmt_block(oplin->frame, "and_true");
+			cbr1 = ir_linearize_cond(oplin, cond->u.and_or.left, btrue1, bfalse);
+
+			and_oplin = *oplin;
+			*and_oplin.bpp = btrue1;
+			and_oplin.bpp = &btrue1->u.block.block_next;
+			and_oplin.ipp = &btrue1->u.block.stmts;
+
+			cbr2 = ir_linearize_cond(&and_oplin, cond->u.and_or.right, btrue, bfalse);
+			*and_oplin.ipp = cbr2;
+
+			oplin->fpp = and_oplin.fpp;
+			oplin->bpp = and_oplin.bpp;
+			oplin->valid_block = and_oplin.valid_block;
+			oplin->invalid_blocks = and_oplin.invalid_blocks;
+
+			return cbr1;
+		}
+
 	case JVST_IR_EXPR_OR:
+		{
+			struct jvst_ir_stmt *bfalse1, *cbr1, *cbr2;
+			struct op_linearizer or_oplin;
+
+			bfalse1 = ir_stmt_block(oplin->frame, "or_false");
+			cbr1 = ir_linearize_cond(oplin, cond->u.and_or.left, btrue, bfalse1);
+
+			or_oplin = *oplin;
+			*or_oplin.bpp = bfalse1;
+			or_oplin.bpp = &bfalse1->u.block.block_next;
+			or_oplin.ipp = &bfalse1->u.block.stmts;
+
+			cbr2 = ir_linearize_cond(&or_oplin, cond->u.and_or.right, btrue, bfalse);
+			*or_oplin.ipp = cbr2;
+
+			oplin->fpp = or_oplin.fpp;
+			oplin->bpp = or_oplin.bpp;
+			oplin->valid_block = or_oplin.valid_block;
+			oplin->invalid_blocks = or_oplin.invalid_blocks;
+
+			return cbr1;
+		}
+
 	case JVST_IR_EXPR_NOT:
 	case JVST_IR_EXPR_SEQ:
 		fprintf(stderr, "%s:%d (%s) complex condition %s not yet implemented\n",
@@ -4026,6 +4084,48 @@ ir_linearize_stmt(struct op_linearizer *oplin, struct jvst_ir_stmt *stmt)
 
 
 	case JVST_IR_STMT_SPLITVEC:
+		{
+			struct jvst_ir_stmt *splitlist, *fr, **fpp, *splv, *bv, *bvc;
+
+			splitlist = ir_stmt_new(JVST_IR_STMT_SPLITLIST);
+			splitlist->u.split_list.ind = oplin->frame->u.frame.nsplits++;
+			{
+				struct jvst_ir_stmt **slpp;
+				for (slpp=&oplin->frame->u.frame.splits; *slpp != NULL; slpp = &(*slpp)->next) {
+					continue;
+				}
+
+				*slpp = splitlist;
+			}
+
+			fpp = &splitlist->u.split_list.frames;
+			for (fr = stmt->u.splitvec.split_frames; fr != NULL; fr = fr->next) {
+				struct jvst_ir_stmt *newfr;
+
+				newfr = ir_linearize_frame(oplin, fr);
+				*fpp = newfr;
+				fpp = &newfr->u.frame.split_next;
+				splitlist->u.split_list.nframes++;
+			}
+
+			splv = ir_stmt_new(JVST_IR_STMT_SPLITVEC);
+			splv->u.splitvec.split_frames = NULL;
+			splv->u.splitvec.split_list = splitlist;
+
+			bv = stmt->u.splitvec.bitvec;
+			assert(bv != NULL);
+			assert(bv->type == JVST_IR_STMT_BITVECTOR);
+			assert(bv->data != NULL);
+
+			bvc = bv->data;
+			assert(bvc->type == JVST_IR_STMT_BITVECTOR);
+
+			splv->u.splitvec.bitvec = bvc;
+
+			*oplin->ipp = splv;
+			oplin->ipp = &splv->next;
+		}
+		return;
 
 	case JVST_IR_STMT_BCLEAR:
 	case JVST_IR_STMT_DECR:
