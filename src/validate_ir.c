@@ -2756,13 +2756,25 @@ jvst_ir_stmt_copy(struct jvst_ir_stmt *ir)
 			return copy;
 		}
 
+	case JVST_IR_STMT_BSET:
+		{
+			assert(ir->u.bitop.bitvec != NULL);
+			assert(ir->u.bitop.bitvec->type == JVST_IR_STMT_BITVECTOR);
+			assert(ir->u.bitop.bitvec->data != NULL);
+			assert(((struct jvst_ir_stmt *)ir->u.bitop.bitvec->data)->type == JVST_IR_STMT_BITVECTOR);
+
+			copy->u.bitop = ir->u.bitop;
+			copy->u.bitop.bitvec = copy->u.bitop.bitvec->data;
+
+			return copy;
+		}
+
 	case JVST_IR_STMT_COUNTER:
 	case JVST_IR_STMT_BITVECTOR:
 		/* need to fixup frame references */
 
 	case JVST_IR_STMT_LOOP:
 	case JVST_IR_STMT_BREAK:
-	case JVST_IR_STMT_BSET:
 	case JVST_IR_STMT_BCLEAR:
 	case JVST_IR_STMT_DECR:
 	case JVST_IR_STMT_MATCH:
@@ -3417,10 +3429,25 @@ ir_linearize_cond(struct op_linearizer *oplin, struct jvst_ir_expr *cond, struct
 	case JVST_IR_EXPR_BTESTALL:
 	case JVST_IR_EXPR_BTESTANY:
 	case JVST_IR_EXPR_BTESTONE:
-		fprintf(stderr, "%s:%d (%s) complex condition %s not yet implemented\n",
-				__FILE__, __LINE__, __func__,
-				jvst_ir_expr_type_name(cond->type));
-		abort();
+		{
+			brcond = ir_expr_new(cond->type);
+			brcond->u.btest = cond->u.btest;
+
+			assert(cond->u.btest.frame != NULL);
+			assert(cond->u.btest.frame->type == JVST_IR_STMT_FRAME);
+			assert(cond->u.btest.frame->data != NULL);
+			assert(((struct jvst_ir_stmt *)cond->u.btest.frame->data)->type == JVST_IR_STMT_FRAME);
+
+			brcond->u.btest.frame = cond->u.btest.frame->data;
+
+			assert(cond->u.btest.bitvec != NULL);
+			assert(cond->u.btest.bitvec->type == JVST_IR_STMT_BITVECTOR);
+			assert(cond->u.btest.bitvec->data != NULL);
+			assert(((struct jvst_ir_stmt *)cond->u.btest.bitvec->data)->type == JVST_IR_STMT_BITVECTOR);
+
+			brcond->u.btest.bitvec = cond->u.btest.bitvec->data;
+		}
+		break;
 
 	case JVST_IR_EXPR_AND:
 	case JVST_IR_EXPR_OR:
@@ -3486,6 +3513,10 @@ ir_linearize_rewrite_expr(struct jvst_ir_stmt *frame, struct jvst_ir_expr *expr)
 	case JVST_IR_EXPR_FTEMP:
 	case JVST_IR_EXPR_SLOT:
 	case JVST_IR_EXPR_MATCH:
+	case JVST_IR_EXPR_BTEST:
+	case JVST_IR_EXPR_BTESTALL:
+	case JVST_IR_EXPR_BTESTANY:
+	case JVST_IR_EXPR_BTESTONE:
 		return expr;
 
 	case JVST_IR_EXPR_NE:
@@ -3553,10 +3584,6 @@ ir_linearize_rewrite_expr(struct jvst_ir_stmt *frame, struct jvst_ir_expr *expr)
 			return ir_linearize_rewrite_expr(frame, copy);
 		}
 
-	case JVST_IR_EXPR_BTEST:
-	case JVST_IR_EXPR_BTESTALL:
-	case JVST_IR_EXPR_BTESTANY:
-	case JVST_IR_EXPR_BTESTONE:
 	case JVST_IR_EXPR_COUNT:
 	case JVST_IR_EXPR_BCOUNT:
 	case JVST_IR_EXPR_SPLIT:
@@ -3722,6 +3749,7 @@ ir_linearize_stmt(struct op_linearizer *oplin, struct jvst_ir_stmt *stmt)
 	case JVST_IR_STMT_TOKEN:
 	case JVST_IR_STMT_CONSUME:
 	case JVST_IR_STMT_INCR:
+	case JVST_IR_STMT_BSET:
 		linstmt = jvst_ir_stmt_copy(stmt);
 		*oplin->ipp = linstmt;
 		oplin->ipp = &linstmt->next;
@@ -3904,23 +3932,35 @@ ir_linearize_stmt(struct op_linearizer *oplin, struct jvst_ir_stmt *stmt)
 		}
 		return;
 
+
+	case JVST_IR_STMT_SPLITVEC:
+
+	case JVST_IR_STMT_BCLEAR:
+	case JVST_IR_STMT_DECR:
+		fprintf(stderr, "%s:%d (%s) linearizing IR statement %s not yet implemented\n",
+				__FILE__, __LINE__, __func__, 
+				jvst_ir_stmt_type_name(stmt->type));
+		abort();
+
 	case JVST_IR_STMT_COUNTER:
 	case JVST_IR_STMT_MATCHER:
 	case JVST_IR_STMT_BITVECTOR:
-	case JVST_IR_STMT_BSET:
-	case JVST_IR_STMT_BCLEAR:
-	case JVST_IR_STMT_DECR:
-	case JVST_IR_STMT_SPLITVEC:
+		fprintf(stderr, "%s:%d (%s) IR statement %s should not be encountered while linearizing\n",
+				__FILE__, __LINE__, __func__, 
+				jvst_ir_stmt_type_name(stmt->type));
+		abort();
+
 	case JVST_IR_STMT_BLOCK:
 	case JVST_IR_STMT_BRANCH:
 	case JVST_IR_STMT_CBRANCH:
 	case JVST_IR_STMT_MOVE:
 	case JVST_IR_STMT_CALL:
 	case JVST_IR_STMT_PROGRAM:
-		fprintf(stderr, "%s:%d (%s) linearizing IR statement %s not yet implemented\n",
+		fprintf(stderr, "%s:%d (%s) linearized IR statement %s encountered while linearizing\n",
 				__FILE__, __LINE__, __func__, 
 				jvst_ir_stmt_type_name(stmt->type));
 		abort();
+
 	}
 
 	fprintf(stderr, "%s:%d (%s) unknown IR statement type %d\n",
