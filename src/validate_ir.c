@@ -361,6 +361,9 @@ ir_stmt_branch(struct jvst_ir_stmt *dest)
 	return jmp;
 }
 
+
+/** expression pool and allocator **/
+
 union expr_pool_item {
 	union expr_pool_item *next;
 	struct jvst_ir_expr expr;
@@ -640,7 +643,7 @@ ir_expr_seq(struct jvst_ir_stmt *stmt, struct jvst_ir_expr *expr)
 
 
 
-/** mcase pooling **/
+/** mcase pool and allocator **/
 
 struct jvst_ir_mcase_pool {
 	struct jvst_ir_mcase_pool *next;
@@ -903,7 +906,7 @@ void dump_stmt_list(struct sbuf *buf, enum jvst_ir_stmt_type type, struct jvst_i
 }
 
 void
-jvst_ir_dump_expr(struct sbuf *buf, struct jvst_ir_expr *expr, int indent)
+jvst_ir_dump_expr(struct sbuf *buf, const struct jvst_ir_expr *expr, int indent)
 {
 	sbuf_indent(buf, indent);
 	switch (expr->type) {
@@ -1104,10 +1107,10 @@ jvst_ir_dump_inner(struct sbuf *buf, struct jvst_ir_stmt *ir, int indent)
 			ir->u.invalid.msg);
 		return;
 
-	case JVST_IR_STMT_NOP:	
-	case JVST_IR_STMT_VALID:		
-	case JVST_IR_STMT_TOKEN:		
-	case JVST_IR_STMT_CONSUME:		
+	case JVST_IR_STMT_NOP:
+	case JVST_IR_STMT_VALID:
+	case JVST_IR_STMT_TOKEN:
+	case JVST_IR_STMT_CONSUME:
 		sbuf_snprintf(buf, "%s", jvst_ir_stmt_type_name(ir->type));
 		return;
 
