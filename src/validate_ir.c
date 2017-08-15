@@ -907,7 +907,6 @@ jvst_ir_dump_expr(struct sbuf *buf, struct jvst_ir_expr *expr, int indent)
 {
 	sbuf_indent(buf, indent);
 	switch (expr->type) {
-	case JVST_IR_EXPR_NONE:
 	case JVST_IR_EXPR_TOK_TYPE:
 	case JVST_IR_EXPR_TOK_NUM:
 	case JVST_IR_EXPR_TOK_COMPLETE:
@@ -1071,6 +1070,12 @@ jvst_ir_dump_expr(struct sbuf *buf, struct jvst_ir_expr *expr, int indent)
 		return;
 
 	case JVST_IR_EXPR_SLOT:
+		sbuf_snprintf(buf, "%s(%zu)",
+			jvst_ir_expr_type_name(expr->type),
+			expr->u.slot.ind);
+		return;
+
+	case JVST_IR_EXPR_NONE:
 		fprintf(stderr, "%s:%d (%s) IR expression %s not yet implemented\n",
 				__FILE__, __LINE__, __func__, jvst_ir_expr_type_name(expr->type));
 		abort();

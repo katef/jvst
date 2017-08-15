@@ -231,6 +231,9 @@ struct jvst_ir_expr *
 newir_itemp(struct arena_info *A, size_t ind);
 
 struct jvst_ir_expr *
+newir_slot(struct arena_info *A, size_t ind);
+
+struct jvst_ir_expr *
 newir_eseq(struct arena_info *A, struct jvst_ir_stmt *stmt, struct jvst_ir_expr *expr);
 
 struct jvst_ir_expr *

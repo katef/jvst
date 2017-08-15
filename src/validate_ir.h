@@ -346,6 +346,10 @@ struct jvst_ir_expr {
 		} temp;
 
 		struct {
+			size_t ind;
+		} slot;
+
+		struct {
 			struct fsm *dfa;
 			const char *name;
 			size_t ind;
