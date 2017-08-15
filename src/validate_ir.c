@@ -2609,8 +2609,19 @@ jvst_ir_translate(struct jvst_cnode *ctree)
 	return frame;
 }
 
+struct addr_fixup_list;
+
+static struct jvst_ir_stmt *
+jvst_ir_stmt_copy_inner(struct jvst_ir_stmt *ir, struct addr_fixup_list *fixups);
+
+static void
+addr_fixup_add_stmt(struct addr_fixup_list *l, struct jvst_ir_stmt *stmt, struct jvst_ir_stmt **addrp, struct jvst_ir_stmt *v);
+
+static void
+addr_fixup_add_expr(struct addr_fixup_list *l, struct jvst_ir_expr *expr, struct jvst_ir_stmt **addrp, struct jvst_ir_stmt *v);
+
 struct jvst_ir_expr *
-jvst_ir_expr_copy(struct jvst_ir_expr *ir)
+jvst_ir_expr_copy(struct jvst_ir_expr *ir, struct addr_fixup_list *fixups)
 {
 	struct jvst_ir_expr *copy;
 
@@ -2628,8 +2639,8 @@ jvst_ir_expr_copy(struct jvst_ir_expr *ir)
 
 	case JVST_IR_EXPR_SEQ:
 		return ir_expr_seq(
-			jvst_ir_stmt_copy(ir->u.seq.stmt),
-			jvst_ir_expr_copy(ir->u.seq.expr));
+			jvst_ir_stmt_copy_inner(ir->u.seq.stmt, fixups),
+			jvst_ir_expr_copy(ir->u.seq.expr, fixups));
 
 	case JVST_IR_EXPR_TOK_TYPE:
 	case JVST_IR_EXPR_TOK_NUM:
@@ -2663,6 +2674,14 @@ jvst_ir_expr_copy(struct jvst_ir_expr *ir)
 			return copy;
 		}
 
+	case JVST_IR_EXPR_MATCH:
+		{
+			assert(ir->u.match.dfa != NULL);
+			copy->u.match = ir->u.match;
+
+			return copy;
+		}
+
 	case JVST_IR_EXPR_SPLIT:
 		{
 			assert(ir->u.split.frames == NULL);
@@ -2681,25 +2700,52 @@ jvst_ir_expr_copy(struct jvst_ir_expr *ir)
 			return copy;
 		}
 
-	case JVST_IR_EXPR_NONE:
-	case JVST_IR_EXPR_BOOL:
-	case JVST_IR_EXPR_BCOUNT:
-	case JVST_IR_EXPR_BTEST:
-	case JVST_IR_EXPR_BTESTALL:
-	case JVST_IR_EXPR_BTESTANY:
-	case JVST_IR_EXPR_BTESTONE:
-	case JVST_IR_EXPR_AND:
-	case JVST_IR_EXPR_OR:
-	case JVST_IR_EXPR_NOT:
 	case JVST_IR_EXPR_NE:
 	case JVST_IR_EXPR_LT:
 	case JVST_IR_EXPR_LE:
 	case JVST_IR_EXPR_EQ:
 	case JVST_IR_EXPR_GE:
 	case JVST_IR_EXPR_GT:
+		copy->u.cmp.left = jvst_ir_expr_copy(ir->u.cmp.left, fixups);
+		copy->u.cmp.right = jvst_ir_expr_copy(ir->u.cmp.right, fixups);
+		return copy;
+
 	case JVST_IR_EXPR_ISINT:
+		copy->u.cmp.left = jvst_ir_expr_copy(ir->u.cmp.left, fixups);
+		copy->u.cmp.right = jvst_ir_expr_copy(ir->u.cmp.right, fixups);
+		return copy;
+
 	case JVST_IR_EXPR_SLOT:
-	case JVST_IR_EXPR_MATCH:
+		copy->u.isint.arg = jvst_ir_expr_copy(ir->u.isint.arg, fixups);
+		return copy;
+
+	case JVST_IR_EXPR_BCOUNT:
+	case JVST_IR_EXPR_BTEST:
+	case JVST_IR_EXPR_BTESTALL:
+	case JVST_IR_EXPR_BTESTANY:
+	case JVST_IR_EXPR_BTESTONE:
+		{
+			assert(ir->u.btest.frame != NULL);
+			assert(ir->u.btest.bitvec != NULL);
+			assert(ir->u.btest.bitvec->data != NULL);
+			copy->u.btest = ir->u.btest;
+			copy->u.btest.bitvec = ir->u.btest.bitvec->data;
+			assert(copy->u.btest.bitvec->type == JVST_IR_STMT_BITVECTOR);
+
+			if (ir->u.btest.frame->data == NULL) {
+				addr_fixup_add_expr(fixups, ir, &copy->u.btest.frame, ir->u.btest.frame);
+			} else {
+				copy->u.btest.frame = ir->u.btest.frame->data;
+			}
+
+			return copy;
+		}
+
+	case JVST_IR_EXPR_NONE:
+	case JVST_IR_EXPR_BOOL:
+	case JVST_IR_EXPR_AND:
+	case JVST_IR_EXPR_OR:
+	case JVST_IR_EXPR_NOT:
 		fprintf(stderr, "%s:%d (%s) copying IR expression %s not yet implemented\n",
 				__FILE__, __LINE__, __func__, 
 				jvst_ir_expr_type_name(ir->type));
@@ -2712,13 +2758,13 @@ jvst_ir_expr_copy(struct jvst_ir_expr *ir)
 }
 
 static struct jvst_ir_stmt *
-ir_deepcopy_stmtlist(struct jvst_ir_stmt *l)
+ir_deepcopy_stmtlist(struct jvst_ir_stmt *l, struct addr_fixup_list *fixups)
 {
 	struct jvst_ir_stmt *n, *copy = NULL, **spp = &copy;
 
 	for (n = l; n != NULL; n = n->next) {
 		struct jvst_ir_stmt *c;
-		c = jvst_ir_stmt_copy(n);
+		c = jvst_ir_stmt_copy_inner(n, fixups);
 		*spp = c;
 		spp = &c->next;
 	}
@@ -2726,8 +2772,92 @@ ir_deepcopy_stmtlist(struct jvst_ir_stmt *l)
 	return copy;
 }
 
-struct jvst_ir_stmt *
-jvst_ir_stmt_copy(struct jvst_ir_stmt *ir)
+struct addr_fixup {
+	struct jvst_ir_stmt **addrp;
+	struct jvst_ir_stmt *orig_value;
+	union {
+		struct jvst_ir_stmt *stmt;
+		struct jvst_ir_expr *expr;
+	} elt;
+	int stmt;
+};
+
+struct addr_fixup_list {
+	size_t len;
+	size_t cap;
+	struct addr_fixup *fixups;
+};
+
+struct addr_fixup *
+addr_fixup_add_inner(struct addr_fixup_list *l, struct jvst_ir_stmt **addrp, struct jvst_ir_stmt *v)
+{
+	size_t i;
+
+	if (l->len >= l->cap) {
+		size_t newsz = l->cap;
+		if (newsz < 4) {
+			newsz = 4;
+		} else if (newsz < 1024) {
+			newsz *= 2;
+		} else {
+			newsz += newsz/4;
+		}
+
+		assert(newsz > l->cap+1);
+		l->fixups = xrealloc(l->fixups, newsz * sizeof l->fixups[0]);
+		l->cap = newsz;
+	}
+
+	i = l->len++;
+	assert(l->len <= l->cap);
+
+	l->fixups[i].addrp = addrp;
+	l->fixups[i].orig_value = v;
+
+	return &l->fixups[i];
+}
+
+static void
+addr_fixup_add_stmt(struct addr_fixup_list *l, struct jvst_ir_stmt *stmt, struct jvst_ir_stmt **addrp, struct jvst_ir_stmt *v)
+{
+	struct addr_fixup *f;
+
+	f = addr_fixup_add_inner(l, addrp, v);
+	f->stmt = 1;
+	f->elt.stmt = stmt;
+}
+
+static void
+addr_fixup_add_expr(struct addr_fixup_list *l, struct jvst_ir_expr *expr, struct jvst_ir_stmt **addrp, struct jvst_ir_stmt *v)
+{
+	struct addr_fixup *f;
+
+	f = addr_fixup_add_inner(l, addrp, v);
+	f->stmt = 0;
+	f->elt.expr = expr;
+}
+
+static void
+addr_fixup_free(struct addr_fixup_list *l)
+{
+	if (l == NULL) {
+		return;
+	}
+
+	free(l->fixups);
+}
+
+static void
+ir_frame_copy_counters(struct jvst_ir_stmt **cpp, struct jvst_ir_stmt *c);
+
+static void
+ir_frame_copy_bitvecs(struct jvst_ir_stmt **bvpp, struct jvst_ir_stmt *bv);
+
+static struct jvst_ir_stmt *
+ir_copy_stmtlist(struct jvst_ir_stmt *n);
+
+static struct jvst_ir_stmt *
+jvst_ir_stmt_copy_inner(struct jvst_ir_stmt *ir, struct addr_fixup_list *fixups)
 {
 	struct jvst_ir_stmt *copy;
 
@@ -2748,41 +2878,60 @@ jvst_ir_stmt_copy(struct jvst_ir_stmt *ir)
 		{
 			struct jvst_ir_stmt *stmt, **spp;
 
+			assert(ir->data == NULL);
+			ir->data = copy;
+
 			copy->u.frame = ir->u.frame;
 
-			spp = &copy->u.frame.counters;
-			*spp = NULL;
-			for (stmt = ir->u.frame.counters; stmt != NULL; stmt = stmt->next) {
-				*spp = jvst_ir_stmt_copy(stmt);
-				spp = &(*spp)->next;
-			}
+			ir_frame_copy_counters(&copy->u.frame.counters, ir->u.frame.counters);
+			ir_frame_copy_bitvecs(&copy->u.frame.bitvecs, ir->u.frame.bitvecs);
+			copy->u.frame.matchers = ir_copy_stmtlist(ir->u.frame.matchers);
 
-			spp = &copy->u.frame.matchers;
-			*spp = NULL;
-			for (stmt = ir->u.frame.matchers; stmt != NULL; stmt = stmt->next) {
-				*spp = jvst_ir_stmt_copy(stmt);
-				spp = &(*spp)->next;
-			}
+			// XXX - this needs some rethinking.  We're using frames to hold
+			// blocks and a statement list, and the can hold the same objects,
+			// which makes it awkward to copy them.
+			//
+			// Currently:
+			//   1. If ir->u.frame.blocks != NULL, copy blocks.
+			//   	Then, if ir->u.frame.stmts != NULL, iterate through the
+			//   	   blocks, if the statement is not a block, error out
+			//   	   (abort).  If the statement is a block, wire its copy
+			//   	   into the statement list
+			//
+			//   2. If ir->u.frame.blocks == NULL, copy ir->u.frame.stmts
+			//      verbatim.
+			if (ir->u.frame.blocks) {
+				spp = &copy->u.frame.blocks;
+				*spp = NULL;
+				for (stmt = ir->u.frame.blocks; stmt != NULL; stmt = stmt->next) {
+					*spp = jvst_ir_stmt_copy_inner(stmt, fixups);
+					spp = &(*spp)->u.block.block_next;
+				}
 
-			spp = &copy->u.frame.bitvecs;
-			*spp = NULL;
-			for (stmt = ir->u.frame.bitvecs; stmt != NULL; stmt = stmt->next) {
-				*spp = jvst_ir_stmt_copy(stmt);
-				spp = &(*spp)->next;
-			}
+				spp = &copy->u.frame.stmts;
+				*spp = NULL;
+				for (stmt = ir->u.frame.stmts; stmt != NULL; stmt = stmt->next) {
+					struct jvst_ir_stmt *newblk;
 
-			spp = &copy->u.frame.blocks;
-			*spp = NULL;
-			for (stmt = ir->u.frame.blocks; stmt != NULL; stmt = stmt->next) {
-				*spp = jvst_ir_stmt_copy(stmt);
-				spp = &(*spp)->next;
-			}
+					if (stmt->type != JVST_IR_STMT_BLOCK) {
+						fprintf(stderr, "%s:%d (%s) invalid statement in FRAME with blocks list: %s\n",
+							__FILE__, __LINE__, __func__, jvst_ir_stmt_type_name(stmt->type));
+					}
 
-			spp = &copy->u.frame.stmts;
-			*spp = NULL;
-			for (stmt = ir->u.frame.stmts; stmt != NULL; stmt = stmt->next) {
-				*spp = jvst_ir_stmt_copy(stmt);
-				spp = &(*spp)->next;
+					newblk = stmt->data;
+					assert(newblk != NULL);
+					assert(newblk->type == JVST_IR_STMT_BLOCK);
+
+					*spp = newblk;
+					spp = &newblk->next;
+				}
+			} else {
+				spp = &copy->u.frame.stmts;
+				*spp = NULL;
+				for (stmt = ir->u.frame.stmts; stmt != NULL; stmt = stmt->next) {
+					*spp = jvst_ir_stmt_copy_inner(stmt, fixups);
+					spp = &(*spp)->next;
+				}
 			}
 		}
 		return copy;
@@ -2791,18 +2940,18 @@ jvst_ir_stmt_copy(struct jvst_ir_stmt *ir)
 		{
 			struct jvst_ir_stmt *stmt, **spp;
 
-			copy->u.if_.cond     = jvst_ir_expr_copy(ir->u.if_.cond);
-			copy->u.if_.br_true  = jvst_ir_stmt_copy(ir->u.if_.br_true);
-			copy->u.if_.br_false = jvst_ir_stmt_copy(ir->u.if_.br_false);
+			copy->u.if_.cond     = jvst_ir_expr_copy(ir->u.if_.cond, fixups);
+			copy->u.if_.br_true  = jvst_ir_stmt_copy_inner(ir->u.if_.br_true, fixups);
+			copy->u.if_.br_false = jvst_ir_stmt_copy_inner(ir->u.if_.br_false, fixups);
 		}
 		return copy;
 
 	case JVST_IR_STMT_PROGRAM:
-		copy->u.program.frames = ir_deepcopy_stmtlist(ir->u.program.frames);
+		copy->u.program.frames = ir_deepcopy_stmtlist(ir->u.program.frames, fixups);
 		return copy;
 
 	case JVST_IR_STMT_SEQ:
-		copy->u.stmt_list = ir_deepcopy_stmtlist(ir->u.stmt_list);
+		copy->u.stmt_list = ir_deepcopy_stmtlist(ir->u.stmt_list, fixups);
 		return copy;
 
 	case JVST_IR_STMT_MATCHER:
@@ -2812,8 +2961,8 @@ jvst_ir_stmt_copy(struct jvst_ir_stmt *ir)
 	case JVST_IR_STMT_MOVE:
 		{
 			struct jvst_ir_expr *dst, *src;
-			dst = jvst_ir_expr_copy(ir->u.move.dst);
-			src = jvst_ir_expr_copy(ir->u.move.src);
+			dst = jvst_ir_expr_copy(ir->u.move.dst, fixups);
+			src = jvst_ir_expr_copy(ir->u.move.src, fixups);
 			return ir_stmt_move(dst,src);
 		}
 
@@ -2842,30 +2991,131 @@ jvst_ir_stmt_copy(struct jvst_ir_stmt *ir)
 			return copy;
 		}
 
-	case JVST_IR_STMT_COUNTER:
-	case JVST_IR_STMT_BITVECTOR:
-	case JVST_IR_STMT_SPLITLIST:
-		/* need to fixup frame references */
+	case JVST_IR_STMT_SPLITVEC:
+		{
+			assert(ir->u.splitvec.bitvec != NULL);
+			assert(ir->u.splitvec.bitvec->type == JVST_IR_STMT_BITVECTOR);
+			assert(ir->u.splitvec.bitvec->data != NULL);
+			assert(((struct jvst_ir_stmt *)ir->u.splitvec.bitvec->data)->type == JVST_IR_STMT_BITVECTOR);
+
+			copy->u.splitvec = ir->u.splitvec;
+			copy->u.splitvec.bitvec = copy->u.splitvec.bitvec->data;
+
+			return copy;
+		}
+
+	case JVST_IR_STMT_BLOCK:
+		{
+			assert(ir->data == NULL);
+
+			copy->u.block = ir->u.block;
+			copy->u.block.block_next = NULL;
+			copy->u.block.stmts = NULL;
+			ir->data = copy;
+
+			copy->u.block.stmts = ir_deepcopy_stmtlist(ir->u.block.stmts, fixups);
+			return copy;
+		}
+
+	case JVST_IR_STMT_CBRANCH:
+		{
+			copy->u.cbranch.cond = jvst_ir_expr_copy(ir->u.cbranch.cond, fixups);
+
+			if (ir->u.cbranch.br_true != NULL) {
+				if (ir->u.cbranch.br_true->data == NULL) {
+					addr_fixup_add_stmt(fixups, ir, &copy->u.cbranch.br_true, ir->u.cbranch.br_true);
+				} else {
+					copy->u.cbranch.br_true = ir->u.cbranch.br_true->data;
+				}
+			}
+
+			if (ir->u.cbranch.br_false != NULL) {
+				if (ir->u.cbranch.br_false->data == NULL) {
+					addr_fixup_add_stmt(fixups, ir, &copy->u.cbranch.br_false, ir->u.cbranch.br_false);
+				} else {
+					copy->u.cbranch.br_false = ir->u.cbranch.br_false->data;
+				}
+			}
+
+			return copy;
+		}
+
+	case JVST_IR_STMT_BRANCH:
+		{
+			if (ir->u.branch != NULL) {
+				if (ir->u.branch->data == NULL) {
+					addr_fixup_add_stmt(fixups, ir, &copy->u.branch, ir->u.branch);
+				} else {
+					copy->u.branch = ir->u.branch->data;
+				}
+			}
+
+			return copy;
+		}
+
+	case JVST_IR_STMT_CALL:
+		{
+			assert(ir->u.call.frame != NULL);
+			if (ir->u.call.frame->data == NULL) {
+				addr_fixup_add_stmt(fixups, ir, &copy->u.call.frame, ir->u.call.frame);
+			} else {
+				copy->u.call.frame = ir->u.call.frame->data;
+			}
+			return copy;
+		}
+		/* need to fixup frame and block references */
 
 	case JVST_IR_STMT_LOOP:
 	case JVST_IR_STMT_BREAK:
 	case JVST_IR_STMT_BCLEAR:
 	case JVST_IR_STMT_DECR:
 	case JVST_IR_STMT_MATCH:
-	case JVST_IR_STMT_SPLITVEC:
-	case JVST_IR_STMT_BLOCK:
-	case JVST_IR_STMT_BRANCH:
-	case JVST_IR_STMT_CBRANCH:
-	case JVST_IR_STMT_CALL:
 		fprintf(stderr, "%s:%d (%s) copying IR statement %s not yet implemented\n",
 				__FILE__, __LINE__, __func__, 
 				jvst_ir_stmt_type_name(ir->type));
 		abort();
+
+	case JVST_IR_STMT_COUNTER:
+	case JVST_IR_STMT_BITVECTOR:
+	case JVST_IR_STMT_SPLITLIST:
+		fprintf(stderr, "%s:%d (%s) IR statement %s should be copied as part of the frame\n",
+				__FILE__, __LINE__, __func__, 
+				jvst_ir_stmt_type_name(ir->type));
+		abort();
+
 	}
 
 	fprintf(stderr, "%s:%d (%s) unknown IR statement type %d\n",
 			__FILE__, __LINE__, __func__, ir->type);
 	abort();
+}
+
+static void
+fixup_addresses(struct addr_fixup_list *fixups)
+{
+	size_t i,n;
+	n = fixups->len;
+	for (i=0; i < n; i++) {
+		struct jvst_ir_stmt **addrp, *orig;
+		addrp = fixups->fixups[i].addrp;
+		orig = fixups->fixups[i].orig_value;
+
+		assert(orig->data != NULL);
+		*addrp = orig->data;
+	}
+}
+
+struct jvst_ir_stmt *
+jvst_ir_stmt_copy(struct jvst_ir_stmt *ir)
+{
+	struct addr_fixup_list fixups = { 0 };
+	struct jvst_ir_stmt *copy;
+
+	copy = jvst_ir_stmt_copy_inner(ir, &fixups);
+	fixup_addresses(&fixups);
+	addr_fixup_free(&fixups);
+
+	return copy;
 }
 
 struct op_linearizer {
