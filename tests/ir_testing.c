@@ -31,9 +31,9 @@ run_ir_test(const char *fname, const struct ir_test *t)
 		break;
 
 	case LINEARIZE:
-		assert(t->linearized != NULL);
+		assert(t->xformed != NULL);
 
-		expected = t->linearized;
+		expected = t->xformed;
 		simplified = jvst_cnode_simplify(t->ctree);
 		canonified = jvst_cnode_canonify(simplified);
 		translated = jvst_ir_translate(canonified);

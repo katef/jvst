@@ -13,7 +13,7 @@ struct ir_test {
 	enum ir_test_type type;
 	struct jvst_cnode *ctree;
 	struct jvst_ir_stmt *translated;
-	struct jvst_ir_stmt *linearized;
+	struct jvst_ir_stmt *xformed;
 };
 
 #define UNIMPLEMENTED(testlist) do{ nskipped++; (void)testlist; }while(0)
