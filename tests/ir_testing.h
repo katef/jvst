@@ -7,6 +7,7 @@ enum ir_test_type {
 	STOP = 0,
 	TRANSLATE,
 	LINEARIZE,
+	FLATTEN,
 };
 
 struct ir_test {

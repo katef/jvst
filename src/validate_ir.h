@@ -369,6 +369,12 @@ jvst_ir_stmt_copy(struct jvst_ir_stmt *ir);
 struct jvst_ir_stmt *
 jvst_ir_linearize(struct jvst_ir_stmt *ir);
 
+/* Flattens IR, eliminates unnecessary branches, and numbers remaining
+ * instructions
+ */
+struct jvst_ir_stmt *
+jvst_ir_flatten(struct jvst_ir_stmt *);
+
 int
 jvst_ir_dump(struct jvst_ir_stmt *ir, char *buf, size_t nb);
 

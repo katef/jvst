@@ -18,7 +18,8 @@ run_ir_test(const char *fname, const struct ir_test *t)
 	switch (t->type) {
 	default:
 	case STOP:
-		fprintf(stderr, "SHOULD NOT REACH!\n");
+		fprintf(stderr, "%s:%d (%s) SHOULD NOT REACH!\n",
+			__FILE__, __LINE__, __func__);
 		abort();
 
 	case TRANSLATE:
@@ -38,6 +39,20 @@ run_ir_test(const char *fname, const struct ir_test *t)
 		canonified = jvst_cnode_canonify(simplified);
 		translated = jvst_ir_translate(canonified);
 		result = jvst_ir_linearize(translated);
+		break;
+
+	case FLATTEN:
+		{
+			struct jvst_ir_stmt *linearized;
+			assert(t->xformed != NULL);
+
+			expected = t->xformed;
+			simplified = jvst_cnode_simplify(t->ctree);
+			canonified = jvst_cnode_canonify(simplified);
+			translated = jvst_ir_translate(canonified);
+			linearized = jvst_ir_linearize(translated);
+			result = jvst_ir_flatten(linearized);
+		}
 		break;
 	}
 

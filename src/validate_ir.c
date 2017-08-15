@@ -4530,4 +4530,20 @@ jvst_ir_print(struct jvst_ir_stmt *stmt)
 	fprintf(stderr, "%s\n", buf);
 }
 
+struct jvst_ir_stmt *
+jvst_ir_flatten(struct jvst_ir_stmt *prog)
+{
+	struct jvst_ir_stmt *copy, *fr, **fpp;
+
+	assert(prog->type == JVST_IR_STMT_PROGRAM);
+	copy = jvst_ir_stmt_copy(prog);
+
+	for(fr = copy->u.program.frames; fr != NULL; fr = fr->next) {
+		ir_flatten_frame(fr);
+		ir_assemble_fixup_jumps(fr);
+	}
+
+	return copy;
+}
+
 /* vim: set tabstop=8 shiftwidth=8 noexpandtab: */
