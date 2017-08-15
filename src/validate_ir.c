@@ -3464,15 +3464,59 @@ ir_assemble_basic_blocks(struct jvst_ir_stmt *frame)
 
 	frame->u.frame.blocks = entry;
 
-	// now wire together the blocks
+	// now assemble blocks together
 	ipp = &frame->u.frame.stmts;
 	for (blk = entry; blk != NULL; blk = blk->u.block.block_next) {
-		// reassert to ensure that wiring the blocks
-		// together hasn't done something weird
+		// assert to ensure that unprocessed blocks are still unconnected
 		assert(blk->next == NULL);
 
 		*ipp = blk;
 		ipp = &blk->next;
+	}
+}
+
+static void
+ir_flatten_frame(struct jvst_ir_stmt *frame)
+{
+	struct jvst_ir_stmt **ipp, *blk;
+
+	assert(frame->type == JVST_IR_STMT_FRAME);
+
+	// assemble a linear statement list by flattening the blocks
+	ipp = &frame->u.frame.stmts;
+	for (blk = frame->u.frame.blocks; blk != NULL; blk = blk->u.block.block_next) {
+		*ipp = blk;
+		ipp = &blk->next;
+
+		*ipp = blk->u.block.stmts;
+		for (; (*ipp) != NULL; ipp = &(*ipp)->next) {
+			continue;
+		}
+
+		blk->u.block.stmts = NULL;
+	}
+}
+
+static void
+ir_assemble_fixup_jumps(struct jvst_ir_stmt *frame)
+{
+	struct jvst_ir_stmt **ipp;
+	for (ipp = &frame->u.frame.stmts; *ipp != NULL; ipp = &(*ipp)->next) {
+		if ((*ipp)->type != JVST_IR_STMT_BRANCH) {
+			continue;
+		}
+
+		if ((*ipp)->next == NULL) {
+			continue;
+		}
+
+		if ((*ipp)->next->type != JVST_IR_STMT_BLOCK) {
+			continue;
+		}
+
+		if ((*ipp)->u.branch == (*ipp)->next) {
+			*ipp = (*ipp)->next;
+		}
 	}
 }
 
