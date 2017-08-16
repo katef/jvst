@@ -1478,6 +1478,7 @@ emit_cond_arg(struct op_assembler *opasm, struct jvst_ir_expr *arg)
 			return ireg;
 		}
 
+	case JVST_IR_EXPR_INT:
 	case JVST_IR_EXPR_BOOL:
 	case JVST_IR_EXPR_BCOUNT:
 	case JVST_IR_EXPR_BTEST:
@@ -1579,6 +1580,7 @@ emit_cmp(struct op_assembler *opasm, struct jvst_ir_expr *expr,
 	case JVST_IR_EXPR_BTESTONE:
 	case JVST_IR_EXPR_BOOL:
 	case JVST_IR_EXPR_NUM:
+	case JVST_IR_EXPR_INT:
 	case JVST_IR_EXPR_SIZE:
 	case JVST_IR_EXPR_TOK_TYPE:
 	case JVST_IR_EXPR_TOK_NUM:
@@ -1753,6 +1755,7 @@ op_assemble_cond(struct op_assembler *opasm, struct jvst_ir_expr *cond,
 		abort();
 
 	case JVST_IR_EXPR_NUM:
+	case JVST_IR_EXPR_INT:
 	case JVST_IR_EXPR_SIZE:
 	case JVST_IR_EXPR_TOK_TYPE:
 	case JVST_IR_EXPR_TOK_NUM:
@@ -1835,6 +1838,7 @@ op_assemble_if_inner(struct op_assembler *opasm, struct jvst_ir_expr *cond,
 
 	case JVST_IR_EXPR_NONE:
 	case JVST_IR_EXPR_NUM:
+	case JVST_IR_EXPR_INT:
 	case JVST_IR_EXPR_SIZE:
 	case JVST_IR_EXPR_TOK_TYPE:
 	case JVST_IR_EXPR_TOK_NUM:
@@ -2086,15 +2090,20 @@ op_assemble(struct op_assembler *opasm, struct jvst_ir_stmt *stmt)
 	case JVST_IR_STMT_BLOCK:
 	case JVST_IR_STMT_BRANCH:
 	case JVST_IR_STMT_CBRANCH:
-	case JVST_IR_STMT_COUNTER:
-	case JVST_IR_STMT_MATCHER:
-	case JVST_IR_STMT_BITVECTOR:
 	case JVST_IR_STMT_BCLEAR:
 	case JVST_IR_STMT_DECR:
 	case JVST_IR_STMT_MOVE:
 	case JVST_IR_STMT_CALL:
 	case JVST_IR_STMT_PROGRAM:
 		fprintf(stderr, "%s:%d (%s) IR statement %s not yet implemented\n",
+			__FILE__, __LINE__, __func__, jvst_ir_stmt_type_name(stmt->type));
+		abort();
+
+	case JVST_IR_STMT_COUNTER:
+	case JVST_IR_STMT_MATCHER:
+	case JVST_IR_STMT_BITVECTOR:
+	case JVST_IR_STMT_SPLITLIST:
+		fprintf(stderr, "%s:%d (%s) should not encounter IR statement %s in op assembly\n",
 			__FILE__, __LINE__, __func__, jvst_ir_stmt_type_name(stmt->type));
 		abort();
 	}
