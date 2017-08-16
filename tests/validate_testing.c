@@ -1720,6 +1720,7 @@ newop_cmp(struct arena_info *A, enum jvst_vm_op op,
 	case JVST_OP_BAND:
 	case JVST_OP_VALID:
 	case JVST_OP_INVALID:
+	case JVST_OP_MOVE:
 		fprintf(stderr, "OP %s is not a comparison\n",
 			jvst_op_name(op));
 		abort();
@@ -1855,6 +1856,7 @@ newop_load(struct arena_info *A, enum jvst_vm_op op,
 	case JVST_OP_BAND:
 	case JVST_OP_VALID:
 	case JVST_OP_INVALID:
+	case JVST_OP_MOVE:
 		fprintf(stderr, "OP %s is not a load\n",
 			jvst_op_name(op));
 		abort();
@@ -1913,6 +1915,7 @@ newop_br(struct arena_info *A, enum jvst_vm_op op, const char *label)
 	case JVST_OP_BAND:
 	case JVST_OP_VALID:
 	case JVST_OP_INVALID:
+	case JVST_OP_MOVE:
 		fprintf(stderr, "%s:%d (%s) OP %s is not a branch\n",
 		__FILE__, __LINE__, __func__, jvst_op_name(op));
 		abort();

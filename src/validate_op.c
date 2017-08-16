@@ -545,6 +545,7 @@ jvst_op_name(enum jvst_vm_op op)
 	case JVST_OP_BAND:      return "BAND";
 	case JVST_OP_VALID:     return "VALID";
 	case JVST_OP_INVALID:   return "INVALID";
+	case JVST_OP_MOVE: 	return "MOVE";
 	}
 
 	fprintf(stderr, "Unknown OP %d\n", op);
@@ -1022,6 +1023,7 @@ emit_branch(struct op_assembler *opasm, enum jvst_vm_op op, struct jvst_op_block
 	case JVST_OP_BAND:
 	case JVST_OP_VALID:
 	case JVST_OP_INVALID:
+	case JVST_OP_MOVE:
 		fprintf(stderr, "op %s is not a branch\n", jvst_op_name(op));
 		abort();
 
@@ -1080,6 +1082,7 @@ emit_cond(struct op_assembler *opasm, enum jvst_vm_op op,
 	case JVST_OP_BAND:
 	case JVST_OP_VALID:
 	case JVST_OP_INVALID:
+	case JVST_OP_MOVE:
 		fprintf(stderr, "op %s is not a conditional\n", jvst_op_name(op));
 		abort();
 	}
