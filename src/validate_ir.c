@@ -2711,12 +2711,11 @@ jvst_ir_expr_copy(struct jvst_ir_expr *ir, struct addr_fixup_list *fixups)
 		return copy;
 
 	case JVST_IR_EXPR_ISINT:
-		copy->u.cmp.left = jvst_ir_expr_copy(ir->u.cmp.left, fixups);
-		copy->u.cmp.right = jvst_ir_expr_copy(ir->u.cmp.right, fixups);
+		copy->u.isint.arg = jvst_ir_expr_copy(ir->u.isint.arg, fixups);
 		return copy;
 
 	case JVST_IR_EXPR_SLOT:
-		copy->u.isint.arg = jvst_ir_expr_copy(ir->u.isint.arg, fixups);
+		copy->u.slot = copy->u.slot;
 		return copy;
 
 	case JVST_IR_EXPR_BCOUNT:
