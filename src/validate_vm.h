@@ -87,6 +87,8 @@ enum jvst_vm_op {
 	JVST_OP_FLOAD,		// Loads a float: FLOAD(fregO,const_index)	fregO = fconsts[const_index]
 	JVST_OP_ILOAD,		// Loads a size/int: ILOAD(iregO,const_or_slot) iregO = slot[ind] or iregO = iconsts[ind]
 
+	JVST_OP_MOVE,		// Moves a slot to another slot
+
 	JVST_OP_INCR,		// Increments a slot: INCR(ind,reg_or_const)	slot[ind] = slot[ind] + reg_or_const
 
 	JVST_OP_BSET,		// Sets a bit. BSET(slotA,bit)

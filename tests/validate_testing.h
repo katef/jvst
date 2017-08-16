@@ -289,7 +289,7 @@ static inline struct jvst_op_arg
 oparg_make(enum jvst_op_arg_type type, int64_t ind) {
 	struct jvst_op_arg arg = { 
 		.type = type,
-		.index = ind,
+		.u = { .index = ind },
 	};
 	return arg;
 }

@@ -199,27 +199,44 @@ op_arg_dump(struct sbuf *buf, struct jvst_op_arg arg)
 		return;
 
 	case JVST_VM_ARG_INT:
-		sbuf_snprintf(buf,"%%I%" PRId64, arg.index);
+		sbuf_snprintf(buf,"%%I%" PRId64, arg.u.index);
 		return;
 
 	case JVST_VM_ARG_FLOAT:
-		sbuf_snprintf(buf,"%%F%" PRId64, arg.index);
+		sbuf_snprintf(buf,"%%F%" PRId64, arg.u.index);
 		return;
 
 	case JVST_VM_ARG_TOKTYPE:
-		sbuf_snprintf(buf,"$%s", evt2name(arg.index));
+		sbuf_snprintf(buf,"$%s", evt2name(arg.u.index));
 		return;
 
 	case JVST_VM_ARG_CONST:
-		sbuf_snprintf(buf,"$%" PRId64, arg.index);
+		sbuf_snprintf(buf,"$%" PRId64, arg.u.index);
 		return;
 
 	case JVST_VM_ARG_POOL:
-		sbuf_snprintf(buf,"POOL(%" PRId64 ")", arg.index);
+		sbuf_snprintf(buf,"POOL(%" PRId64 ")", arg.u.index);
 		return;
 
 	case JVST_VM_ARG_SLOT:
-		sbuf_snprintf(buf,"SLOT(%" PRId64 ")", arg.index);
+		sbuf_snprintf(buf,"SLOT(%" PRId64 ")", arg.u.index);
+		return;
+
+	case JVST_VM_ARG_LABEL:
+		sbuf_snprintf(buf,":%s", (void *)arg.u.label);
+		return;
+
+	case JVST_VM_ARG_INSTR:
+		{
+			const char *lbl;
+
+			lbl = NULL;
+			if (arg.u.dest != NULL && arg.u.dest->label != NULL) {
+				lbl = arg.u.dest->label;
+			}
+
+			sbuf_snprintf(buf,":%s", lbl);
+		}
 		return;
 	}
 
@@ -267,11 +284,29 @@ op_instr_dump(struct sbuf *buf, struct jvst_op_instr *instr)
 	case JVST_OP_BR:
 	case JVST_OP_CBT:
 	case JVST_OP_CBF:
-		sbuf_snprintf(buf, "%s :%s",
-			jvst_op_name(instr->op),
-			(instr->u.branch.dest != NULL)
-				? instr->u.branch.dest->label
-				: instr->u.branch.label);
+		{
+			const char *lbl = NULL;
+
+			switch (instr->u.args[0].type) {
+			case JVST_VM_ARG_INSTR:
+				lbl = instr->u.args[0].u.dest->label;
+				break;
+
+			case JVST_VM_ARG_LABEL:
+				lbl = instr->u.args[0].u.label;
+				break;
+
+			default:
+				/* nop */
+				break;
+			}
+
+			if (lbl == NULL) {
+				lbl = "(null)";
+			}
+
+			sbuf_snprintf(buf, "%s :%s", jvst_op_name(instr->op), lbl);
+		}
 		break;
 
 	case JVST_OP_CALL:
@@ -307,7 +342,7 @@ op_instr_dump(struct sbuf *buf, struct jvst_op_instr *instr)
 	case JVST_OP_INVALID:
 		sbuf_snprintf(buf, "%s %d",
 			jvst_op_name(instr->op),
-			instr->u.ecode);
+			instr->u.args[0].u.index);
 		break;
 
 	case JVST_OP_BAND:
@@ -528,6 +563,129 @@ jvst_op_dump(struct jvst_op_program *prog, char *buf, size_t nb)
 	return (b.len < b.cap) ? 0 : -1;
 }
 
+struct asm_addr_fixup {
+	struct jvst_op_instr *instr;
+	struct jvst_op_arg *arg;
+	struct jvst_ir_stmt *ir;
+};
+
+struct asm_addr_fixup_list {
+	size_t len;
+	size_t cap;
+	struct asm_addr_fixup *elts;
+};
+
+static void
+asm_addr_fixup_list_free(struct asm_addr_fixup_list *l)
+{
+	if (l == NULL) {
+		return;
+	}
+
+	free(l->elts);
+}
+
+static void
+asm_addr_fixup_add(struct asm_addr_fixup_list *l,
+	struct jvst_op_instr *instr, struct jvst_op_arg *arg, struct jvst_ir_stmt *ir)
+{
+	size_t i;
+
+	assert(l != NULL);
+	assert(l->len <= l->cap);
+	if (l->len >= l->cap) {
+		size_t newsz = l->cap;
+
+		if (newsz < 4) {
+			newsz = 4;
+		} else if (newsz < 2048) {
+			newsz *= 2;
+		} else {
+			newsz += newsz/4;
+		}
+
+		assert(newsz > l->cap+1);
+
+		l->elts = xrealloc(l->elts, newsz * sizeof l->elts[0]);
+		l->cap  = newsz;
+	}
+
+	i = l->len++;
+	assert(i < l->cap);
+
+	l->elts[i].instr = instr;
+	l->elts[i].arg   = arg;
+	l->elts[i].ir    = ir;
+}
+
+static void
+asm_fixup_addr(struct asm_addr_fixup *fix)
+{
+	switch (fix->instr->op) {
+	case JVST_OP_BR:
+	case JVST_OP_CBT:
+	case JVST_OP_CBF:
+		assert(fix->ir != NULL);
+		assert(fix->ir->data != NULL);
+		fix->arg->type = JVST_VM_ARG_INSTR;
+		fix->arg->u.dest = fix->ir->data;
+		return;
+
+	case JVST_OP_CALL:
+		fprintf(stderr, "%s:%d (%s) address fixup for op %s not yet implemented\n",
+			__FILE__, __LINE__, __func__, jvst_op_name(fix->instr->op));
+		abort();
+
+	case JVST_OP_NOP:
+	case JVST_OP_PROC:
+	case JVST_OP_ILT:
+	case JVST_OP_ILE:
+	case JVST_OP_IEQ:
+	case JVST_OP_IGE:
+	case JVST_OP_IGT:
+	case JVST_OP_INEQ:
+	case JVST_OP_FLT:
+	case JVST_OP_FLE:
+	case JVST_OP_FEQ:
+	case JVST_OP_FGE:
+	case JVST_OP_FGT:
+	case JVST_OP_FNEQ:
+	case JVST_OP_FINT:
+	case JVST_OP_SPLIT:
+	case JVST_OP_SPLITV:
+	case JVST_OP_TOKEN:
+	case JVST_OP_CONSUME:
+	case JVST_OP_MATCH:
+	case JVST_OP_FLOAD:
+	case JVST_OP_ILOAD:
+	case JVST_OP_INCR:
+	case JVST_OP_BSET:
+	case JVST_OP_BTEST:
+	case JVST_OP_BAND:
+	case JVST_OP_VALID:
+	case JVST_OP_INVALID:
+	case JVST_OP_MOVE:
+		fprintf(stderr, "%s:%d (%s) invalid op %s for address lookup\n",
+			__FILE__, __LINE__, __func__, jvst_op_name(fix->instr->op));
+		abort();
+	}
+
+	fprintf(stderr, "%s:%d (%s) unknown op %d\n",
+		__FILE__, __LINE__, __func__, fix->instr->op);
+	abort();
+}
+
+static void
+asm_fixup_addresses(struct asm_addr_fixup_list *l)
+{
+	size_t i,n;
+
+	n = l->len;
+	for (i=0; i < n; i++) {
+		asm_fixup_addr(&l->elts[i]);
+	}
+}
+
 struct op_assembler {
 	struct jvst_op_program *prog;
 	struct jvst_op_proc **procpp;
@@ -546,6 +704,10 @@ struct op_assembler {
 
 	size_t nlbl;
 	size_t ntmp;
+
+	struct jvst_ir_stmt *label_block;
+
+	struct asm_addr_fixup_list *fixups;
 };
 
 static struct jvst_op_proc *
@@ -556,7 +718,7 @@ arg_none(void)
 {
 	struct jvst_op_arg arg = {
 		.type = JVST_VM_ARG_NONE,
-		.index = 0,
+		.u = { .index = 0 },
 	};
 
 	return arg;
@@ -585,6 +747,8 @@ arg_special(enum jvst_op_arg_type type)
 	case JVST_VM_ARG_CONST:
 	case JVST_VM_ARG_POOL:
 	case JVST_VM_ARG_SLOT:
+	case JVST_VM_ARG_INSTR:
+	case JVST_VM_ARG_LABEL:
 		fprintf(stderr, "%s:%d (%s) arg type %d is not a special arg\n",
 			__FILE__, __LINE__, __func__, type);
 		abort();
@@ -596,7 +760,7 @@ arg_const(int64_t v)
 {
 	struct jvst_op_arg arg = {
 		.type  = JVST_VM_ARG_CONST,
-		.index = v,
+		.u = { .index = v },
 	};
 
 	if (v > MAX_CONST_VALUE) {
@@ -621,7 +785,7 @@ arg_tt(enum SJP_EVENT tt)
 {
 	struct jvst_op_arg arg = {
 		.type  = JVST_VM_ARG_TOKTYPE,
-		.index = tt,
+		.u = { .index = tt },
 	};
 
 	return arg;
@@ -632,7 +796,7 @@ arg_itmp(struct op_assembler *opasm)
 {
 	struct jvst_op_arg arg = {
 		.type  = JVST_VM_ARG_INT,
-		.index = opasm->ntmp++,
+		.u = { .index = opasm->ntmp++ },
 	};
 
 	return arg;
@@ -643,7 +807,7 @@ arg_ftmp(struct op_assembler *opasm)
 {
 	struct jvst_op_arg arg = {
 		.type  = JVST_VM_ARG_FLOAT,
-		.index = opasm->ntmp++,
+		.u = { .index = opasm->ntmp++ },
 	};
 
 	return arg;
@@ -654,7 +818,7 @@ arg_slot(size_t ind)
 {
 	struct jvst_op_arg arg = {
 		.type  = JVST_VM_ARG_SLOT,
-		.index = ind,
+		.u = { .index = ind },
 	};
 
 	return arg;
@@ -791,74 +955,32 @@ proc_add_uconst(struct op_assembler *opasm, uint64_t v)
 	return (int64_t)ind;
 }
 
-// XXX - replace dumb label lookup with something better?
-static struct jvst_op_block *
-block_lookup(struct op_assembler *opasm, const char *name)
+static void
+emit_instr(struct op_assembler *opasm, struct jvst_op_instr *instr)
 {
-	struct jvst_op_block *b;
+	if (opasm->label_block) {
+		char *lbl, tmp[128];
+		size_t n;
 
-	assert(opasm->currproc != NULL);
-	for(b = opasm->currproc->blocks; b != NULL; b = b->next) {
-		if (strcmp(b->label,name) == 0) {
-			return b;
-		}
+		/* label instruction */
+		snprintf(tmp, sizeof tmp, "%s_%zu",
+			opasm->label_block->u.block.prefix,
+			opasm->label_block->u.block.lindex);
+
+		// XXX - fix string allocations! (this leaks)
+		n = strlen(tmp)+1;
+		lbl = xmalloc(n);
+		memcpy(lbl, tmp, n);
+		instr->label = lbl;
+
+		assert(opasm->label_block->data == NULL);
+		opasm->label_block->data = instr;
+
+		opasm->label_block = NULL;
 	}
 
-	return NULL;
-}
-
-static struct jvst_op_block *
-add_block(struct op_assembler *opasm, struct jvst_op_instr *ilist, const char *fmt, ...)
-{
-	va_list args;
-	struct jvst_op_block *block;
-
-	assert(opasm != NULL);
-	assert(fmt != NULL);
-
-	va_start(args, fmt);
-	block = op_block_new(ilist, fmt, args);
-	va_end(args);
-
-	assert(block_lookup(opasm, block->label) == NULL);
-
-	*opasm->bpp = block;
-	opasm->bpp = &block->next;
-
-	return block;
-}
-
-static struct jvst_op_block *
-add_valid_block(struct op_assembler *opasm)
-{
-	struct jvst_op_instr *instr;
-	struct jvst_op_block *block;
-
-	assert(opasm != NULL);
-	if (block = block_lookup(opasm, "valid"), block != NULL) {
-		return block;
-	}
-
-	instr = op_instr_new(JVST_OP_VALID);
-	return add_block(opasm, instr, "valid");
-}
-
-static struct jvst_op_block *
-add_invalid_block(struct op_assembler *opasm, enum jvst_invalid_code ecode)
-{
-	struct jvst_op_instr *instr;
-	struct jvst_op_block *block;
-	char label[sizeof block->label];
-
-	assert(opasm != NULL);
-	snprintf(label, sizeof label, "invalid_%d", ecode);
-	if (block = block_lookup(opasm, label), block != NULL) {
-		return block;
-	}
-
-	instr = op_instr_new(JVST_OP_INVALID);
-	instr->u.ecode = ecode;
-	return add_block(opasm, instr, "invalid_%d", ecode);
+	*opasm->ipp = instr;
+	opasm->ipp = &instr->next;
 }
 
 static struct jvst_op_instr *
@@ -913,16 +1035,14 @@ emit_branch:
 	instr->u.branch.label = block->label;
 	instr->u.branch.dest = block;
 
-	*opasm->ipp = instr;
-	opasm->ipp = &instr->next;
+	emit_instr(opasm, instr);
 
 	return instr;
 }
 
 static struct jvst_op_instr *
 emit_cond(struct op_assembler *opasm, enum jvst_vm_op op, 
-	struct jvst_op_arg a0, struct jvst_op_arg a1,
-	struct jvst_op_block *btrue, struct jvst_op_block *bfalse)
+	struct jvst_op_arg a0, struct jvst_op_arg a1)
 {
 	struct jvst_op_instr *instr;
 	switch (op) {
@@ -962,7 +1082,6 @@ emit_cond(struct op_assembler *opasm, enum jvst_vm_op op,
 	case JVST_OP_INVALID:
 		fprintf(stderr, "op %s is not a conditional\n", jvst_op_name(op));
 		abort();
-
 	}
 
 	fprintf(stderr, "unknown op %d\n", op);
@@ -972,11 +1091,7 @@ emit_cond:
 	instr = op_instr_new(op);
 	instr->u.args[0] = a0;
 	instr->u.args[1] = a1;
-	*opasm->ipp = instr;
-	opasm->ipp = &instr->next;
-
-	emit_branch(opasm, JVST_OP_CBT, btrue);
-	emit_branch(opasm, JVST_OP_BR, bfalse);
+	emit_instr(opasm, instr);
 
 	return instr;
 }
@@ -1129,95 +1244,7 @@ mark_reachable(struct jvst_op_block *blk)
 static void
 op_finish_proc(struct jvst_op_proc *proc)
 {
-	struct jvst_op_instr **ipp;
-	struct jvst_op_block *b, **bpp, *ordered, *opp;
-
-	// Scan through branches in each block.  If the branch forms a chain (points
-	// to another branch), follow the chain to the end and replace the original
-	// branch with the final destination
-	//
-	// The original branch can be conditional, but the chain must be
-	// unconditional.
-	for (b=proc->blocks; b != NULL; b = b->next) {
-		struct jvst_op_instr *instr;
-
-		for(instr = b->ilist; instr != NULL; instr = instr->next) {
-			struct jvst_op_block *dst;
-
-			switch (instr->op) {
-			case JVST_OP_BR:
-			case JVST_OP_CBT:
-			case JVST_OP_CBF:
-				instr->u.branch.dest  = branch_chain_dest(instr->u.branch.dest);
-				instr->u.branch.label = instr->u.branch.dest->label;
-				break;
-
-			default:
-				/* nop */
-				break;
-			}
-		}
-	}
-
-	// Mark all blocks as unvisited.  Then mark reachable blocks.
-	// Then eliminate unreachable blocks.
-	for (b=proc->blocks; b != NULL; b = b->next) {
-		b->work = 0;
-	}
-	mark_reachable(proc->blocks);
-
-	for (bpp=&proc->blocks; *bpp != NULL; ) {
-		if ((*bpp)->work) {
-			bpp = &(*bpp)->next;
-			continue;
-		}
-
-		// unreachable, remove block
-		*bpp = (*bpp)->next;
-	}
-
-	proc->blocks = resort_blocks(proc->blocks);
-
-	// Combine blocks into a single instruction list...
-	ipp = &proc->ilist;
-	for (b=proc->blocks; b != NULL; b = b->next) {
-		struct jvst_op_instr *i0, *i1;
-
-		assert(b->ilast == NULL);
-
-		i0 = b->ilist;
-		i1 = instr_last(i0);
-
-		assert(i0 != NULL);
-		i0->label = b->label;
-
-		b->ilast = i1;
-		*ipp = i0;
-		ipp = &i1->next;
-	}
-
-	// Simplify the instruction list
-	// 1. Any branches to the next instruction are removed
-	for (ipp = &proc->ilist; *ipp != NULL; ) {
-		switch ((*ipp)->op) {
-		case JVST_OP_BR:
-		case JVST_OP_CBT:
-		case JVST_OP_CBF:
-			assert((*ipp)->u.branch.dest != NULL);
-			if ((*ipp)->u.branch.dest->ilist == (*ipp)->next) {
-				// branch to the next instruction... remove
-				*ipp = (*ipp)->next;
-				continue;
-			}
-			break;
-
-		default:
-			/* nop */
-			break;
-		}
-
-		ipp = &(*ipp)->next;
-	}
+	(void)proc;
 }
 
 static void
@@ -1278,10 +1305,7 @@ op_assemble_frame(struct op_assembler *opasm, struct jvst_ir_stmt *top)
 	frame_opasm.maxsplit = 0;
 
 	frame_opasm.currproc = proc;
-	frame_opasm.bpp = &proc->blocks;
-
-	block = add_block(&frame_opasm, NULL, "entry");
-	frame_opasm.ipp = &block->ilist;
+	frame_opasm.ipp = &proc->ilist;
 
 	// XXX - allocate storage for floats, dfas, splits
 	op_assemble_seq(&frame_opasm, top->u.frame.stmts);
@@ -1342,7 +1366,7 @@ op_assemble_block(struct op_assembler *opasm, struct jvst_ir_stmt *top, const ch
 	return block;
 }
 
-enum { ARG_NONE, ARG_BOOL, ARG_FLOAT, ARG_INT };
+enum { ARG_NONE, ARG_BOOL, ARG_FLOAT, ARG_INT, ARG_DEST };
 
 static int
 op_arg_type(enum jvst_op_arg_type type)
@@ -1367,6 +1391,10 @@ op_arg_type(enum jvst_op_arg_type type)
 	case JVST_VM_ARG_TNUM:
 	case JVST_VM_ARG_FLOAT:
 		return ARG_FLOAT;
+
+	case JVST_VM_ARG_INSTR:
+	case JVST_VM_ARG_LABEL:
+		return ARG_DEST;
 	}
 
 	fprintf(stderr, "%s:%d (%s) unknown op arg type %d\n",
@@ -1394,8 +1422,7 @@ emit_cond_arg(struct op_assembler *opasm, struct jvst_ir_expr *arg)
 			instr = op_instr_new(JVST_OP_FLOAD);
 			instr->u.args[0] = freg;
 			instr->u.args[1] = arg_const(fidx);
-			*opasm->ipp = instr;
-			opasm->ipp = &instr->next;
+			emit_instr(opasm, instr);
 			return freg;
 		}
 
@@ -1425,8 +1452,7 @@ emit_cond_arg(struct op_assembler *opasm, struct jvst_ir_expr *arg)
 			instr = op_instr_new(JVST_OP_ILOAD);
 			instr->u.args[0] = ireg;
 			instr->u.args[1] = arg_slot(counter->u.counter.frame_off);
-			*opasm->ipp = instr;
-			opasm->ipp = &instr->next;
+			emit_instr(opasm, instr);
 			return ireg;
 		}
 
@@ -1451,8 +1477,7 @@ emit_cond_arg(struct op_assembler *opasm, struct jvst_ir_expr *arg)
 			instr->u.args[0] = ireg;
 			instr->u.args[1] = arg_const(v);
 
-			*opasm->ipp = instr;
-			opasm->ipp = &instr->next;
+			emit_instr(opasm, instr);
 			return ireg;
 		}
 
@@ -1472,8 +1497,7 @@ emit_cond_arg(struct op_assembler *opasm, struct jvst_ir_expr *arg)
 			instr->u.args[0] = arg_const(split_ind);
 			instr->u.args[1] = ireg;
 
-			*opasm->ipp = instr;
-			opasm->ipp = &instr->next;
+			emit_instr(opasm, instr);
 
 			return ireg;
 		}
@@ -1520,8 +1544,7 @@ emit_cond_arg(struct op_assembler *opasm, struct jvst_ir_expr *arg)
 
 static struct jvst_op_instr *
 emit_cmp(struct op_assembler *opasm, struct jvst_ir_expr *expr, 
-	struct jvst_op_arg a0, struct jvst_op_arg a1,
-	struct jvst_op_block *btrue, struct jvst_op_block *bfalse)
+	struct jvst_op_arg a0, struct jvst_op_arg a1)
 {
 	int t0, t1;
 	enum jvst_vm_op op;
@@ -1604,12 +1627,11 @@ emit_cmp(struct op_assembler *opasm, struct jvst_ir_expr *expr,
 	abort();
 
 emit:
-	return emit_cond(opasm, op, a0, a1, btrue, bfalse);
+	return emit_cond(opasm, op, a0, a1);
 }
 
 static void
-op_assemble_cond(struct op_assembler *opasm, struct jvst_ir_expr *cond,
-	struct jvst_op_block *btrue, struct jvst_op_block *bfalse)
+op_assemble_cond(struct op_assembler *opasm, struct jvst_ir_expr *cond)
 {
 	switch (cond->type) {
 	case JVST_IR_EXPR_NONE:
@@ -1619,14 +1641,12 @@ op_assemble_cond(struct op_assembler *opasm, struct jvst_ir_expr *cond,
 
 	case JVST_IR_EXPR_ISTOK:
 		emit_cond(opasm, JVST_OP_IEQ,
-			arg_special(JVST_VM_ARG_TT), arg_tt(cond->u.istok.tok_type),
-			btrue, bfalse);
+			arg_special(JVST_VM_ARG_TT), arg_tt(cond->u.istok.tok_type));
 		return;
 
 	case JVST_IR_EXPR_ISINT:
 		emit_cond(opasm, JVST_OP_FINT,
-			arg_special(JVST_VM_ARG_TNUM), arg_none(),
-			btrue, bfalse);
+			arg_special(JVST_VM_ARG_TNUM), arg_none());
 		return;
 
 	case JVST_IR_EXPR_NE:
@@ -1639,7 +1659,7 @@ op_assemble_cond(struct op_assembler *opasm, struct jvst_ir_expr *cond,
 			struct jvst_op_arg a0,a1;
 			a0 = emit_cond_arg(opasm, cond->u.cmp.left);
 			a1 = emit_cond_arg(opasm, cond->u.cmp.right);
-			emit_cmp(opasm, cond, a0,a1, btrue, bfalse);
+			emit_cmp(opasm, cond, a0,a1);
 		}
 		return;
 
@@ -1701,8 +1721,7 @@ op_assemble_cond(struct op_assembler *opasm, struct jvst_ir_expr *cond,
 				instr = op_instr_new(JVST_OP_ILOAD);
 				instr->u.args[0] = iarg0;
 				instr->u.args[1] = arg_const(cidx);
-				*opasm->ipp = instr;
-				opasm->ipp = &instr->next;
+				emit_instr(opasm, instr);
 			}
 
 			// emit slot load
@@ -1710,26 +1729,24 @@ op_assemble_cond(struct op_assembler *opasm, struct jvst_ir_expr *cond,
 			instr = op_instr_new(JVST_OP_ILOAD);
 			instr->u.args[0] = ireg1;
 			instr->u.args[1] = arg_slot(bv->u.bitvec.frame_off);
-			*opasm->ipp = instr;
-			opasm->ipp = &instr->next;
+			emit_instr(opasm, instr);
 
 			// emit AND
 			instr = op_instr_new(JVST_OP_BAND);
 			instr->u.args[0] = ireg1;
 			instr->u.args[1] = iarg0;
-			*opasm->ipp = instr;
-			opasm->ipp = &instr->next;
+			emit_instr(opasm, instr);
 
 			// emit test
 			//
 			switch (cond->type) {
 			case JVST_IR_EXPR_BTESTANY:
-				emit_cond(opasm, JVST_OP_INEQ, ireg1, arg_const(0), btrue, bfalse);
+				emit_cond(opasm, JVST_OP_INEQ, ireg1, arg_const(0));
 				break;
 
 			case JVST_IR_EXPR_BTEST:
 			case JVST_IR_EXPR_BTESTALL:
-				emit_cond(opasm, JVST_OP_IEQ, ireg1, iarg0, btrue, bfalse);
+				emit_cond(opasm, JVST_OP_IEQ, ireg1, iarg0);
 				break;
 
 			default:
@@ -1777,136 +1794,6 @@ op_assemble_cond(struct op_assembler *opasm, struct jvst_ir_expr *cond,
 	fprintf(stderr, "%s:%d (%s) unknown expression type %d\n",
 		__FILE__, __LINE__, __func__, cond->type);
 	abort();
-}
-
-static void
-op_assemble_if_inner(struct op_assembler *opasm, struct jvst_ir_expr *cond,
-	struct jvst_op_block *btrue, struct jvst_op_block *bfalse)
-{
-	switch (cond->type) {
-	case JVST_IR_EXPR_ISTOK:
-	case JVST_IR_EXPR_ISINT:
-	case JVST_IR_EXPR_NE:
-	case JVST_IR_EXPR_LT:
-	case JVST_IR_EXPR_LE:
-	case JVST_IR_EXPR_EQ:
-	case JVST_IR_EXPR_GE:
-	case JVST_IR_EXPR_GT:
-	case JVST_IR_EXPR_BOOL:
-	case JVST_IR_EXPR_TOK_COMPLETE:
-	case JVST_IR_EXPR_BTEST:
-	case JVST_IR_EXPR_BTESTALL:
-	case JVST_IR_EXPR_BTESTANY:
-	case JVST_IR_EXPR_BTESTONE:
-		// assemble simple conditional...
-		op_assemble_cond(opasm, cond, btrue, bfalse);
-		return;
-
-	case JVST_IR_EXPR_AND:
-		{
-			struct jvst_op_block *btrue1;
-			struct op_assembler and_opasm;
-
-			btrue1 = op_block_newf(NULL, "and_true_%zu", opasm->nlbl++);
-			op_assemble_if_inner(opasm, cond->u.and_or.left, btrue1, bfalse);
-
-			opasm_setup_block(&and_opasm, opasm, btrue1);
-			op_assemble_if_inner(&and_opasm, cond->u.and_or.right, btrue, bfalse);
-			opasm_finish_block(&and_opasm, opasm);
-		}
-		return;
-
-	case JVST_IR_EXPR_OR:
-		{
-			struct jvst_op_block *bfalse1;
-			struct op_assembler or_opasm;
-
-			bfalse1 = op_block_newf(NULL, "or_false_%zu", opasm->nlbl++);
-			op_assemble_if_inner(opasm, cond->u.and_or.left, btrue, bfalse1);
-
-			opasm_setup_block(&or_opasm, opasm, bfalse1);
-			op_assemble_if_inner(&or_opasm, cond->u.and_or.right, btrue, bfalse);
-			opasm_finish_block(&or_opasm, opasm);
-		}
-		return;
-
-	case JVST_IR_EXPR_NOT:
-		fprintf(stderr, "%s:%d (%s) expression %s is not a simple boolean condition\n",
-				__FILE__, __LINE__, __func__,
-				jvst_ir_expr_type_name(cond->type));
-		abort();
-
-	case JVST_IR_EXPR_NONE:
-	case JVST_IR_EXPR_NUM:
-	case JVST_IR_EXPR_INT:
-	case JVST_IR_EXPR_SIZE:
-	case JVST_IR_EXPR_TOK_TYPE:
-	case JVST_IR_EXPR_TOK_NUM:
-	case JVST_IR_EXPR_TOK_LEN:
-	case JVST_IR_EXPR_COUNT:
-	case JVST_IR_EXPR_BCOUNT:
-	case JVST_IR_EXPR_SPLIT:
-	case JVST_IR_EXPR_SLOT:
-	case JVST_IR_EXPR_ITEMP:
-	case JVST_IR_EXPR_FTEMP:
-	case JVST_IR_EXPR_SEQ:
-	case JVST_IR_EXPR_MATCH:
-		fprintf(stderr, "%s:%d (%s) expression %s is not a boolean condition\n",
-				__FILE__, __LINE__, __func__,
-				jvst_ir_expr_type_name(cond->type));
-		abort();
-	}
-}
-
-static void
-op_assemble_if(struct op_assembler *opasm, struct jvst_ir_stmt *stmt)
-{
-	struct jvst_op_block *btrue, *bfalse, *bjoin;
-
-	// block for rejoining execution...
-	bjoin = op_assemble_block(opasm, NULL, "rejoin", NULL);
-	bjoin->ilist = op_instr_new(JVST_OP_NOP);
-
-	// assemble true/false blocks
-	btrue  = op_assemble_block(opasm, stmt->u.if_.br_true, NULL, bjoin);
-	bfalse = op_assemble_block(opasm, stmt->u.if_.br_false, NULL, bjoin);
-
-	op_assemble_if_inner(opasm, stmt->u.if_.cond, btrue, bfalse);
-
-	opasm->ipp = &bjoin->ilist;
-}
-
-static void
-op_assemble_loop(struct op_assembler *opasm, struct jvst_ir_stmt *loop)
-{
-	struct jvst_op_block *loop_block, *loop_end;
-	struct jvst_op_instr **ipp, *nop;
-
-	loop_end = op_assemble_block(opasm, NULL, "loop_end", NULL);
-	loop->data = loop_end;
-	/*
-	// to be overwritten!
-	nop = op_instr_new(JVST_OP_NOP);
-	loop_end = add_block(opasm, nop, "loop_end%s", &loop_block->label[4]);
-	*/
-
-	loop_block = op_assemble_block(opasm, loop->u.loop.stmts, "loop", &LOOP_BLOCK);
-	snprintf(loop_block->label, sizeof loop_block->label, "loop_%s", &loop_end->label[9]);
-
-	emit_branch(opasm, JVST_OP_BR, loop_block);
-
-	/*
-	for(ipp = &loop_block->ilist; *ipp != NULL; ipp = &(*ipp)->next) {
-		continue;
-	}
-
-	*ipp = op_instr_new(JVST_OP_BR);
-	(*ipp)->u.branch.label = loop_block->label;
-	(*ipp)->u.branch.dest = loop_block;
-	*/
-
-	opasm->ipp = &loop_end->ilist;
-	loop->data = NULL;
 }
 
 static void
@@ -1978,62 +1865,17 @@ op_assemble(struct op_assembler *opasm, struct jvst_ir_stmt *stmt)
 			if (opasm->ipp != NULL) {
 				instr = op_instr_new(JVST_OP_CALL);
 				instr->u.call.dest = proc;
-				*opasm->ipp = instr;
-				opasm->ipp = &instr->next;
+				emit_instr(opasm, instr);
 			}
 		}
 		return;
 
 	case JVST_IR_STMT_TOKEN:
-		instr = op_instr_new(JVST_OP_TOKEN);
-		*opasm->ipp = instr;
-		opasm->ipp = &instr->next;
+		emit_instr(opasm, op_instr_new(JVST_OP_TOKEN));
 		return;
 
 	case JVST_IR_STMT_CONSUME:
-		instr = op_instr_new(JVST_OP_CONSUME);
-		*opasm->ipp = instr;
-		opasm->ipp = &instr->next;
-		return;
-
-	case JVST_IR_STMT_VALID:
-		block = add_valid_block(opasm);
-		emit_branch(opasm, JVST_OP_BR, block);
-		return;
-
-	case JVST_IR_STMT_INVALID:
-		block = add_invalid_block(opasm, stmt->u.invalid.code);
-		emit_branch(opasm, JVST_OP_BR, block);
-		return;
-
-	case JVST_IR_STMT_IF:
-		op_assemble_if(opasm, stmt);
-		return;
-
-	case JVST_IR_STMT_SEQ:
-		op_assemble_seq(opasm, stmt->u.stmt_list);
-		return;
-
-	case JVST_IR_STMT_LOOP:
-		op_assemble_loop(opasm, stmt);
-		return;
-
-	case JVST_IR_STMT_BREAK:
-		{
-			struct jvst_ir_stmt *loop;
-			struct jvst_op_block *loop_block;
-
-			loop = stmt->u.break_.loop;
-			assert(loop != NULL);
-			assert(loop->data != NULL);
-
-			loop_block = loop->data;
-			emit_branch(opasm, JVST_OP_BR, loop_block);
-		}
-		return;
-
-	case JVST_IR_STMT_MATCH:
-		op_assemble_match(opasm, stmt);
+		emit_instr(opasm, op_instr_new(JVST_OP_CONSUME));
 		return;
 
 	case JVST_IR_STMT_INCR:
@@ -2046,8 +1888,7 @@ op_assemble(struct op_assembler *opasm, struct jvst_ir_stmt *stmt)
 			instr = op_instr_new(JVST_OP_INCR);
 			instr->u.args[0] = arg_slot(counter->u.counter.frame_off);
 			instr->u.args[1] = arg_none();
-			*opasm->ipp = instr;
-			opasm->ipp = &instr->next;
+			emit_instr(opasm, instr);
 		}
 		return;
 
@@ -2061,8 +1902,7 @@ op_assemble(struct op_assembler *opasm, struct jvst_ir_stmt *stmt)
 			instr = op_instr_new(JVST_OP_BSET);
 			instr->u.args[0] = arg_slot(bv->u.bitvec.frame_off);
 			instr->u.args[1] = arg_const(stmt->u.bitop.bit);
-			*opasm->ipp = instr;
-			opasm->ipp = &instr->next;
+			emit_instr(opasm, instr);
 		}
 		return;
 
@@ -2081,15 +1921,73 @@ op_assemble(struct op_assembler *opasm, struct jvst_ir_stmt *stmt)
 			instr->u.args[0] = arg_const(split_ind);
 			instr->u.args[1] = arg_slot(bv->u.bitvec.frame_off);
 
-			*opasm->ipp = instr;
-			opasm->ipp = &instr->next;
+			emit_instr(opasm, instr);
 
 		}
 		return;
 
 	case JVST_IR_STMT_BLOCK:
+		opasm->label_block = stmt;
+		return;
+
 	case JVST_IR_STMT_BRANCH:
+		instr = op_instr_new(JVST_OP_BR);
+		asm_addr_fixup_add(opasm->fixups, instr, &instr->u.args[0], stmt->u.branch);
+		emit_instr(opasm, instr);
+		return;
+
 	case JVST_IR_STMT_CBRANCH:
+		// XXX - refactor into its own function
+
+		/* emit condition */
+		op_assemble_cond(opasm, stmt->u.cbranch.cond);
+
+		if (stmt->next == NULL) {
+			goto cbranch_3;
+		}
+
+		if (stmt->u.cbranch.br_false == stmt->next) {
+			goto cbranch_1;
+		}
+
+		if (stmt->u.cbranch.br_true == stmt->next) {
+			goto cbranch_2;
+		}
+
+		goto cbranch_3;
+
+cbranch_1:
+		instr = op_instr_new(JVST_OP_CBT);
+		asm_addr_fixup_add(opasm->fixups, instr, &instr->u.args[0], stmt->u.cbranch.br_true);
+		emit_instr(opasm, instr);
+		return;
+
+cbranch_2:
+		instr = op_instr_new(JVST_OP_CBF);
+		asm_addr_fixup_add(opasm->fixups, instr, &instr->u.args[0], stmt->u.cbranch.br_false);
+		emit_instr(opasm, instr);
+		return;
+
+cbranch_3:
+		instr = op_instr_new(JVST_OP_CBT);
+		asm_addr_fixup_add(opasm->fixups, instr, &instr->u.args[0], stmt->u.cbranch.br_true);
+		emit_instr(opasm, instr);
+
+		instr = op_instr_new(JVST_OP_BR);
+		asm_addr_fixup_add(opasm->fixups, instr, &instr->u.args[0], stmt->u.cbranch.br_false);
+		emit_instr(opasm, instr);
+		return;
+
+	case JVST_IR_STMT_VALID:
+		emit_instr(opasm, op_instr_new(JVST_OP_VALID));
+		return;
+
+	case JVST_IR_STMT_INVALID:
+		instr = op_instr_new(JVST_OP_INVALID);
+		instr->u.args[0] = arg_const(stmt->u.invalid.code);
+		emit_instr(opasm, instr);
+		return;
+
 	case JVST_IR_STMT_BCLEAR:
 	case JVST_IR_STMT_DECR:
 	case JVST_IR_STMT_MOVE:
@@ -2098,6 +1996,12 @@ op_assemble(struct op_assembler *opasm, struct jvst_ir_stmt *stmt)
 		fprintf(stderr, "%s:%d (%s) IR statement %s not yet implemented\n",
 			__FILE__, __LINE__, __func__, jvst_ir_stmt_type_name(stmt->type));
 		abort();
+
+	case JVST_IR_STMT_MATCH:
+	case JVST_IR_STMT_BREAK:
+	case JVST_IR_STMT_LOOP:
+	case JVST_IR_STMT_SEQ:
+	case JVST_IR_STMT_IF:
 
 	case JVST_IR_STMT_COUNTER:
 	case JVST_IR_STMT_MATCHER:
@@ -2113,21 +2017,30 @@ op_assemble(struct op_assembler *opasm, struct jvst_ir_stmt *stmt)
 }
 
 struct jvst_op_program *
-jvst_op_assemble(struct jvst_ir_stmt *stmt)
+jvst_op_assemble(struct jvst_ir_stmt *ir)
 {
 	struct op_assembler opasm = { 0 };
-	struct jvst_op_proc *proc;
+	struct asm_addr_fixup_list fixups = { 0 };
+	struct jvst_op_program *prog;
+	struct jvst_ir_stmt *fr;
 	size_t i;
+
+	assert(ir != NULL);
+	assert(ir->type == JVST_IR_STMT_PROGRAM);
 
 	opasm.prog = op_prog_new(NULL);
 	opasm.procpp = &opasm.prog->procs;
+	opasm.fixups = &fixups;
 
-	op_assemble(&opasm, stmt);
+	for (i=0, fr=ir->u.program.frames; fr != NULL; i++, fr = fr->next) {
+		struct jvst_op_proc *proc;
 
-	// Number procedures
-	for(i=0, proc = opasm.prog->procs; proc != NULL; i++, proc=proc->next) {
+		proc = op_assemble_frame(&opasm, fr);
 		proc->proc_index = i;
 	}
+
+	asm_fixup_addresses(&fixups);
+	asm_addr_fixup_list_free(&fixups);
 
 	return opasm.prog;
 }

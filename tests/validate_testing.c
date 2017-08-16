@@ -1880,7 +1880,8 @@ newop_br(struct arena_info *A, enum jvst_vm_op op, const char *label)
 	case JVST_OP_CBT:
 	case JVST_OP_CBF:
 		instr = newop_instr(A, op);
-		instr->u.branch.label = label;
+		instr->u.args[0].type = JVST_VM_ARG_LABEL;
+		instr->u.args[0].u.label = label;
 		return instr;
 
 	case JVST_OP_ILT:
@@ -1956,7 +1957,8 @@ newop_invalid(struct arena_info *A, enum jvst_invalid_code ecode)
 {
 	struct jvst_op_instr *instr;
 	instr = newop_instr(A, JVST_OP_INVALID);
-	instr->u.ecode = ecode;
+	instr->u.args[0].type = JVST_VM_ARG_CONST;
+	instr->u.args[0].u.index = ecode;
 	return instr;
 }
 

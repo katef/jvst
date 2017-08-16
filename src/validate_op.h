@@ -34,11 +34,19 @@ enum jvst_op_arg_type {
 	// Integer literal values
 	JVST_VM_ARG_TOKTYPE,
 	JVST_VM_ARG_CONST,
+
+	// Branch destinations
+	JVST_VM_ARG_INSTR,
+	JVST_VM_ARG_LABEL,
 };
 
 struct jvst_op_arg {
 	enum jvst_op_arg_type type;
-	int64_t index;
+	union {
+		int64_t index;
+		struct jvst_op_instr *dest;
+		const char *label;
+	} u;
 };
 
 struct jvst_op_proc;
@@ -97,7 +105,7 @@ struct jvst_op_proc {
 
 	size_t nslots;
 
-	struct jvst_op_block *blocks;
+	// struct jvst_op_block *blocks;
 
 	struct jvst_op_instr *ilist;
 
@@ -127,6 +135,9 @@ jvst_op_print(struct jvst_op_program *prog);
 
 void
 jvst_op_block_debug(struct jvst_op_block *blk);
+
+struct jvst_vm_program *
+jvst_ir_assemble(struct jvst_ir_stmt *prog);
 
 #endif /* VALIDATE_OP_H */
 
