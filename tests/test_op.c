@@ -337,22 +337,22 @@ static void test_op_type_integer(void)
 
       newop_program(&A,
           newop_proc(&A,
-            oplabel, "entry",
+            oplabel, "entry_0",
             newop_instr(&A, JVST_OP_TOKEN),
             newop_cmp(&A, JVST_OP_IEQ, oparg_tt(), oparg_tok(SJP_NUMBER)),
-            newop_br(&A, JVST_OP_CBT, "L_1"),
+            newop_br(&A, JVST_OP_CBT, "true_2"),
 
-            oplabel, "invalid_1",
+            oplabel, "invalid_1_9",
             newop_invalid(&A, 1),
 
-            oplabel, "L_1",
+            oplabel, "true_2",
             newop_cmp(&A, JVST_OP_FINT, oparg_tnum(), oparg_none()),
-            newop_br(&A, JVST_OP_CBT, "valid"),
+            newop_br(&A, JVST_OP_CBT, "valid_5"),
 
-            oplabel, "invalid_2",
+            oplabel, "invalid_2_7",
             newop_invalid(&A, 2),
 
-            oplabel, "valid",
+            oplabel, "valid_5",
             newop_instr(&A, JVST_OP_VALID),
 
             NULL
@@ -2623,8 +2623,8 @@ int main(void)
   test_op_empty_schema();
   test_op_type_constraints();
 
-  /*
   test_op_type_integer();
+  /*
   test_op_minimum();
 
   test_op_properties();
