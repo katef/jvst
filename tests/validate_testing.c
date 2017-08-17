@@ -1697,8 +1697,8 @@ newop_cmp(struct arena_info *A, enum jvst_vm_op op,
 	case JVST_OP_FNEQ:
 	case JVST_OP_FINT:
 		instr = newop_instr(A, op);
-		instr->u.args[0] = arg1;
-		instr->u.args[1] = arg2;
+		instr->args[0] = arg1;
+		instr->args[1] = arg2;
 		return instr;
 
 	case JVST_OP_NOP:
@@ -1736,8 +1736,8 @@ newop_bitop(struct arena_info *A, enum jvst_vm_op op, int frame_off, int bit)
 	struct jvst_op_instr *instr;
 
 	instr = newop_instr(A, op);
-	instr->u.args[0] = oparg_slot(frame_off);
-	instr->u.args[1] = oparg_lit(bit);
+	instr->args[0] = oparg_slot(frame_off);
+	instr->args[1] = oparg_lit(bit);
 	return instr;
 }
 
@@ -1748,8 +1748,8 @@ newop_instr2(struct arena_info *A, enum jvst_vm_op op,
 	struct jvst_op_instr *instr;
 
 	instr = newop_instr(A, op);
-	instr->u.args[0] = arg1;
-	instr->u.args[1] = arg2;
+	instr->args[0] = arg1;
+	instr->args[1] = arg2;
 	return instr;
 }
 
@@ -1870,8 +1870,8 @@ newop_load(struct arena_info *A, enum jvst_vm_op op,
 
 make_op:
 	instr = newop_instr(A, op);
-	instr->u.args[0] = arg1;
-	instr->u.args[1] = arg2;
+	instr->args[0] = arg1;
+	instr->args[1] = arg2;
 	return instr;
 }
 
@@ -1885,8 +1885,8 @@ newop_br(struct arena_info *A, enum jvst_vm_op op, const char *label)
 	case JVST_OP_CBT:
 	case JVST_OP_CBF:
 		instr = newop_instr(A, op);
-		instr->u.args[0].type = JVST_VM_ARG_LABEL;
-		instr->u.args[0].u.label = label;
+		instr->args[0].type = JVST_VM_ARG_LABEL;
+		instr->args[0].u.label = label;
 		return instr;
 
 	case JVST_OP_ILT:
@@ -1934,8 +1934,8 @@ newop_match(struct arena_info *A, int64_t dfa)
 {
 	struct jvst_op_instr *instr;
 	instr = newop_instr(A, JVST_OP_MATCH);
-	instr->u.args[0] = oparg_lit(dfa);
-	instr->u.args[1] = oparg_none();
+	instr->args[0] = oparg_lit(dfa);
+	instr->args[1] = oparg_none();
 	return instr;
 }
 
@@ -1944,7 +1944,7 @@ newop_call(struct arena_info *A, struct jvst_op_arg dest)
 {
 	struct jvst_op_instr *instr;
 	instr = newop_instr(A, JVST_OP_CALL);
-	instr->u.args[0] = dest;
+	instr->args[0] = dest;
 	return instr;
 }
 
@@ -1953,8 +1953,8 @@ newop_incr(struct arena_info *A, size_t slot)
 {
 	struct jvst_op_instr *instr;
 	instr = newop_instr(A, JVST_OP_INCR);
-	instr->u.args[0] = oparg_slot(slot);
-	instr->u.args[1] = oparg_none();
+	instr->args[0] = oparg_slot(slot);
+	instr->args[1] = oparg_none();
 	return instr;
 }
 
@@ -1963,8 +1963,8 @@ newop_invalid(struct arena_info *A, enum jvst_invalid_code ecode)
 {
 	struct jvst_op_instr *instr;
 	instr = newop_instr(A, JVST_OP_INVALID);
-	instr->u.args[0].type = JVST_VM_ARG_CONST;
-	instr->u.args[0].u.index = ecode;
+	instr->args[0].type = JVST_VM_ARG_CONST;
+	instr->args[0].u.index = ecode;
 	return instr;
 }
 

@@ -230,7 +230,7 @@ op_instr_dump(struct sbuf *buf, struct jvst_op_instr *instr)
 
 	case JVST_OP_PROC:
 		sbuf_snprintf(buf, "PROC ");
-		op_arg_dump(buf, instr->u.args[0]);
+		op_arg_dump(buf, instr->args[0]);
 		return;
 
 	case JVST_OP_ILT:
@@ -246,14 +246,14 @@ op_instr_dump(struct sbuf *buf, struct jvst_op_instr *instr)
 	case JVST_OP_FGT:
 	case JVST_OP_FNEQ:
 		sbuf_snprintf(buf, "%s ", jvst_op_name(instr->op));
-		op_arg_dump(buf, instr->u.args[0]);
+		op_arg_dump(buf, instr->args[0]);
 		sbuf_snprintf(buf, ", ");
-		op_arg_dump(buf, instr->u.args[1]);
+		op_arg_dump(buf, instr->args[1]);
 		return;
 
 	case JVST_OP_FINT:
 		sbuf_snprintf(buf, "%s ", jvst_op_name(instr->op));
-		op_arg_dump(buf, instr->u.args[0]);
+		op_arg_dump(buf, instr->args[0]);
 		return;
 
 	case JVST_OP_BR:
@@ -262,13 +262,13 @@ op_instr_dump(struct sbuf *buf, struct jvst_op_instr *instr)
 		{
 			const char *lbl = NULL;
 
-			switch (instr->u.args[0].type) {
+			switch (instr->args[0].type) {
 			case JVST_VM_ARG_INSTR:
-				lbl = instr->u.args[0].u.dest->label;
+				lbl = instr->args[0].u.dest->label;
 				break;
 
 			case JVST_VM_ARG_LABEL:
-				lbl = instr->u.args[0].u.label;
+				lbl = instr->args[0].u.label;
 				break;
 
 			default:
@@ -286,14 +286,14 @@ op_instr_dump(struct sbuf *buf, struct jvst_op_instr *instr)
 
 	case JVST_OP_CALL:
 		sbuf_snprintf(buf, "%s ", jvst_op_name(instr->op));
-		op_arg_dump(buf, instr->u.args[0]);
+		op_arg_dump(buf, instr->args[0]);
 		// XXX - dump address in args[1] 
 		return;
 
 	case JVST_OP_MATCH:
 	case JVST_OP_INCR:
 		sbuf_snprintf(buf, "%s ", jvst_op_name(instr->op));
-		op_arg_dump(buf, instr->u.args[0]);
+		op_arg_dump(buf, instr->args[0]);
 		return;
 
 	case JVST_OP_SPLITV:
@@ -302,9 +302,9 @@ op_instr_dump(struct sbuf *buf, struct jvst_op_instr *instr)
 	case JVST_OP_ILOAD:
 	case JVST_OP_MOVE:
 		sbuf_snprintf(buf, "%s ", jvst_op_name(instr->op));
-		op_arg_dump(buf, instr->u.args[0]);
+		op_arg_dump(buf, instr->args[0]);
 		sbuf_snprintf(buf, ", ", jvst_op_name(instr->op));
-		op_arg_dump(buf, instr->u.args[1]);
+		op_arg_dump(buf, instr->args[1]);
 		return;
 
 	case JVST_OP_TOKEN:
@@ -316,15 +316,15 @@ op_instr_dump(struct sbuf *buf, struct jvst_op_instr *instr)
 	case JVST_OP_INVALID:
 		sbuf_snprintf(buf, "%s %d",
 			jvst_op_name(instr->op),
-			instr->u.args[0].u.index);
+			instr->args[0].u.index);
 		return;
 
 	case JVST_OP_BAND:
 	case JVST_OP_BSET:
 		sbuf_snprintf(buf, "%s ", jvst_op_name(instr->op));
-		op_arg_dump(buf, instr->u.args[0]);
+		op_arg_dump(buf, instr->args[0]);
 		sbuf_snprintf(buf, ", ", jvst_op_name(instr->op));
-		op_arg_dump(buf, instr->u.args[1]);
+		op_arg_dump(buf, instr->args[1]);
 		return;
 
 	case JVST_OP_BTEST:
@@ -964,8 +964,8 @@ emit_cond(struct op_assembler *opasm, enum jvst_vm_op op,
 
 emit_cond:
 	instr = op_instr_new(op);
-	instr->u.args[0] = a0;
-	instr->u.args[1] = a1;
+	instr->args[0] = a0;
+	instr->args[1] = a1;
 	emit_instr(opasm, instr);
 
 	return instr;
@@ -1172,8 +1172,8 @@ emit_op_arg(struct op_assembler *opasm, struct jvst_ir_expr *arg)
 			fidx = proc_add_float(opasm, arg->u.vnum);
 			freg = arg_ftmp(opasm);
 			instr = op_instr_new(JVST_OP_FLOAD);
-			instr->u.args[0] = freg;
-			instr->u.args[1] = arg_const(fidx);
+			instr->args[0] = freg;
+			instr->args[1] = arg_const(fidx);
 			emit_instr(opasm, instr);
 			return freg;
 		}
@@ -1202,8 +1202,8 @@ emit_op_arg(struct op_assembler *opasm, struct jvst_ir_expr *arg)
 
 			ireg = arg_itmp(opasm);
 			instr = op_instr_new(JVST_OP_ILOAD);
-			instr->u.args[0] = ireg;
-			instr->u.args[1] = arg_slot(counter->u.counter.frame_off);
+			instr->args[0] = ireg;
+			instr->args[1] = arg_slot(counter->u.counter.frame_off);
 			emit_instr(opasm, instr);
 			return ireg;
 		}
@@ -1240,8 +1240,8 @@ emit_op_arg(struct op_assembler *opasm, struct jvst_ir_expr *arg)
 			split_ind = proc_add_split(opasm, arg->u.split.frames);
 
 			instr = op_instr_new(JVST_OP_SPLIT);
-			instr->u.args[0] = arg_const(split_ind);
-			instr->u.args[1] = ireg;
+			instr->args[0] = arg_const(split_ind);
+			instr->args[1] = ireg;
 
 			emit_instr(opasm, instr);
 
@@ -1498,22 +1498,22 @@ op_assemble_cond(struct op_assembler *opasm, struct jvst_ir_expr *cond)
 				cidx = proc_add_uconst(opasm, mask);
 				iarg0 = arg_itmp(opasm);
 				instr = op_instr_new(JVST_OP_ILOAD);
-				instr->u.args[0] = iarg0;
-				instr->u.args[1] = arg_const(cidx);
+				instr->args[0] = iarg0;
+				instr->args[1] = arg_const(cidx);
 				emit_instr(opasm, instr);
 			}
 
 			// emit slot load
 			ireg1 = arg_itmp(opasm);
 			instr = op_instr_new(JVST_OP_ILOAD);
-			instr->u.args[0] = ireg1;
-			instr->u.args[1] = arg_slot(bv->u.bitvec.frame_off);
+			instr->args[0] = ireg1;
+			instr->args[1] = arg_slot(bv->u.bitvec.frame_off);
 			emit_instr(opasm, instr);
 
 			// emit AND
 			instr = op_instr_new(JVST_OP_BAND);
-			instr->u.args[0] = ireg1;
-			instr->u.args[1] = iarg0;
+			instr->args[0] = ireg1;
+			instr->args[1] = iarg0;
 			emit_instr(opasm, instr);
 
 			// emit test
@@ -1591,8 +1591,8 @@ emit_match(struct op_assembler *opasm, struct jvst_ir_expr *expr)
 	assert(dfa == expr->u.match.ind);
 
 	instr = op_instr_new(JVST_OP_MATCH);
-	instr->u.args[0] = arg_const(dfa);
-	instr->u.args[1] = arg_none();
+	instr->args[0] = arg_const(dfa);
+	instr->args[1] = arg_none();
 
 	emit_instr(opasm, instr);
 
@@ -1613,25 +1613,25 @@ op_assemble_cbranch(struct op_assembler *opasm, struct jvst_ir_stmt *stmt)
 
 	if (stmt->u.cbranch.br_false == stmt->next) {
 		instr = op_instr_new(JVST_OP_CBT);
-		asm_addr_fixup_add(opasm->fixups, instr, &instr->u.args[0], stmt->u.cbranch.br_true);
+		asm_addr_fixup_add(opasm->fixups, instr, &instr->args[0], stmt->u.cbranch.br_true);
 		emit_instr(opasm, instr);
 		return;
 	}
 
 	if (stmt->u.cbranch.br_true == stmt->next) {
 		instr = op_instr_new(JVST_OP_CBF);
-		asm_addr_fixup_add(opasm->fixups, instr, &instr->u.args[0], stmt->u.cbranch.br_false);
+		asm_addr_fixup_add(opasm->fixups, instr, &instr->args[0], stmt->u.cbranch.br_false);
 		emit_instr(opasm, instr);
 		return;
 	}
 
 emit_two_branches:
 	instr = op_instr_new(JVST_OP_CBT);
-	asm_addr_fixup_add(opasm->fixups, instr, &instr->u.args[0], stmt->u.cbranch.br_true);
+	asm_addr_fixup_add(opasm->fixups, instr, &instr->args[0], stmt->u.cbranch.br_true);
 	emit_instr(opasm, instr);
 
 	instr = op_instr_new(JVST_OP_BR);
-	asm_addr_fixup_add(opasm->fixups, instr, &instr->u.args[0], stmt->u.cbranch.br_false);
+	asm_addr_fixup_add(opasm->fixups, instr, &instr->args[0], stmt->u.cbranch.br_false);
 	emit_instr(opasm, instr);
 	return;
 }
@@ -1662,8 +1662,8 @@ op_assemble(struct op_assembler *opasm, struct jvst_ir_stmt *stmt)
 			assert(counter->type == JVST_IR_STMT_COUNTER);
 
 			instr = op_instr_new(JVST_OP_INCR);
-			instr->u.args[0] = arg_slot(counter->u.counter.frame_off);
-			instr->u.args[1] = arg_none();
+			instr->args[0] = arg_slot(counter->u.counter.frame_off);
+			instr->args[1] = arg_none();
 			emit_instr(opasm, instr);
 		}
 		return;
@@ -1676,8 +1676,8 @@ op_assemble(struct op_assembler *opasm, struct jvst_ir_stmt *stmt)
 			assert(bv->type == JVST_IR_STMT_BITVECTOR);
 
 			instr = op_instr_new(JVST_OP_BSET);
-			instr->u.args[0] = arg_slot(bv->u.bitvec.frame_off);
-			instr->u.args[1] = arg_const(stmt->u.bitop.bit);
+			instr->args[0] = arg_slot(bv->u.bitvec.frame_off);
+			instr->args[1] = arg_const(stmt->u.bitop.bit);
 			emit_instr(opasm, instr);
 		}
 		return;
@@ -1694,8 +1694,8 @@ op_assemble(struct op_assembler *opasm, struct jvst_ir_stmt *stmt)
 			split_ind = proc_add_split(opasm, stmt->u.splitvec.split_frames);
 
 			instr = op_instr_new(JVST_OP_SPLITV);
-			instr->u.args[0] = arg_const(split_ind);
-			instr->u.args[1] = arg_slot(bv->u.bitvec.frame_off);
+			instr->args[0] = arg_const(split_ind);
+			instr->args[1] = arg_slot(bv->u.bitvec.frame_off);
 
 			emit_instr(opasm, instr);
 
@@ -1708,7 +1708,7 @@ op_assemble(struct op_assembler *opasm, struct jvst_ir_stmt *stmt)
 
 	case JVST_IR_STMT_BRANCH:
 		instr = op_instr_new(JVST_OP_BR);
-		asm_addr_fixup_add(opasm->fixups, instr, &instr->u.args[0], stmt->u.branch);
+		asm_addr_fixup_add(opasm->fixups, instr, &instr->args[0], stmt->u.branch);
 		emit_instr(opasm, instr);
 		return;
 
@@ -1722,7 +1722,7 @@ op_assemble(struct op_assembler *opasm, struct jvst_ir_stmt *stmt)
 
 	case JVST_IR_STMT_INVALID:
 		instr = op_instr_new(JVST_OP_INVALID);
-		instr->u.args[0] = arg_const(stmt->u.invalid.code);
+		instr->args[0] = arg_const(stmt->u.invalid.code);
 		emit_instr(opasm, instr);
 		return;
 
@@ -1739,8 +1739,8 @@ op_assemble(struct op_assembler *opasm, struct jvst_ir_stmt *stmt)
 
 				fidx = proc_add_float(opasm, src->u.vnum);
 				instr = op_instr_new(JVST_OP_FLOAD);
-				instr->u.args[0] = emit_op_arg(opasm, dst);
-				instr->u.args[1] = arg_const(fidx);
+				instr->args[0] = emit_op_arg(opasm, dst);
+				instr->args[1] = arg_const(fidx);
 				emit_instr(opasm, instr);
 				return;
 			}
@@ -1751,7 +1751,7 @@ op_assemble(struct op_assembler *opasm, struct jvst_ir_stmt *stmt)
 			case JVST_IR_EXPR_SLOT:
 			case JVST_IR_EXPR_ITEMP:
 			case JVST_IR_EXPR_FTEMP:
-				instr->u.args[0] = emit_op_arg(opasm, dst);
+				instr->args[0] = emit_op_arg(opasm, dst);
 				break;
 
 			default:
@@ -1760,7 +1760,7 @@ op_assemble(struct op_assembler *opasm, struct jvst_ir_stmt *stmt)
 				abort();
 			}
 
-			instr->u.args[1] = emit_op_arg(opasm, src);
+			instr->args[1] = emit_op_arg(opasm, src);
 			emit_instr(opasm, instr);
 		}
 		return;
@@ -1770,7 +1770,7 @@ op_assemble(struct op_assembler *opasm, struct jvst_ir_stmt *stmt)
 			instr = op_instr_new(JVST_OP_CALL);
 			assert(stmt->u.call.frame != NULL);
 
-			instr->u.args[0] = arg_const(stmt->u.call.frame->u.frame.frame_ind);
+			instr->args[0] = arg_const(stmt->u.call.frame->u.frame.frame_ind);
 			// XXX - fixup call address in args[1]
 			emit_instr(opasm, instr);
 		}

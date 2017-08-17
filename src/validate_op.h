@@ -57,9 +57,7 @@ struct jvst_op_instr {
 	enum jvst_vm_op op;
 	const char *label;
 
-	union {
-		struct jvst_op_arg args[2];
-	} u;
+	struct jvst_op_arg args[2];
 };
 
 // Instruction data... for assembling the opcodes
