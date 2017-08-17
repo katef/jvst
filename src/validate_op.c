@@ -5,7 +5,12 @@
 #include <limits.h>
 #include <stdarg.h>
 #include <stdio.h>
+#include <stddef.h>
 #include <string.h>
+
+#include <fsm/fsm.h>
+#include <fsm/pred.h>
+#include <fsm/walk.h>
 
 #include "sjp_parser.h"
 #include "sjp_testing.h"
@@ -633,6 +638,12 @@ struct op_assembler {
 	struct jvst_op_proc **splits;
 	size_t maxsplit;
 
+	size_t maxdfa;
+	struct jvst_vm_dfa *dfas;
+
+	size_t maxinstr;
+	struct jvst_op_instr *ilist;
+
 	size_t nlbl;
 	size_t ntmp;
 
@@ -882,6 +893,46 @@ proc_add_uconst(struct op_assembler *opasm, uint64_t v)
 	}
 
 	proc->cdata[ind] = (int64_t)v;
+
+	return (int64_t)ind;
+}
+
+static int64_t
+proc_add_dfa(struct op_assembler *opasm, struct fsm *fsm)
+{
+	struct jvst_op_proc *proc;
+	size_t ind;
+
+	proc = opasm->currproc;
+	assert(proc != NULL);
+
+	ind = proc->ndfa++;
+	if (proc->ndfa > opasm->maxdfa) {
+		size_t newmax;
+		struct jvst_vm_dfa *dfas;
+
+		newmax = opasm->maxdfa;
+		if (newmax < 4) {
+			newmax = 4;
+		} else if (newmax < 2048) {
+			newmax *= 2;
+		} else {
+			newmax += newmax/4;
+		}
+
+		assert(newmax > opasm->maxdfa+1);
+		dfas = xrealloc(opasm->dfas, newmax * sizeof opasm->dfas[0]);
+		assert(dfas != NULL);
+		opasm->dfas = dfas;
+		opasm->maxdfa = newmax;
+
+		proc->dfas = opasm->dfas;
+	}
+
+	assert(ind < opasm->maxdfa);
+
+	jvst_op_build_vm_dfa(fsm, &proc->dfas[ind]);
+	jvst_vm_dfa_debug(&proc->dfas[ind]);
 
 	return (int64_t)ind;
 }
@@ -1587,7 +1638,7 @@ emit_match(struct op_assembler *opasm, struct jvst_ir_expr *expr)
 
 	assert(expr->type == JVST_IR_EXPR_MATCH);
 
-	dfa = opasm->currproc->ndfa++;
+	dfa = proc_add_dfa(opasm, expr->u.match.dfa);
 	assert(dfa == expr->u.match.ind);
 
 	instr = op_instr_new(JVST_OP_MATCH);
@@ -1847,4 +1898,171 @@ jvst_op_print(struct jvst_op_program *prog)
 	fprintf(stderr, "%s\n", buf);
 }
 
+struct dfa_lookup {
+	const struct fsm_state *st;
+	size_t ind;
+};
+
+static int
+dfa_cmp(const void *pa, const void *pb)
+{
+	const struct dfa_lookup *a = pa, *b = pb;
+
+	if (a->st == b->st) {
+		return 0;
+	}
+
+	return a->st < b->st ? -1 : 1;
+}
+
+static size_t
+fsm_state_ind(size_t n, struct dfa_lookup *tbl, const struct fsm_state *st)
+{
+	struct dfa_lookup *found, key = { .st = st };
+
+	found = bsearch(&key, tbl, n, sizeof tbl[0], dfa_cmp);
+	assert(found != NULL);
+	return found->ind;
+}
+
+struct dfa_builder {
+	struct jvst_vm_dfa *dfa;
+	struct dfa_lookup *lookup;
+
+	size_t last_state;
+	size_t state_off;
+	size_t edge_off;
+	size_t end_off;
+};
+
+static int
+collect_and_number_states(const struct fsm *fsm, const struct fsm_state *st, void *opaque)
+{
+	struct dfa_builder *b = opaque;
+	size_t off = b->state_off++;
+
+	if (fsm_isend(fsm,st)) {
+		struct jvst_ir_mcase *mc;
+		size_t endoff;
+
+		mc = fsm_getopaque((struct fsm *)fsm, st);
+		endoff = b->end_off++;
+
+		b->dfa->endstates[2*endoff+0] = off;
+		b->dfa->endstates[2*endoff+1] = mc->which;
+	}
+
+	b->lookup[off].st  = st;
+	b->lookup[off].ind = off;
+
+	return 1;
+}
+
+static int
+collect_transitions(const struct fsm *fsm,
+	const struct fsm_state *st0, unsigned int lbl, const struct fsm_state *st1,
+	void *opaque)
+{
+	struct dfa_builder *b = opaque;
+	int *s0p, *s1p;
+	size_t i0, i1;
+	size_t edge_ind;
+
+	(void)fsm;
+
+	i0 = fsm_state_ind(b->dfa->nstates, b->lookup, st0);
+	i1 = fsm_state_ind(b->dfa->nstates, b->lookup, st1);
+
+	assert(i0 >= 0 && i0 < b->dfa->nstates);
+	assert(i1 >= 0 && i1 < b->dfa->nstates);
+
+	edge_ind = b->edge_off++;
+	if (i0 != b->last_state) {
+		size_t j;
+		assert(i0 > b->last_state);
+		for (j=b->last_state; j < i0; j++) {
+			b->dfa->offs[j+1] = edge_ind;
+		}
+		b->last_state = i0;
+	}
+
+	// XXX - check for overflow
+	b->dfa->transitions[2*edge_ind+0] = (int)lbl;
+	b->dfa->transitions[2*edge_ind+1] = (int)i1;
+
+	return 1;
+}
+
+void
+jvst_op_build_vm_dfa(struct fsm *fsm, struct jvst_vm_dfa *dfa)
+{
+	struct dfa_builder b = { 0 };
+	size_t i, nstates, nedges, nends, nelts;
+	int *elts;
+	struct dfa_lookup *tbl;
+
+	nstates = fsm_countstates(fsm);
+	nedges  = fsm_countedges(fsm);
+	nends   = fsm_count(fsm, fsm_isend);
+
+	nelts = (nstates+1) + 2*nedges + 2*nends;
+	elts = xmalloc(nelts * sizeof *elts);
+	tbl = xmalloc(nstates * sizeof *tbl);
+
+	dfa->nstates = nstates;
+	dfa->nedges  = nedges;
+	dfa->nends   = nends;
+
+	dfa->offs = elts;
+	dfa->transitions = dfa->offs + (nstates+1);
+	dfa->endstates = dfa->transitions  + 2*nedges;
+	for (i=0; i < nstates+1; i++) {
+		dfa->offs[i] = 0;
+	}
+
+	b.dfa = dfa;
+	b.lookup = tbl;
+
+	fsm_walk_states(fsm, &b, collect_and_number_states);
+	qsort(tbl, nstates, sizeof tbl[0], dfa_cmp);
+	fsm_walk_edges(fsm,  &b, collect_transitions);
+	for (; b.last_state < nstates; b.last_state++) {
+		b.dfa->offs[b.last_state+1] = b.edge_off;
+	}
+
+	free(tbl);
+}
+
+void
+jvst_vm_dfa_debug(struct jvst_vm_dfa *dfa)
+{
+	size_t i,n;
+
+	n = dfa->nstates;
+	fprintf(stderr, "%zu states, starting, and count\n", n);
+	for (i=0; i < n; i++) {
+		fprintf(stderr, "%5zu %5d %5d\n", i, dfa->offs[i], dfa->offs[i+1] - dfa->offs[i]);
+	}
+
+	fprintf(stderr, "\n%d transitions\n", dfa->offs[n]);
+	assert(dfa->offs[n] == (int)dfa->nedges);
+	for (i=0; i < n; i++) {
+		size_t j, ne, off;
+		off = dfa->offs[i];
+
+		ne = dfa->offs[i+1] - off;
+		fprintf(stderr, "state %zu, %zu transitions\n", i, ne);
+		for (j=0; j < ne; j++) {
+			fprintf(stderr, "%5zu %5d %5d\n", i,
+				dfa->transitions[2*(off+j) + 0],
+				dfa->transitions[2*(off+j) + 1]);
+		}
+	}
+
+	n = dfa->nends;
+	fprintf(stderr, "\n%zu end states\n", n);
+	for (i=0; i < n; i++) {
+		fprintf(stderr, "%5d %5d\n", dfa->endstates[2*i+0], dfa->endstates[2*i+1]);
+	}
+}
 /* vim: set tabstop=8 shiftwidth=8 noexpandtab: */

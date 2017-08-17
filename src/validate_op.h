@@ -53,11 +53,11 @@ struct jvst_op_proc;
 
 struct jvst_op_instr {
 	struct jvst_op_instr *next;
+	struct jvst_op_arg args[2];
+	const char *label;
+	uint32_t *code_ptr;
 
 	enum jvst_vm_op op;
-	const char *label;
-
-	struct jvst_op_arg args[2];
 };
 
 // Instruction data... for assembling the opcodes
@@ -74,7 +74,7 @@ struct jvst_op_proc {
 	int64_t *cdata;
 
 	size_t ndfa;
-	struct fsm **dfas;
+	struct jvst_vm_dfa *dfas;
 
 	size_t nsplit;
 	struct jvst_op_proc **splits;
@@ -112,6 +112,12 @@ jvst_op_print(struct jvst_op_program *prog);
 
 struct jvst_vm_program *
 jvst_ir_assemble(struct jvst_ir_stmt *prog);
+
+void
+jvst_op_build_vm_dfa(struct fsm *fsm, struct jvst_vm_dfa *dfa);
+
+void
+jvst_vm_dfa_debug(struct jvst_vm_dfa *dfa);
 
 #endif /* VALIDATE_OP_H */
 

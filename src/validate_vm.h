@@ -284,6 +284,7 @@ jvst_vm_tobarg(uint32_t arg)
 
 struct jvst_vm_dfa {
 	size_t nstates;
+	size_t nedges;
 	size_t nends;
 
 	int *offs;
