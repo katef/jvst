@@ -1946,6 +1946,43 @@ op_assemble_match(struct op_assembler *opasm, struct jvst_ir_stmt *stmt)
 }
 
 static void
+op_assemble_cbranch(struct op_assembler *opasm, struct jvst_ir_stmt *stmt)
+{
+	struct jvst_op_instr *instr;
+
+	/* emit condition */
+	op_assemble_cond(opasm, stmt->u.cbranch.cond);
+
+	if (stmt->next == NULL) {
+		goto emit_two_branches;
+	}
+
+	if (stmt->u.cbranch.br_false == stmt->next) {
+		instr = op_instr_new(JVST_OP_CBT);
+		asm_addr_fixup_add(opasm->fixups, instr, &instr->u.args[0], stmt->u.cbranch.br_true);
+		emit_instr(opasm, instr);
+		return;
+	}
+
+	if (stmt->u.cbranch.br_true == stmt->next) {
+		instr = op_instr_new(JVST_OP_CBF);
+		asm_addr_fixup_add(opasm->fixups, instr, &instr->u.args[0], stmt->u.cbranch.br_false);
+		emit_instr(opasm, instr);
+		return;
+	}
+
+emit_two_branches:
+	instr = op_instr_new(JVST_OP_CBT);
+	asm_addr_fixup_add(opasm->fixups, instr, &instr->u.args[0], stmt->u.cbranch.br_true);
+	emit_instr(opasm, instr);
+
+	instr = op_instr_new(JVST_OP_BR);
+	asm_addr_fixup_add(opasm->fixups, instr, &instr->u.args[0], stmt->u.cbranch.br_false);
+	emit_instr(opasm, instr);
+	return;
+}
+
+static void
 op_assemble(struct op_assembler *opasm, struct jvst_ir_stmt *stmt)
 {
 	struct jvst_op_instr *instr;
@@ -2035,45 +2072,7 @@ op_assemble(struct op_assembler *opasm, struct jvst_ir_stmt *stmt)
 		return;
 
 	case JVST_IR_STMT_CBRANCH:
-		// XXX - refactor into its own function
-
-		/* emit condition */
-		op_assemble_cond(opasm, stmt->u.cbranch.cond);
-
-		if (stmt->next == NULL) {
-			goto cbranch_3;
-		}
-
-		if (stmt->u.cbranch.br_false == stmt->next) {
-			goto cbranch_1;
-		}
-
-		if (stmt->u.cbranch.br_true == stmt->next) {
-			goto cbranch_2;
-		}
-
-		goto cbranch_3;
-
-cbranch_1:
-		instr = op_instr_new(JVST_OP_CBT);
-		asm_addr_fixup_add(opasm->fixups, instr, &instr->u.args[0], stmt->u.cbranch.br_true);
-		emit_instr(opasm, instr);
-		return;
-
-cbranch_2:
-		instr = op_instr_new(JVST_OP_CBF);
-		asm_addr_fixup_add(opasm->fixups, instr, &instr->u.args[0], stmt->u.cbranch.br_false);
-		emit_instr(opasm, instr);
-		return;
-
-cbranch_3:
-		instr = op_instr_new(JVST_OP_CBT);
-		asm_addr_fixup_add(opasm->fixups, instr, &instr->u.args[0], stmt->u.cbranch.br_true);
-		emit_instr(opasm, instr);
-
-		instr = op_instr_new(JVST_OP_BR);
-		asm_addr_fixup_add(opasm->fixups, instr, &instr->u.args[0], stmt->u.cbranch.br_false);
-		emit_instr(opasm, instr);
+		op_assemble_cbranch(opasm, stmt);
 		return;
 
 	case JVST_IR_STMT_VALID:
@@ -2138,7 +2137,6 @@ cbranch_3:
 
 	case JVST_IR_STMT_BCLEAR:
 	case JVST_IR_STMT_DECR:
-	case JVST_IR_STMT_PROGRAM:
 		fprintf(stderr, "%s:%d (%s) IR statement %s not yet implemented\n",
 			__FILE__, __LINE__, __func__, jvst_ir_stmt_type_name(stmt->type));
 		abort();
@@ -2153,6 +2151,7 @@ cbranch_3:
 	case JVST_IR_STMT_MATCHER:
 	case JVST_IR_STMT_BITVECTOR:
 	case JVST_IR_STMT_SPLITLIST:
+	case JVST_IR_STMT_PROGRAM:
 		fprintf(stderr, "%s:%d (%s) should not encounter IR statement %s in op assembly\n",
 			__FILE__, __LINE__, __func__, jvst_ir_stmt_type_name(stmt->type));
 		abort();
