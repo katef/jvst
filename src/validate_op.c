@@ -1007,12 +1007,6 @@ instr_last(struct jvst_op_instr *first)
 }
 
 static void
-op_finish_proc(struct jvst_op_proc *proc)
-{
-	(void)proc;
-}
-
-static void
 op_assemble_seq(struct op_assembler *opasm, struct jvst_ir_stmt *stmt_list)
 {
 	struct jvst_ir_stmt *stmt;
@@ -1073,8 +1067,6 @@ op_assemble_frame(struct op_assembler *opasm, struct jvst_ir_stmt *top)
 
 	// XXX - allocate storage for floats, dfas, splits
 	op_assemble_seq(&frame_opasm, top->u.frame.stmts);
-
-	op_finish_proc(proc);
 
 	opasm->procpp = frame_opasm.procpp;
 
