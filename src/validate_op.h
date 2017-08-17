@@ -104,6 +104,7 @@ struct jvst_op_proc {
 	struct jvst_op_proc **splits;
 
 	size_t nslots;
+	size_t temp_off;
 
 	// struct jvst_op_block *blocks;
 

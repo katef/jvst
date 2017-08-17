@@ -398,25 +398,27 @@ void test_op_minimum(void)
 
       newop_program(&A,
           newop_proc(&A,
+            opslots, 2,
             opfloat, 1.1,
 
-            oplabel, "entry",
+            oplabel, "entry_0",
             newop_instr(&A, JVST_OP_TOKEN),
             newop_cmp(&A, JVST_OP_IEQ, oparg_tt(), oparg_tok(SJP_NUMBER)),
-            newop_br(&A, JVST_OP_CBT, "L_1"),
+            newop_br(&A, JVST_OP_CBT, "true_2"),
 
-            oplabel, "invalid_1",
+            oplabel, "invalid_1_9",
             newop_invalid(&A, 1),
 
-            oplabel, "L_1",
-            newop_load(&A, JVST_OP_FLOAD, oparg_ftmp(0), oparg_lit(0)),
-            newop_cmp(&A, JVST_OP_FGE, oparg_tnum(), oparg_ftmp(0)),
-            newop_br(&A, JVST_OP_CBT, "valid"),
+            oplabel, "true_2",
+            newop_load(&A, JVST_OP_MOVE, oparg_slot(1), oparg_tnum()),
+            newop_load(&A, JVST_OP_FLOAD, oparg_slot(0), oparg_lit(0)),
+            newop_cmp(&A, JVST_OP_FGE, oparg_slot(1), oparg_slot(0)),
+            newop_br(&A, JVST_OP_CBT, "valid_5"),
 
-            oplabel, "invalid_3",
+            oplabel, "invalid_3_7",
             newop_invalid(&A, 3),
 
-            oplabel, "valid",
+            oplabel, "valid_5",
             newop_instr(&A, JVST_OP_VALID),
 
             NULL
@@ -2624,9 +2626,9 @@ int main(void)
   test_op_type_constraints();
 
   test_op_type_integer();
-  /*
   test_op_minimum();
 
+  /*
   test_op_properties();
 
   test_op_minmax_properties_1();

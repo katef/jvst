@@ -1781,7 +1781,7 @@ arg_okay(struct jvst_op_arg arg, int kind, int writeable)
 
 	case JVST_VM_ARG_INT:
 	case JVST_VM_ARG_SLOT:
-		return (kind == ARG_INT);
+		return (kind == ARG_INT) || (kind == ARG_FLOAT);
 
 	default:
 		fprintf(stderr, "%s:%d (%s) unknown argument type %d\n",
@@ -1826,6 +1826,10 @@ newop_load(struct arena_info *A, enum jvst_vm_op op,
 		}
 		goto make_op;
 
+	case JVST_OP_MOVE:
+		// XXX - add some rules!
+		goto make_op;
+
 	case JVST_OP_ILT:
 	case JVST_OP_ILE:
 	case JVST_OP_IEQ:
@@ -1856,7 +1860,6 @@ newop_load(struct arena_info *A, enum jvst_vm_op op,
 	case JVST_OP_BAND:
 	case JVST_OP_VALID:
 	case JVST_OP_INVALID:
-	case JVST_OP_MOVE:
 		fprintf(stderr, "OP %s is not a load\n",
 			jvst_op_name(op));
 		abort();

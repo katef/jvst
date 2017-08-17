@@ -251,12 +251,12 @@ op_instr_dump(struct sbuf *buf, struct jvst_op_instr *instr)
 	switch (instr->op) {
 	case JVST_OP_NOP:
 		sbuf_snprintf(buf, "NOP");
-		break;
+		return;
 
 	case JVST_OP_PROC:
 		sbuf_snprintf(buf, "PROC ");
 		op_arg_dump(buf, instr->u.args[0]);
-		break;
+		return;
 
 	case JVST_OP_ILT:
 	case JVST_OP_ILE:
@@ -274,12 +274,12 @@ op_instr_dump(struct sbuf *buf, struct jvst_op_instr *instr)
 		op_arg_dump(buf, instr->u.args[0]);
 		sbuf_snprintf(buf, ", ");
 		op_arg_dump(buf, instr->u.args[1]);
-		break;
+		return;
 
 	case JVST_OP_FINT:
 		sbuf_snprintf(buf, "%s ", jvst_op_name(instr->op));
 		op_arg_dump(buf, instr->u.args[0]);
-		break;
+		return;
 
 	case JVST_OP_BR:
 	case JVST_OP_CBT:
@@ -307,7 +307,7 @@ op_instr_dump(struct sbuf *buf, struct jvst_op_instr *instr)
 
 			sbuf_snprintf(buf, "%s :%s", jvst_op_name(instr->op), lbl);
 		}
-		break;
+		return;
 
 	case JVST_OP_CALL:
 		sbuf_snprintf(buf, "%s %zu",
@@ -315,35 +315,36 @@ op_instr_dump(struct sbuf *buf, struct jvst_op_instr *instr)
 			(instr->u.call.dest != NULL)
 			 	? instr->u.call.dest->proc_index
 				: instr->u.call.proc_index);
-		break;
+		return;
 
 	case JVST_OP_MATCH:
 	case JVST_OP_INCR:
 		sbuf_snprintf(buf, "%s ", jvst_op_name(instr->op));
 		op_arg_dump(buf, instr->u.args[0]);
-		break;
+		return;
 
 	case JVST_OP_SPLITV:
 	case JVST_OP_SPLIT:
 	case JVST_OP_FLOAD:
 	case JVST_OP_ILOAD:
+	case JVST_OP_MOVE:
 		sbuf_snprintf(buf, "%s ", jvst_op_name(instr->op));
 		op_arg_dump(buf, instr->u.args[0]);
 		sbuf_snprintf(buf, ", ", jvst_op_name(instr->op));
 		op_arg_dump(buf, instr->u.args[1]);
-		break;
+		return;
 
 	case JVST_OP_TOKEN:
 	case JVST_OP_CONSUME:
 	case JVST_OP_VALID:
 		sbuf_snprintf(buf, "%s", jvst_op_name(instr->op));
-		break;
+		return;
 
 	case JVST_OP_INVALID:
 		sbuf_snprintf(buf, "%s %d",
 			jvst_op_name(instr->op),
 			instr->u.args[0].u.index);
-		break;
+		return;
 
 	case JVST_OP_BAND:
 	case JVST_OP_BSET:
@@ -351,19 +352,17 @@ op_instr_dump(struct sbuf *buf, struct jvst_op_instr *instr)
 		op_arg_dump(buf, instr->u.args[0]);
 		sbuf_snprintf(buf, ", ", jvst_op_name(instr->op));
 		op_arg_dump(buf, instr->u.args[1]);
-		break;
+		return;
 
 	case JVST_OP_BTEST:
 		fprintf(stderr, "%s:%d (%s) OP %s not yet implemented\n",
 			__FILE__, __LINE__, __func__, jvst_op_name(instr->op));
 		abort();
-
-	default:
-		fprintf(stderr, "%s:%d (%s) Unknown OP arg type %02x\n",
-				__FILE__, __LINE__, __func__, instr->op);
-		abort();
-
 	}
+
+	fprintf(stderr, "%s:%d (%s) Unknown OP arg type %02x\n",
+			__FILE__, __LINE__, __func__, instr->op);
+	abort();
 }
 
 static void
@@ -1267,11 +1266,15 @@ op_assemble_frame(struct op_assembler *opasm, struct jvst_ir_stmt *top)
 	struct jvst_op_proc *proc;
 	struct jvst_op_block *block;
 	struct jvst_ir_stmt *stmt;
-	size_t nslots, off;
+	size_t nslots, temp_off, off;
 
 	assert(top->type == JVST_IR_STMT_FRAME);
 
-	// allocate slots for counters
+	// allocate slots for counters, count total number of counters
+	// and bitvectors (in off).  NB: can't rely on
+	// top->u.frame.ncounters or top->u.frame.nbitvecs because
+	// they're not decremented if a bitvec or counter is removed to
+	// keep names unique
 	off = 0;
 	for (stmt = top->u.frame.counters; stmt != NULL; stmt = stmt->next) {
 		assert(stmt->type == JVST_IR_STMT_COUNTER);
@@ -1284,13 +1287,9 @@ op_assemble_frame(struct op_assembler *opasm, struct jvst_ir_stmt *top)
 		stmt->u.bitvec.frame_off = off++;
 	}
 
-	// can't rely on top->u.frame.ncounters or top->u.frame.nbitvecs
-	// because they're not decremented if a bitvec or counter is
-	// removed to keep names unique
-	nslots = off;
-
 	proc = op_proc_new();
-	proc->nslots = nslots;
+	proc->temp_off = off;
+	proc->nslots = off + top->u.frame.ntemps;
 	*opasm->procpp = proc;
 	opasm->procpp = &proc->next;
 	
@@ -1369,7 +1368,7 @@ op_assemble_block(struct op_assembler *opasm, struct jvst_ir_stmt *top, const ch
 	return block;
 }
 
-enum { ARG_NONE, ARG_BOOL, ARG_FLOAT, ARG_INT, ARG_DEST };
+enum { ARG_NONE, ARG_SLOT, ARG_BOOL, ARG_FLOAT, ARG_INT, ARG_DEST };
 
 static int
 op_arg_type(enum jvst_op_arg_type type)
@@ -1405,8 +1404,64 @@ op_arg_type(enum jvst_op_arg_type type)
 	abort();
 }
 
+static int
+ir_expr_type(enum jvst_ir_expr_type type)
+{
+	switch (type) {
+	case JVST_IR_EXPR_NUM:
+	case JVST_IR_EXPR_TOK_NUM:
+	case JVST_IR_EXPR_FTEMP:
+		return ARG_FLOAT;
+
+	case JVST_IR_EXPR_NONE:
+		return ARG_NONE;
+
+	case JVST_IR_EXPR_SLOT:
+		return ARG_SLOT;
+
+	case JVST_IR_EXPR_TOK_TYPE:
+	case JVST_IR_EXPR_TOK_LEN:
+	case JVST_IR_EXPR_COUNT:
+	case JVST_IR_EXPR_SIZE:
+	case JVST_IR_EXPR_SPLIT:
+	case JVST_IR_EXPR_ITEMP:
+	case JVST_IR_EXPR_INT:
+	case JVST_IR_EXPR_BCOUNT:
+	case JVST_IR_EXPR_MATCH:
+		return ARG_INT;
+
+	case JVST_IR_EXPR_TOK_COMPLETE:
+	case JVST_IR_EXPR_BOOL:
+	case JVST_IR_EXPR_BTEST:
+	case JVST_IR_EXPR_BTESTALL:
+	case JVST_IR_EXPR_BTESTANY:
+	case JVST_IR_EXPR_BTESTONE:
+	case JVST_IR_EXPR_ISTOK:
+	case JVST_IR_EXPR_ISINT:
+	case JVST_IR_EXPR_NE:
+	case JVST_IR_EXPR_LT:
+	case JVST_IR_EXPR_LE:
+	case JVST_IR_EXPR_EQ:
+	case JVST_IR_EXPR_GE:
+	case JVST_IR_EXPR_GT:
+		return ARG_BOOL;
+
+	case JVST_IR_EXPR_AND:
+	case JVST_IR_EXPR_OR:
+	case JVST_IR_EXPR_NOT:
+	case JVST_IR_EXPR_SEQ:
+		fprintf(stderr, "%s:%d (%s) expression %s is invalid while assembling\n",
+			__FILE__, __LINE__, __func__, jvst_ir_expr_type_name(type));
+		abort();
+	}
+
+	fprintf(stderr, "%s:%d (%s) unknown expr type %d\n",
+		__FILE__, __LINE__, __func__, type);
+	abort();
+}
+
 static struct jvst_op_arg
-emit_cond_arg(struct op_assembler *opasm, struct jvst_ir_expr *arg)
+emit_op_arg(struct op_assembler *opasm, struct jvst_ir_expr *arg)
 {
 	struct jvst_op_arg a;
 
@@ -1505,23 +1560,26 @@ emit_cond_arg(struct op_assembler *opasm, struct jvst_ir_expr *arg)
 			return ireg;
 		}
 
+	case JVST_IR_EXPR_SLOT:
+		return arg_slot(arg->u.slot.ind);
+
+	case JVST_IR_EXPR_ITEMP:
+	case JVST_IR_EXPR_FTEMP:
+		return arg_slot(opasm->currproc->temp_off + arg->u.temp.ind);
+
 	case JVST_IR_EXPR_INT:
 	case JVST_IR_EXPR_BOOL:
 	case JVST_IR_EXPR_BCOUNT:
-	case JVST_IR_EXPR_BTEST:
-	case JVST_IR_EXPR_BTESTALL:
-	case JVST_IR_EXPR_BTESTANY:
-	case JVST_IR_EXPR_BTESTONE:
-	case JVST_IR_EXPR_SLOT:
-	case JVST_IR_EXPR_ITEMP:
-	case JVST_IR_EXPR_FTEMP:
-	case JVST_IR_EXPR_SEQ:
 	case JVST_IR_EXPR_MATCH:
 		fprintf(stderr, "%s:%d (%s) expression %s not yet implemented\n",
 				__FILE__, __LINE__, __func__,
 				jvst_ir_expr_type_name(arg->type));
 		abort();
 
+	case JVST_IR_EXPR_BTEST:
+	case JVST_IR_EXPR_BTESTALL:
+	case JVST_IR_EXPR_BTESTANY:
+	case JVST_IR_EXPR_BTESTONE:
 	case JVST_IR_EXPR_ISTOK:
 	case JVST_IR_EXPR_ISINT:
 	case JVST_IR_EXPR_NE:
@@ -1534,9 +1592,14 @@ emit_cond_arg(struct op_assembler *opasm, struct jvst_ir_expr *arg)
 	case JVST_IR_EXPR_OR:
 	case JVST_IR_EXPR_NOT:
 		fprintf(stderr, "%s:%d (%s) expression %s is not an argument\n",
-				__FILE__, __LINE__, __func__,
-				jvst_ir_expr_type_name(arg->type));
+			__FILE__, __LINE__, __func__, jvst_ir_expr_type_name(arg->type));
 		abort();
+
+	case JVST_IR_EXPR_SEQ:
+		fprintf(stderr, "%s:%d (%s) expression %s is invalid while assembling\n",
+			__FILE__, __LINE__, __func__, jvst_ir_expr_type_name(arg->type));
+		abort();
+
 	}
 
 	fprintf(stderr, "%s:%d (%s) unknown expression type %d\n",
@@ -1545,54 +1608,33 @@ emit_cond_arg(struct op_assembler *opasm, struct jvst_ir_expr *arg)
 	abort();
 }
 
-static struct jvst_op_instr *
-emit_cmp(struct op_assembler *opasm, struct jvst_ir_expr *expr, 
-	struct jvst_op_arg a0, struct jvst_op_arg a1)
+static void
+cmp_type(enum jvst_ir_expr_type type, enum jvst_vm_op *iopp, enum jvst_vm_op *fopp)
 {
-	int t0, t1;
-	enum jvst_vm_op op;
-
-	t0 = op_arg_type(a0.type);
-	t1 = op_arg_type(a1.type);
-	if (t0 != t1) {
-		char msg[128] = {0};
-		struct sbuf b = { .buf = msg, .cap = sizeof msg };
-		sbuf_snprintf(&b, "%s:%d (%s) types of op arguments ", __FILE__, __LINE__, __func__);
-		op_arg_dump(&b, a0);
-		sbuf_snprintf(&b, " and ");
-		op_arg_dump(&b, a1);
-		sbuf_snprintf(&b, " do not agree");
-		fprintf(stderr, "%s\n", b.buf);
-		abort();
-	}
-
-	assert((t0 == ARG_INT) || (t0 == ARG_FLOAT));
-	assert((t1 == ARG_INT) || (t1 == ARG_FLOAT));
-
-	switch (expr->type) {
+	switch (type) {
 	case JVST_IR_EXPR_NE:
-		op = (t1 == ARG_INT) ? JVST_OP_INEQ : JVST_OP_FNEQ;
-		goto emit;
+		*iopp = JVST_OP_INEQ; *fopp = JVST_OP_FNEQ;
+		return;
 
 	case JVST_IR_EXPR_LT:
-		op = (t1 == ARG_INT) ? JVST_OP_ILT : JVST_OP_FLT;
-		goto emit;
+		*iopp = JVST_OP_ILT; *fopp = JVST_OP_FLT;
+		return;
 
 	case JVST_IR_EXPR_LE:
-		op = (t1 == ARG_INT) ? JVST_OP_ILE : JVST_OP_FLE;
-		goto emit;
+		*iopp = JVST_OP_ILE; *fopp = JVST_OP_FLE;
+		return;
 
 	case JVST_IR_EXPR_EQ:
-		op = (t1 == ARG_INT) ? JVST_OP_IEQ : JVST_OP_FEQ;
-		goto emit;
+		*iopp = JVST_OP_IEQ; *fopp = JVST_OP_FEQ;
+		return;
 
 	case JVST_IR_EXPR_GE:
-		op = (t1 == ARG_INT) ? JVST_OP_IGE : JVST_OP_FGE;
-		goto emit;
+		*iopp = JVST_OP_IGE; *fopp = JVST_OP_FGE;
+		return;
 
 	case JVST_IR_EXPR_GT:
-		op = (t1 == ARG_INT) ? JVST_OP_IGT : JVST_OP_FGT;
-		goto emit;
+		*iopp = JVST_OP_IGT; *fopp = JVST_OP_FGT;
+		return;
 
 	case JVST_IR_EXPR_NONE:
 	case JVST_IR_EXPR_ISTOK:
@@ -1621,16 +1663,63 @@ emit_cmp(struct op_assembler *opasm, struct jvst_ir_expr *expr,
 	case JVST_IR_EXPR_SEQ:
 	case JVST_IR_EXPR_MATCH:
 		fprintf(stderr, "%s:%d (%s) IR expression %s is not a comparison\n",
-			__FILE__, __LINE__, __func__, jvst_ir_expr_type_name(expr->type));
+			__FILE__, __LINE__, __func__, jvst_ir_expr_type_name(type));
 		abort();
 	}
 
 	fprintf(stderr, "%s:%d (%s) unknown IR expression %d\n",
-		__FILE__, __LINE__, __func__, expr->type);
+		__FILE__, __LINE__, __func__, type);
 	abort();
+}
 
-emit:
-	return emit_cond(opasm, op, a0, a1);
+static struct jvst_op_instr *
+emit_cmp(struct op_assembler *opasm, struct jvst_ir_expr *expr)
+{
+	struct jvst_op_arg a0,a1;
+	int t0, t1;
+	enum jvst_vm_op iop, fop;
+
+	iop = fop = JVST_OP_NOP;
+	cmp_type(expr->type, &iop, &fop);
+
+	t0 = ir_expr_type(expr->u.cmp.left->type);
+	t1 = ir_expr_type(expr->u.cmp.right->type);
+
+	if (t0 == ARG_SLOT) {
+		t0 = t1;
+		if (t0 == ARG_SLOT) {
+			t0 = t1 = ARG_INT;
+		}
+	}
+
+	a0 = emit_op_arg(opasm, expr->u.cmp.left);
+	a1 = emit_op_arg(opasm, expr->u.cmp.right);
+
+	if (t0 != t1) {
+		char msg[128] = {0};
+		struct sbuf b = { .buf = msg, .cap = sizeof msg };
+		sbuf_snprintf(&b, "%s:%d (%s) types of op arguments ", __FILE__, __LINE__, __func__);
+		op_arg_dump(&b, a0);
+		sbuf_snprintf(&b, " and ");
+		op_arg_dump(&b, a1);
+		sbuf_snprintf(&b, " do not agree");
+		fprintf(stderr, "%s\n", b.buf);
+		abort();
+	}
+
+	assert((t0 == ARG_INT) || (t0 == ARG_FLOAT));
+	assert((t1 == ARG_INT) || (t1 == ARG_FLOAT));
+
+	switch (t0) {
+	case ARG_INT:
+		return emit_cond(opasm, iop, a0, a1);
+	case ARG_FLOAT:
+		return emit_cond(opasm, fop, a0, a1);
+	default:
+		fprintf(stderr, "%s:%d (%s) only ARG_INT and ARG_FLOAT are supported (type is %d)\n",
+			__FILE__, __LINE__, __func__, t0);
+		abort();
+	}
 }
 
 static void
@@ -1659,10 +1748,7 @@ op_assemble_cond(struct op_assembler *opasm, struct jvst_ir_expr *cond)
 	case JVST_IR_EXPR_GE:
 	case JVST_IR_EXPR_GT:
 		{
-			struct jvst_op_arg a0,a1;
-			a0 = emit_cond_arg(opasm, cond->u.cmp.left);
-			a1 = emit_cond_arg(opasm, cond->u.cmp.right);
-			emit_cmp(opasm, cond, a0,a1);
+			emit_cmp(opasm, cond);
 		}
 		return;
 
@@ -1769,7 +1855,7 @@ op_assemble_cond(struct op_assembler *opasm, struct jvst_ir_expr *cond)
 	case JVST_IR_EXPR_AND:
 	case JVST_IR_EXPR_OR:
 	case JVST_IR_EXPR_NOT:
-		fprintf(stderr, "%s:%d (%s) expression %s is not a simple boolean condition\n",
+		fprintf(stderr, "%s:%d (%s) expression %s is invalid while assembling opcodes\n",
 				__FILE__, __LINE__, __func__,
 				jvst_ir_expr_type_name(cond->type));
 		abort();
@@ -1991,9 +2077,47 @@ cbranch_3:
 		emit_instr(opasm, instr);
 		return;
 
+	case JVST_IR_STMT_MOVE:
+		{
+			struct jvst_ir_expr *dst, *src;
+			src = stmt->u.move.src;
+			dst = stmt->u.move.dst;
+
+			if (src->type == JVST_IR_EXPR_NUM) {
+				int64_t fidx;
+
+				assert(dst->type == JVST_IR_EXPR_FTEMP || dst->type == JVST_IR_EXPR_SLOT);
+
+				fidx = proc_add_float(opasm, src->u.vnum);
+				instr = op_instr_new(JVST_OP_FLOAD);
+				instr->u.args[0] = emit_op_arg(opasm, dst);
+				instr->u.args[1] = arg_const(fidx);
+				emit_instr(opasm, instr);
+				return;
+			}
+
+			instr = op_instr_new(JVST_OP_MOVE);
+
+			switch (dst->type) {
+			case JVST_IR_EXPR_SLOT:
+			case JVST_IR_EXPR_ITEMP:
+			case JVST_IR_EXPR_FTEMP:
+				instr->u.args[0] = emit_op_arg(opasm, dst);
+				break;
+
+			default:
+				fprintf(stderr, "%s:%d (%s) expect MOVE destination to be a slot, not %s\n",
+						__FILE__, __LINE__, __func__, jvst_ir_expr_type_name(stmt->u.move.dst->type));
+				abort();
+			}
+
+			instr->u.args[1] = emit_op_arg(opasm, src);
+			emit_instr(opasm, instr);
+		}
+		return;
+
 	case JVST_IR_STMT_BCLEAR:
 	case JVST_IR_STMT_DECR:
-	case JVST_IR_STMT_MOVE:
 	case JVST_IR_STMT_CALL:
 	case JVST_IR_STMT_PROGRAM:
 		fprintf(stderr, "%s:%d (%s) IR statement %s not yet implemented\n",
