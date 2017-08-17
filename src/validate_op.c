@@ -310,11 +310,9 @@ op_instr_dump(struct sbuf *buf, struct jvst_op_instr *instr)
 		return;
 
 	case JVST_OP_CALL:
-		sbuf_snprintf(buf, "%s %zu",
-			jvst_op_name(instr->op),
-			(instr->u.call.dest != NULL)
-			 	? instr->u.call.dest->proc_index
-				: instr->u.call.proc_index);
+		sbuf_snprintf(buf, "%s ", jvst_op_name(instr->op));
+		op_arg_dump(buf, instr->u.args[0]);
+		// XXX - dump address in args[1] 
 		return;
 
 	case JVST_OP_MATCH:
@@ -1567,10 +1565,21 @@ emit_op_arg(struct op_assembler *opasm, struct jvst_ir_expr *arg)
 	case JVST_IR_EXPR_FTEMP:
 		return arg_slot(opasm->currproc->temp_off + arg->u.temp.ind);
 
+	case JVST_IR_EXPR_MATCH:
+		{
+			struct jvst_op_instr *instr;
+			struct jvst_op_arg ireg;
+
+			instr = op_instr_new(JVST_OP_MATCH);
+			instr->u.args[0] = arg_const(arg->u.match.ind);
+			emit_instr(opasm, instr);
+
+			return arg_special(JVST_VM_ARG_M);
+		}
+
 	case JVST_IR_EXPR_INT:
 	case JVST_IR_EXPR_BOOL:
 	case JVST_IR_EXPR_BCOUNT:
-	case JVST_IR_EXPR_MATCH:
 		fprintf(stderr, "%s:%d (%s) expression %s not yet implemented\n",
 				__FILE__, __LINE__, __func__,
 				jvst_ir_expr_type_name(arg->type));
@@ -2116,9 +2125,19 @@ cbranch_3:
 		}
 		return;
 
+	case JVST_IR_STMT_CALL:
+		{
+			instr = op_instr_new(JVST_OP_CALL);
+			assert(stmt->u.call.frame != NULL);
+
+			instr->u.args[0] = arg_const(stmt->u.call.frame->u.frame.frame_ind);
+			// XXX - fixup call address in args[1]
+			emit_instr(opasm, instr);
+		}
+		return;
+
 	case JVST_IR_STMT_BCLEAR:
 	case JVST_IR_STMT_DECR:
-	case JVST_IR_STMT_CALL:
 	case JVST_IR_STMT_PROGRAM:
 		fprintf(stderr, "%s:%d (%s) IR statement %s not yet implemented\n",
 			__FILE__, __LINE__, __func__, jvst_ir_stmt_type_name(stmt->type));
