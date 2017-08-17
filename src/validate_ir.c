@@ -2419,7 +2419,7 @@ ir_translate_object_split(struct jvst_cnode *top, struct jvst_ir_stmt *frame)
 static struct jvst_ir_stmt *
 ir_translate_object_inner(struct jvst_cnode *top, struct jvst_ir_stmt *frame)
 {
-	struct jvst_ir_stmt *stmt, *pseq, **spp, **pseqpp;
+	struct jvst_ir_stmt *stmt, *pseq, **spp, **pseqpp, **matchpp;
 	struct jvst_cnode *pmatch;
 	struct fsm_options *opts;
 	const char *loopname;
@@ -2455,8 +2455,10 @@ ir_translate_object_inner(struct jvst_cnode *top, struct jvst_ir_stmt *frame)
 	builder.mcpp = &builder.match->u.match.cases;
 
 	*pseqpp = builder.match;
-	builder.match->u.match.default_case = obj_default_case();
+	// builder.match->u.match.default_case = obj_default_case();
+	matchpp = pseqpp;
 	pseqpp = &(*pseqpp)->next;
+
 	builder.post_match = pseqpp;
 	assert(pseqpp != NULL);
 	assert(*pseqpp == NULL);
@@ -2467,6 +2469,28 @@ ir_translate_object_inner(struct jvst_cnode *top, struct jvst_ir_stmt *frame)
 
 	if (builder.match->u.match.default_case == NULL) {
 		builder.match->u.match.default_case = obj_default_case();
+	}
+
+	// no matches... replacing matcher with a consume followed by
+	// the empty matcher's default case
+	if (builder.match->u.match.dfa == NULL) {
+		struct jvst_ir_stmt *consume, **npp;
+
+		assert(matchpp != NULL);
+		assert(*matchpp == builder.match);
+		assert(builder.match->u.match.default_case != NULL);
+
+		for (npp = &builder.match->u.match.default_case; *npp != NULL; npp = &(*npp)->next) {
+			continue;
+		}
+
+		assert(npp != &builder.match->u.match.default_case);
+		assert(*npp == NULL);
+
+		*npp = builder.match->next;
+		*matchpp = ir_stmt_new(JVST_IR_STMT_CONSUME);
+		matchpp = &(*matchpp)->next;
+		*matchpp = builder.match->u.match.default_case;
 	}
 
 	// handle post-loop constraints

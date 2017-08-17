@@ -860,20 +860,8 @@ void test_ir_minmax_properties_1(void)
                 newir_if(&A, newir_istok(&A, SJP_OBJECT_END),
                   newir_break(&A, "L_OBJ", 0),
                   newir_seq(&A,                                 // unnecessary SEQ should be removed in the future
-                    // XXX The match could be eliminated here.  We'd
-                    //     have to consume the string and the value.
-                    //     This would be a good reason to add a CONSUME
-                    //     statement instead of creating a frame and
-                    //     using VALID to consume the entire token.
-                    newir_match(&A, 0,
-                      // no match
-                      newir_case(&A, 0, 
-                        NULL,
-                        newir_stmt(&A, JVST_IR_STMT_CONSUME)
-                      ),
-
-                      NULL
-                    ),
+                    newir_stmt(&A, JVST_IR_STMT_CONSUME),
+                    newir_stmt(&A, JVST_IR_STMT_CONSUME),
                     newir_incr(&A, 0, "num_props"),
                     // XXX as mentioned above, we could short-circuit
                     //     the loop if num_props >= 1.  This would
@@ -944,28 +932,28 @@ void test_ir_minmax_properties_1(void)
             newir_stmt(&A, JVST_IR_STMT_TOKEN),
             newir_cbranch(&A, newir_istok(&A, SJP_OBJECT_BEG),
               4, "loop",
-              16, "false"
+              13, "false"
             ),
             NULL
           ),
 
-          newir_block(&A, 16, "false",
+          newir_block(&A, 13, "false",
             newir_cbranch(&A, newir_istok(&A, SJP_OBJECT_END),
-              19, "invalid_1",
-              20, "false"
+              16, "invalid_1",
+              17, "false"
             ),
             NULL
           ),
 
-          newir_block(&A, 20, "false",
+          newir_block(&A, 17, "false",
             newir_cbranch(&A, newir_istok(&A, SJP_ARRAY_END),
-              19, "invalid_1",
-              13, "valid"
+              16, "invalid_1",
+              10, "valid"
             ),
             NULL
           ),
 
-          newir_block(&A, 13, "valid",
+          newir_block(&A, 10, "valid",
             newir_stmt(&A, JVST_IR_STMT_VALID),
             NULL
           ),
@@ -980,27 +968,8 @@ void test_ir_minmax_properties_1(void)
           ),
 
           newir_block(&A, 7, "false",
-            newir_move(&A, newir_itemp(&A, 0), newir_ematch(&A, 0)),
-            newir_cbranch(&A, 
-              newir_op(&A, JVST_IR_EXPR_EQ, newir_itemp(&A, 0), newir_size(&A, 0)),
-              9, "M",
-              10, "invalid_9"
-            ),
-            NULL
-          ),
-
-          newir_block(&A, 10, "invalid_9",
-            newir_invalid(&A, JVST_INVALID_MATCH_CASE, "invalid match case (internal error)"),
-            NULL
-          ),
-
-          newir_block(&A, 9, "M",
             newir_stmt(&A, JVST_IR_STMT_CONSUME),
-            newir_branch(&A, 8, "M_join"),
-            NULL
-          ),
-
-          newir_block(&A, 8, "M_join",
+            newir_stmt(&A, JVST_IR_STMT_CONSUME),
             newir_incr(&A, 0, "num_props"),
             newir_branch(&A, 4, "loop"),
             NULL
@@ -1008,22 +977,22 @@ void test_ir_minmax_properties_1(void)
 
           newir_block(&A, 3, "loop_end",
             // Post-loop check of number of properties
-            newir_move(&A, newir_itemp(&A, 1), newir_count(&A, 0, "num_props")),
-            newir_move(&A, newir_itemp(&A, 3), newir_itemp(&A, 1)),
-            newir_move(&A, newir_itemp(&A, 2), newir_size(&A, 1)),
-            newir_cbranch(&A, newir_op(&A, JVST_IR_EXPR_GE, newir_itemp(&A, 3), newir_itemp(&A,2)),
-              13, "valid",
-              15, "invalid_4"
+            newir_move(&A, newir_itemp(&A, 0), newir_count(&A, 0, "num_props")),
+            newir_move(&A, newir_itemp(&A, 2), newir_itemp(&A, 0)),
+            newir_move(&A, newir_itemp(&A, 1), newir_size(&A, 1)),
+            newir_cbranch(&A, newir_op(&A, JVST_IR_EXPR_GE, newir_itemp(&A, 2), newir_itemp(&A,1)),
+              10, "valid",
+              12, "invalid_4"
             ),
             NULL
           ),
 
-          newir_block(&A, 15, "invalid_4",
+          newir_block(&A, 12, "invalid_4",
             newir_invalid(&A, JVST_INVALID_TOO_FEW_PROPS, "too few properties"),
             NULL
           ),
 
-          newir_block(&A, 19, "invalid_1",
+          newir_block(&A, 16, "invalid_1",
             newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token"),
             NULL
           ),
@@ -1054,20 +1023,8 @@ void test_ir_minmax_properties_1(void)
                 newir_if(&A, newir_istok(&A, SJP_OBJECT_END),
                   newir_break(&A, "L_OBJ", 0),
                   newir_seq(&A,                                 // unnecessary SEQ should be removed in the future
-                    // XXX The match could be eliminated here.  We'd
-                    //     have to consume the string and the value.
-                    //     This would be a good reason to add a CONSUME
-                    //     statement instead of creating a frame and
-                    //     using VALID to consume the entire token.
-                    newir_match(&A, 0,
-                      // no match
-                      newir_case(&A, 0, 
-                        NULL,
-                        newir_stmt(&A, JVST_IR_STMT_CONSUME)
-                      ),
-
-                      NULL
-                    ),
+                    newir_stmt(&A, JVST_IR_STMT_CONSUME),
+                    newir_stmt(&A, JVST_IR_STMT_CONSUME),
                     newir_incr(&A, 0, "num_props"),
                     // XXX as mentioned above, we could short-circuit
                     //     the loop if num_props >= 2.
@@ -1124,28 +1081,28 @@ void test_ir_minmax_properties_1(void)
             newir_stmt(&A, JVST_IR_STMT_TOKEN),
             newir_cbranch(&A, newir_istok(&A, SJP_OBJECT_BEG),
               4, "loop",
-              16, "false"
+              13, "false"
             ),
             NULL
           ),
 
-          newir_block(&A, 16, "false",
+          newir_block(&A, 13, "false",
             newir_cbranch(&A, newir_istok(&A, SJP_OBJECT_END),
-              19, "invalid_1",
-              20, "false"
+              16, "invalid_1",
+              17, "false"
             ),
             NULL
           ),
 
-          newir_block(&A, 20, "false",
+          newir_block(&A, 17, "false",
             newir_cbranch(&A, newir_istok(&A, SJP_ARRAY_END),
-              19, "invalid_1",
-              13, "valid"
+              16, "invalid_1",
+              10, "valid"
             ),
             NULL
           ),
 
-          newir_block(&A, 13, "valid",
+          newir_block(&A, 10, "valid",
             newir_stmt(&A, JVST_IR_STMT_VALID),
             NULL
           ),
@@ -1160,51 +1117,32 @@ void test_ir_minmax_properties_1(void)
           ),
 
           newir_block(&A, 7, "false",
-            newir_move(&A, newir_itemp(&A, 0), newir_ematch(&A, 0)),
-            newir_cbranch(&A, newir_op(&A, JVST_IR_EXPR_EQ, newir_itemp(&A, 0), newir_size(&A, 0)),
-              9, "M",
-              10, "invalid_9"
-            ),
-
-            NULL
-          ),
-
-          newir_block(&A, 10, "invalid_9",
-            newir_invalid(&A, JVST_INVALID_MATCH_CASE, "invalid match case (internal error)"),
-            NULL
-          ),
-
-          newir_block(&A, 9, "M",
             newir_stmt(&A, JVST_IR_STMT_CONSUME),
-            newir_branch(&A, 8, "M_join"),
-            NULL
-          ),
-
-          newir_block(&A, 8, "M_join",
+            newir_stmt(&A, JVST_IR_STMT_CONSUME),
             newir_incr(&A, 0, "num_props"),
             newir_branch(&A, 4, "loop"),
             NULL
           ),
 
           newir_block(&A, 3, "loop_end",
-            newir_move(&A, newir_itemp(&A, 1), newir_count(&A, 0, "num_props")),
-            newir_move(&A, newir_itemp(&A, 3), newir_itemp(&A, 1)), 
-            newir_move(&A, newir_itemp(&A, 2), newir_size(&A, 2)),
+            newir_move(&A, newir_itemp(&A, 0), newir_count(&A, 0, "num_props")),
+            newir_move(&A, newir_itemp(&A, 2), newir_itemp(&A, 0)), 
+            newir_move(&A, newir_itemp(&A, 1), newir_size(&A, 2)),
 
-            newir_cbranch(&A, newir_op(&A, JVST_IR_EXPR_LE, newir_itemp(&A, 3), newir_itemp(&A, 2)),
-              13, "valid",
-              15, "invalid_5"
+            newir_cbranch(&A, newir_op(&A, JVST_IR_EXPR_LE, newir_itemp(&A, 2), newir_itemp(&A, 1)),
+              10, "valid",
+              12, "invalid_5"
             ),
 
             NULL
           ),
 
-          newir_block(&A, 15, "invalid_5",
+          newir_block(&A, 12, "invalid_5",
             newir_invalid(&A, JVST_INVALID_TOO_MANY_PROPS, "too many properties"),
             NULL
           ),
 
-          newir_block(&A, 19, "invalid_1",
+          newir_block(&A, 16, "invalid_1",
             newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token"),
             NULL
           ),
@@ -1233,20 +1171,8 @@ void test_ir_minmax_properties_1(void)
                 newir_if(&A, newir_istok(&A, SJP_OBJECT_END),
                   newir_break(&A, "L_OBJ", 0),
                   newir_seq(&A,                                 // unnecessary SEQ should be removed in the future
-                    // XXX The match could be eliminated here.  We'd
-                    //     have to consume the string and the value.
-                    //     This would be a good reason to add a CONSUME
-                    //     statement instead of creating a frame and
-                    //     using VALID to consume the entire token.
-                    newir_match(&A, 0,
-                      // no match
-                      newir_case(&A, 0, 
-                        NULL,
-                        newir_stmt(&A, JVST_IR_STMT_CONSUME)
-                      ),
-
-                      NULL
-                    ),
+                    newir_stmt(&A, JVST_IR_STMT_CONSUME),
+                    newir_stmt(&A, JVST_IR_STMT_CONSUME),
                     newir_incr(&A, 0, "num_props"),
                     NULL
                   )
@@ -1303,28 +1229,28 @@ void test_ir_minmax_properties_1(void)
             newir_stmt(&A, JVST_IR_STMT_TOKEN),
             newir_cbranch(&A, newir_istok(&A, SJP_OBJECT_BEG),
               4, "loop",
-              20, "false"
+              17, "false"
             ),
             NULL
           ),
 
-          newir_block(&A, 20, "false",
+          newir_block(&A, 17, "false",
             newir_cbranch(&A, newir_istok(&A, SJP_OBJECT_END),
-              23, "invalid_1",
-              24, "false"
+              20, "invalid_1",
+              21, "false"
             ),
             NULL
           ),
 
-          newir_block(&A, 24, "false",
+          newir_block(&A, 21, "false",
             newir_cbranch(&A, newir_istok(&A, SJP_ARRAY_END),
-              23, "invalid_1",
-              15, "valid"
+              20, "invalid_1",
+              12, "valid"
             ),
             NULL
           ),
 
-          newir_block(&A, 15, "valid",
+          newir_block(&A, 12, "valid",
             newir_stmt(&A, JVST_IR_STMT_VALID),
             NULL
           ),
@@ -1339,69 +1265,50 @@ void test_ir_minmax_properties_1(void)
           ),
 
           newir_block(&A, 7, "false",
-            newir_move(&A, newir_itemp(&A, 0), newir_ematch(&A, 0)),
-            newir_cbranch(&A, newir_op(&A, JVST_IR_EXPR_EQ, newir_itemp(&A, 0), newir_size(&A, 0)),
-              9, "M",
-              10, "invalid_9"
-            ),
-
-            NULL
-          ),
-
-          newir_block(&A, 10, "invalid_9",
-            newir_invalid(&A, JVST_INVALID_MATCH_CASE, "invalid match case (internal error)"),
-            NULL
-          ),
-
-          newir_block(&A, 9, "M",
             newir_stmt(&A, JVST_IR_STMT_CONSUME),
-            newir_branch(&A, 8, "M_join"),
-            NULL
-          ),
-
-          newir_block(&A, 8, "M_join",
+            newir_stmt(&A, JVST_IR_STMT_CONSUME),
             newir_incr(&A, 0, "num_props"),
             newir_branch(&A, 4, "loop"),
             NULL
           ),
 
           newir_block(&A, 3, "loop_end",
-            newir_move(&A, newir_itemp(&A, 4), newir_count(&A, 0, "num_props")),
-            newir_move(&A, newir_itemp(&A, 6), newir_itemp(&A, 4)), 
-            newir_move(&A, newir_itemp(&A, 5), newir_size(&A, 2)),
+            newir_move(&A, newir_itemp(&A, 3), newir_count(&A, 0, "num_props")),
+            newir_move(&A, newir_itemp(&A, 5), newir_itemp(&A, 3)), 
+            newir_move(&A, newir_itemp(&A, 4), newir_size(&A, 2)),
 
-            newir_cbranch(&A, newir_op(&A, JVST_IR_EXPR_GE, newir_itemp(&A, 6), newir_itemp(&A, 5)),
-              12, "true",
-              19, "invalid_4"
+            newir_cbranch(&A, newir_op(&A, JVST_IR_EXPR_GE, newir_itemp(&A, 5), newir_itemp(&A, 4)),
+              9, "true",
+              16, "invalid_4"
             ),
             NULL
           ),
 
-          newir_block(&A, 19, "invalid_4",
+          newir_block(&A, 16, "invalid_4",
             newir_invalid(&A, JVST_INVALID_TOO_FEW_PROPS, "too few properties"),
             NULL
           ),
 
 
-          newir_block(&A, 12, "true",
-            newir_move(&A, newir_itemp(&A, 1), newir_count(&A, 0, "num_props")),
-            newir_move(&A, newir_itemp(&A, 3), newir_itemp(&A, 1)), 
-            newir_move(&A, newir_itemp(&A, 2), newir_size(&A, 5)),
+          newir_block(&A, 9, "true",
+            newir_move(&A, newir_itemp(&A, 0), newir_count(&A, 0, "num_props")),
+            newir_move(&A, newir_itemp(&A, 2), newir_itemp(&A, 0)), 
+            newir_move(&A, newir_itemp(&A, 1), newir_size(&A, 5)),
 
-            newir_cbranch(&A, newir_op(&A, JVST_IR_EXPR_LE, newir_itemp(&A, 3), newir_itemp(&A, 2)),
-              15, "valid",
-              17, "invalid_5"
+            newir_cbranch(&A, newir_op(&A, JVST_IR_EXPR_LE, newir_itemp(&A, 2), newir_itemp(&A, 1)),
+              12, "valid",
+              14, "invalid_5"
             ),
 
             NULL
           ),
 
-          newir_block(&A, 17, "invalid_5",
+          newir_block(&A, 14, "invalid_5",
             newir_invalid(&A, JVST_INVALID_TOO_MANY_PROPS, "too many properties"),
             NULL
           ),
 
-          newir_block(&A, 23, "invalid_1",
+          newir_block(&A, 20, "invalid_1",
             newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token"),
             NULL
           ),
