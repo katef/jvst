@@ -106,7 +106,6 @@ static void
 prog_gc(void);
 
 POOL(instr_pool, jvst_op_instr_pool, struct jvst_op_instr, JVST_OP_CHUNKSIZE, prog_gc);
-POOL(block_pool, jvst_op_block_pool, struct jvst_op_block, JVST_OP_CHUNKSIZE, prog_gc);
 POOL(proc_pool, jvst_op_proc_pool, struct jvst_op_proc, JVST_OP_CHUNKSIZE, prog_gc);
 POOL(prog_pool, jvst_op_prog_pool, struct jvst_op_program, JVST_OP_CHUNKSIZE, prog_gc);
 
@@ -123,30 +122,6 @@ op_instr_new(enum jvst_vm_op type)
 	op->op = type;
 
 	return op;
-}
-
-static struct jvst_op_block *
-op_block_new(struct jvst_op_instr *ilist, const char *lblfmt, va_list args)
-{
-	struct jvst_op_block *b;
-	b = block_pool_alloc();
-	vsnprintf(b->label, sizeof b->label, lblfmt, args);
-	b->ilist = ilist;
-
-	return b;
-}
-
-static struct jvst_op_block *
-op_block_newf(struct jvst_op_instr *ilist, const char *lblfmt, ...)
-{
-	struct jvst_op_block *b;
-	va_list args;
-
-	va_start(args, lblfmt);
-	b = op_block_new(ilist, lblfmt, args);
-	va_end(args);
-
-	return b;
 }
 
 static struct jvst_op_proc *
@@ -361,47 +336,6 @@ op_instr_dump(struct sbuf *buf, struct jvst_op_instr *instr)
 	fprintf(stderr, "%s:%d (%s) Unknown OP arg type %02x\n",
 			__FILE__, __LINE__, __func__, instr->op);
 	abort();
-}
-
-static void
-op_block_dump(struct sbuf *buf, struct jvst_op_block *b, int indent)
-{
-	size_t bi;
-
-	for (bi=0; b != NULL; bi++, b=b->next) {
-		size_t i;
-		struct jvst_op_instr *instr;
-
-		sbuf_indent(buf, indent);
-		sbuf_snprintf(buf, "BLOCK %zu %s\n", bi, b->label);
-
-		for (i=0, instr = b->ilist; instr != NULL; i++, instr = instr->next) {
-			sbuf_indent(buf, indent);
-			if (instr->label != NULL) {
-				sbuf_snprintf(buf, "\n%s:\n", instr->label);
-				sbuf_indent(buf, indent);
-			}
-
-			sbuf_snprintf(buf, "%5zu\t", i+1);
-			op_instr_dump(buf, instr);
-			sbuf_snprintf(buf, "\n");
-		}
-	}
-}
-
-void
-jvst_op_block_debug(struct jvst_op_block *blk)
-{
-	static char buf[65536];
-	struct sbuf b = {
-	    .buf = buf, .cap = sizeof buf, .len = 0, .np = 0,
-	};
-
-	memset(buf,0,sizeof buf);
-
-	op_block_dump(&b, blk, 0);
-	buf[sizeof buf - 1] = '\0';
-	fprintf(stderr, "%s\n", buf);
 }
 
 static void
@@ -688,7 +622,6 @@ struct op_assembler {
 	struct jvst_op_program *prog;
 	struct jvst_op_proc **procpp;
 	struct jvst_op_proc *currproc;
-	struct jvst_op_block **bpp;
 	struct jvst_op_instr **ipp;
 
 	double *fdata;
@@ -982,64 +915,6 @@ emit_instr(struct op_assembler *opasm, struct jvst_op_instr *instr)
 }
 
 static struct jvst_op_instr *
-emit_branch(struct op_assembler *opasm, enum jvst_vm_op op, struct jvst_op_block *block)
-{
-	struct jvst_op_instr *instr;
-	switch (op) {
-	case JVST_OP_BR:
-	case JVST_OP_CBT:
-	case JVST_OP_CBF:
-		goto emit_branch;
-
-	case JVST_OP_NOP:
-	case JVST_OP_PROC:
-	case JVST_OP_ILT:
-	case JVST_OP_ILE:
-	case JVST_OP_IEQ:
-	case JVST_OP_IGE:
-	case JVST_OP_IGT:
-	case JVST_OP_INEQ:
-	case JVST_OP_FLT:
-	case JVST_OP_FLE:
-	case JVST_OP_FEQ:
-	case JVST_OP_FGE:
-	case JVST_OP_FGT:
-	case JVST_OP_FNEQ:
-	case JVST_OP_FINT:
-	case JVST_OP_CALL:
-	case JVST_OP_SPLIT:
-	case JVST_OP_SPLITV:
-	case JVST_OP_TOKEN:
-	case JVST_OP_CONSUME:
-	case JVST_OP_MATCH:
-	case JVST_OP_FLOAD:
-	case JVST_OP_ILOAD:
-	case JVST_OP_INCR:
-	case JVST_OP_BSET:
-	case JVST_OP_BTEST:
-	case JVST_OP_BAND:
-	case JVST_OP_VALID:
-	case JVST_OP_INVALID:
-	case JVST_OP_MOVE:
-		fprintf(stderr, "op %s is not a branch\n", jvst_op_name(op));
-		abort();
-
-	}
-
-	fprintf(stderr, "unknown op %d\n", op);
-	abort();
-
-emit_branch:
-	instr = op_instr_new(op);
-	instr->u.branch.label = block->label;
-	instr->u.branch.dest = block;
-
-	emit_instr(opasm, instr);
-
-	return instr;
-}
-
-static struct jvst_op_instr *
 emit_cond(struct op_assembler *opasm, enum jvst_vm_op op, 
 	struct jvst_op_arg a0, struct jvst_op_arg a1)
 {
@@ -1109,138 +984,6 @@ instr_last(struct jvst_op_instr *first)
 	return first;
 }
 
-static struct jvst_op_block *
-branch_chain_dest(struct jvst_op_block *b)
-{
-	for(;;) {
-		assert(b != NULL);
-		assert(b->ilist != NULL);
-		if (b->ilist->op != JVST_OP_BR) {
-			return b;
-		}
-
-		b = b->ilist->u.branch.dest;
-	}
-}
-
-static struct jvst_op_block *
-last_unmarked_branch(struct jvst_op_block *b)
-{
-	struct jvst_op_instr *br, *instr;
-	br = NULL;
-	for (instr = b->ilist; instr != NULL; instr=instr->next) {
-		switch (instr->op) {
-		case JVST_OP_BR:
-		case JVST_OP_CBT:
-		case JVST_OP_CBF:
-			assert(instr->u.branch.dest != NULL);
-			if (! instr->u.branch.dest->work) {
-				br = instr;
-			}
-			break;
-
-		default:
-			/* nop */
-			break;
-		}
-	}
-
-	return (br != NULL) ? br->u.branch.dest : NULL;
-}
-
-static struct jvst_op_block **
-sort_last_unmarked_dest(struct jvst_op_block *b, struct jvst_op_block **qpp)
-{
-	if (b->work) {
-		return qpp;
-	}
-
-	b->work = 1;
-	*qpp = b;
-	qpp = &b->next;
-	*qpp = NULL;
-
-	for(;;) {
-		struct jvst_op_block *br;
-		br = last_unmarked_branch(b);
-		if (br == NULL) {
-			break;
-		}
-
-		qpp = sort_last_unmarked_dest(br, qpp);
-	}
-
-	return qpp;
-}
-
-static struct jvst_op_block *
-resort_blocks(struct jvst_op_block *blk)
-{
-	size_t i,n;
-
-	struct jvst_op_block *b, **q, *ordered, **opp;
-	// Mark all blocks as unvisited for sorting
-	for (n=0, b=blk; b != NULL; b = b->next) {
-		b->work = 0;
-		n++;
-	}
-
-	// trivial cases...
-	if (n < 2) {
-		return blk;
-	}
-
-	// load queue for sorting
-	q = xmalloc(n * sizeof *q);
-	for (i=0,b = blk; b != NULL; i++, b=b->next) {
-		q[i] = b;
-	}
-
-	ordered = NULL;
-	opp = &ordered;
-	for (i=0; i < n; i++) {
-		if (q[i]->work) {
-			continue;
-		}
-
-		opp = sort_last_unmarked_dest(q[i], opp);
-	}
-
-	free(q);
-
-	return ordered;
-}
-
-static void
-mark_reachable(struct jvst_op_block *blk)
-{
-	struct jvst_op_instr *instr;
-
-	blk->work = 1;
-	for(instr = blk->ilist; instr != NULL; instr = instr->next) {
-		struct jvst_op_block *dst;
-
-		switch (instr->op) {
-		case JVST_OP_BR:
-		case JVST_OP_CBT:
-		case JVST_OP_CBF:
-			assert(instr->u.branch.dest != NULL);
-			if (instr->u.branch.dest->work == 0) {
-				mark_reachable(instr->u.branch.dest);
-			}
-			break;
-
-		default:
-			/* nop */
-			break;
-		}
-	}
-
-	for (; blk != NULL; blk = blk->next) {
-
-	}
-}
-
 static void
 op_finish_proc(struct jvst_op_proc *proc)
 {
@@ -1262,7 +1005,6 @@ op_assemble_frame(struct op_assembler *opasm, struct jvst_ir_stmt *top)
 {
 	struct op_assembler frame_opasm;
 	struct jvst_op_proc *proc;
-	struct jvst_op_block *block;
 	struct jvst_ir_stmt *stmt;
 	size_t nslots, temp_off, off;
 
@@ -1315,55 +1057,6 @@ op_assemble_frame(struct op_assembler *opasm, struct jvst_ir_stmt *top)
 	opasm->procpp = frame_opasm.procpp;
 
 	return proc;
-}
-
-static struct jvst_op_block LOOP_BLOCK;
-
-static void
-opasm_setup_block(struct op_assembler *block_opasm, struct op_assembler *opasm, struct jvst_op_block *block)
-{
-	*opasm->bpp = block;
-	opasm->bpp = &block->next;
-
-	*block_opasm = *opasm;
-	block_opasm->ipp = &block->ilist;
-}
-
-static void
-opasm_finish_block(struct op_assembler *block_opasm, struct op_assembler *opasm)
-{
-	opasm->nlbl = block_opasm->nlbl;
-	opasm->ntmp = block_opasm->ntmp;
-	opasm->bpp  = block_opasm->bpp;
-	opasm->procpp = block_opasm->procpp;
-}
-
-static struct jvst_op_block *
-op_assemble_block(struct op_assembler *opasm, struct jvst_ir_stmt *top, const char *prefix, struct jvst_op_block *bnext)
-{
-	struct op_assembler block_opasm;
-	struct jvst_op_proc *proc;
-	struct jvst_op_block *block;
-
-	if (prefix == NULL) {
-		prefix = "L";
-	}
-	block = op_block_newf(NULL, "%s_%" PRId64, prefix, opasm->nlbl++);
-
-	opasm_setup_block(&block_opasm, opasm, block);
-
-	// XXX - allocate storage for floats, dfas, splits
-	op_assemble_seq(&block_opasm, top);
-
-	if (bnext == &LOOP_BLOCK) {
-		emit_branch(&block_opasm, JVST_OP_BR, block);
-	} else if (bnext != NULL) {
-		emit_branch(&block_opasm, JVST_OP_BR, bnext);
-	}
-
-	opasm_finish_block(&block_opasm, opasm);
-
-	return block;
 }
 
 enum { ARG_NONE, ARG_SLOT, ARG_BOOL, ARG_FLOAT, ARG_INT, ARG_DEST };
@@ -1947,23 +1640,10 @@ static void
 op_assemble(struct op_assembler *opasm, struct jvst_ir_stmt *stmt)
 {
 	struct jvst_op_instr *instr;
-	struct jvst_op_block *block;
 	const char *label;
 
 	switch (stmt->type) {
 	case JVST_IR_STMT_NOP:
-		return;
-
-	case JVST_IR_STMT_FRAME:
-		{
-			struct jvst_op_proc *proc;
-			proc = op_assemble_frame(opasm, stmt);
-			if (opasm->ipp != NULL) {
-				instr = op_instr_new(JVST_OP_CALL);
-				instr->u.call.dest = proc;
-				emit_instr(opasm, instr);
-			}
-		}
 		return;
 
 	case JVST_IR_STMT_TOKEN:
@@ -2107,6 +1787,7 @@ op_assemble(struct op_assembler *opasm, struct jvst_ir_stmt *stmt)
 	case JVST_IR_STMT_LOOP:
 	case JVST_IR_STMT_SEQ:
 	case JVST_IR_STMT_IF:
+	case JVST_IR_STMT_FRAME:
 
 	case JVST_IR_STMT_COUNTER:
 	case JVST_IR_STMT_MATCHER:

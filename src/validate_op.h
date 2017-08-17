@@ -50,7 +50,6 @@ struct jvst_op_arg {
 };
 
 struct jvst_op_proc;
-struct jvst_op_block;
 
 struct jvst_op_instr {
 	struct jvst_op_instr *next;
@@ -60,28 +59,7 @@ struct jvst_op_instr {
 
 	union {
 		struct jvst_op_arg args[2];
-
-		struct {
-			const char *label;
-			struct jvst_op_block *dest;
-		} branch;
-
-		struct {
-			size_t proc_index;
-			struct jvst_op_proc *dest;
-		} call;
-
-		enum jvst_invalid_code ecode;
 	} u;
-};
-
-struct jvst_op_block {
-	struct jvst_op_block *next;
-	struct jvst_op_instr *ilist;
-	struct jvst_op_instr *ilast;
-
-	int work;
-	char label[128];
 };
 
 // Instruction data... for assembling the opcodes
@@ -133,9 +111,6 @@ jvst_op_dump(struct jvst_op_program *prog, char *buf, size_t nb);
 
 void
 jvst_op_print(struct jvst_op_program *prog);
-
-void
-jvst_op_block_debug(struct jvst_op_block *blk);
 
 struct jvst_vm_program *
 jvst_ir_assemble(struct jvst_ir_stmt *prog);
