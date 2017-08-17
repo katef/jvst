@@ -494,7 +494,6 @@ ir_expr_tmp(struct jvst_ir_stmt *frame, struct jvst_ir_expr *expr)
 	case JVST_IR_EXPR_BTESTONE:
 	case JVST_IR_EXPR_BOOL:
 	case JVST_IR_EXPR_ISTOK:
-	case JVST_IR_EXPR_TOK_COMPLETE:
 	case JVST_IR_EXPR_ISINT:
 	case JVST_IR_EXPR_AND:
 	case JVST_IR_EXPR_OR:
@@ -577,7 +576,6 @@ ir_expr_op(enum jvst_ir_expr_type op,
 	case JVST_IR_EXPR_BOOL:
 	case JVST_IR_EXPR_TOK_TYPE:
 	case JVST_IR_EXPR_TOK_NUM:
-	case JVST_IR_EXPR_TOK_COMPLETE:
 	case JVST_IR_EXPR_TOK_LEN:
 	case JVST_IR_EXPR_COUNT:
 	case JVST_IR_EXPR_BTEST:
@@ -781,9 +779,6 @@ jvst_ir_expr_type_name(enum jvst_ir_expr_type type)
 	case JVST_IR_EXPR_TOK_NUM:
 		return "TOK_NUM";
 
-	case JVST_IR_EXPR_TOK_COMPLETE:
-		return "TOK_COMPLETE";
-
 	case JVST_IR_EXPR_TOK_LEN:
 		return "TOK_LEN";
 
@@ -912,7 +907,6 @@ jvst_ir_dump_expr(struct sbuf *buf, const struct jvst_ir_expr *expr, int indent)
 	switch (expr->type) {
 	case JVST_IR_EXPR_TOK_TYPE:
 	case JVST_IR_EXPR_TOK_NUM:
-	case JVST_IR_EXPR_TOK_COMPLETE:
 	case JVST_IR_EXPR_TOK_LEN:
 		sbuf_snprintf(buf, "%s", jvst_ir_expr_type_name(expr->type));
 		return;
@@ -2644,7 +2638,6 @@ jvst_ir_expr_copy(struct jvst_ir_expr *ir, struct addr_fixup_list *fixups)
 
 	case JVST_IR_EXPR_TOK_TYPE:
 	case JVST_IR_EXPR_TOK_NUM:
-	case JVST_IR_EXPR_TOK_COMPLETE:
 	case JVST_IR_EXPR_TOK_LEN:
 		return copy;
 
@@ -3683,7 +3676,6 @@ ir_linearize_operand(struct op_linearizer *oplin, struct jvst_ir_expr *expr)
 	switch (expr->type) {
 	case JVST_IR_EXPR_BOOL:
 	case JVST_IR_EXPR_ISTOK:
-	case JVST_IR_EXPR_TOK_COMPLETE:
 	case JVST_IR_EXPR_ISINT:
 	case JVST_IR_EXPR_NE:
 	case JVST_IR_EXPR_LT:
@@ -3845,7 +3837,6 @@ ir_linearize_cond(struct op_linearizer *oplin, struct jvst_ir_expr *cond, struct
 	switch (cond->type) {
 	case JVST_IR_EXPR_BOOL:
 	case JVST_IR_EXPR_ISTOK:
-	case JVST_IR_EXPR_TOK_COMPLETE:
 	case JVST_IR_EXPR_ISINT:
 		brcond = cond;
 		break;
@@ -3979,7 +3970,6 @@ ir_linearize_rewrite_expr(struct jvst_ir_stmt *frame, struct jvst_ir_expr *expr)
 	switch (expr->type) {
 	case JVST_IR_EXPR_BOOL:
 	case JVST_IR_EXPR_ISTOK:
-	case JVST_IR_EXPR_TOK_COMPLETE:
 	case JVST_IR_EXPR_ISINT:
 	case JVST_IR_EXPR_NONE:
 	case JVST_IR_EXPR_NUM:

@@ -152,14 +152,6 @@ op_arg_dump(struct sbuf *buf, struct jvst_op_arg arg)
 	case JVST_VM_ARG_NONE:
 		return;
 
-	case JVST_VM_ARG_FLAG:
-		sbuf_snprintf(buf,"%%FLAG");
-		return;
-
-	case JVST_VM_ARG_PC:
-		sbuf_snprintf(buf,"%%PC");
-		return;
-
 	case JVST_VM_ARG_TT:
 		sbuf_snprintf(buf,"%%TT");
 		return;
@@ -167,23 +159,13 @@ op_arg_dump(struct sbuf *buf, struct jvst_op_arg arg)
 	case JVST_VM_ARG_TNUM:
 		sbuf_snprintf(buf,"%%TN");
 		return;
+
 	case JVST_VM_ARG_TLEN:
 		sbuf_snprintf(buf,"%%TL");
-		return;
-	case JVST_VM_ARG_TCOMPLETE:
-		sbuf_snprintf(buf,"%%TC");
 		return;
 
 	case JVST_VM_ARG_M:
 		sbuf_snprintf(buf,"%%M");
-		return;
-
-	case JVST_VM_ARG_INT:
-		sbuf_snprintf(buf,"%%I%" PRId64, arg.u.index);
-		return;
-
-	case JVST_VM_ARG_FLOAT:
-		sbuf_snprintf(buf,"%%F%" PRId64, arg.u.index);
 		return;
 
 	case JVST_VM_ARG_TOKTYPE:
@@ -305,6 +287,7 @@ op_instr_dump(struct sbuf *buf, struct jvst_op_instr *instr)
 	case JVST_OP_SPLIT:
 	case JVST_OP_FLOAD:
 	case JVST_OP_ILOAD:
+
 	case JVST_OP_MOVE:
 		sbuf_snprintf(buf, "%s ", jvst_op_name(instr->op));
 		op_arg_dump(buf, instr->args[0]);
@@ -475,13 +458,13 @@ jvst_op_name(enum jvst_vm_op op)
 	case JVST_OP_MATCH:     return "MATCH";
 	case JVST_OP_FLOAD:     return "FLOAD";
 	case JVST_OP_ILOAD:     return "ILOAD";
+	case JVST_OP_MOVE: 	return "MOVE";
 	case JVST_OP_INCR:      return "INCR";
 	case JVST_OP_BSET:      return "BSET";
 	case JVST_OP_BTEST:     return "BTEST";
 	case JVST_OP_BAND:      return "BAND";
 	case JVST_OP_VALID:     return "VALID";
 	case JVST_OP_INVALID:   return "INVALID";
-	case JVST_OP_MOVE: 	return "MOVE";
 	}
 
 	fprintf(stderr, "Unknown OP %d\n", op);
@@ -672,19 +655,14 @@ arg_special(enum jvst_op_arg_type type)
 	struct jvst_op_arg arg = { 0 };
 
 	switch (type) {
-	case JVST_VM_ARG_FLAG:
-	case JVST_VM_ARG_PC:
 	case JVST_VM_ARG_TT:
 	case JVST_VM_ARG_TNUM:
 	case JVST_VM_ARG_TLEN:
-	case JVST_VM_ARG_TCOMPLETE:
 	case JVST_VM_ARG_M:
 		arg.type = type;
 		return arg;
 
 	case JVST_VM_ARG_NONE:
-	case JVST_VM_ARG_INT:
-	case JVST_VM_ARG_FLOAT:
 	case JVST_VM_ARG_TOKTYPE:
 	case JVST_VM_ARG_CONST:
 	case JVST_VM_ARG_POOL:
@@ -734,34 +712,27 @@ arg_tt(enum SJP_EVENT tt)
 }
 
 static struct jvst_op_arg
-arg_itmp(struct op_assembler *opasm)
-{
-	struct jvst_op_arg arg = {
-		.type  = JVST_VM_ARG_INT,
-		.u = { .index = opasm->ntmp++ },
-	};
-
-	return arg;
-}
-
-static struct jvst_op_arg
-arg_ftmp(struct op_assembler *opasm)
-{
-	struct jvst_op_arg arg = {
-		.type  = JVST_VM_ARG_FLOAT,
-		.u = { .index = opasm->ntmp++ },
-	};
-
-	return arg;
-}
-
-static struct jvst_op_arg
 arg_slot(size_t ind)
 {
 	struct jvst_op_arg arg = {
 		.type  = JVST_VM_ARG_SLOT,
 		.u = { .index = ind },
 	};
+
+	return arg;
+}
+
+static struct jvst_op_arg
+arg_new_slot(struct op_assembler *opasm)
+{
+	struct jvst_op_arg arg = {
+		.type  = JVST_VM_ARG_SLOT,
+		.u = { 0 },
+	};
+
+	assert(opasm->currproc != NULL);
+
+	arg.u.index = opasm->currproc->nslots++;
 
 	return arg;
 }
@@ -1119,13 +1090,9 @@ op_arg_type(enum jvst_op_arg_type type)
 	case JVST_VM_ARG_NONE:
 		return ARG_NONE;
 
-	case JVST_VM_ARG_FLAG:
-	case JVST_VM_ARG_PC:
 	case JVST_VM_ARG_TT:
 	case JVST_VM_ARG_TLEN:
-	case JVST_VM_ARG_TCOMPLETE:
 	case JVST_VM_ARG_M:
-	case JVST_VM_ARG_INT:
 	case JVST_VM_ARG_SLOT:
 	case JVST_VM_ARG_TOKTYPE:
 	case JVST_VM_ARG_CONST:
@@ -1133,7 +1100,6 @@ op_arg_type(enum jvst_op_arg_type type)
 		return ARG_INT;
 
 	case JVST_VM_ARG_TNUM:
-	case JVST_VM_ARG_FLOAT:
 		return ARG_FLOAT;
 
 	case JVST_VM_ARG_INSTR:
@@ -1172,7 +1138,6 @@ ir_expr_type(enum jvst_ir_expr_type type)
 	case JVST_IR_EXPR_MATCH:
 		return ARG_INT;
 
-	case JVST_IR_EXPR_TOK_COMPLETE:
 	case JVST_IR_EXPR_BOOL:
 	case JVST_IR_EXPR_BTEST:
 	case JVST_IR_EXPR_BTESTALL:
@@ -1221,7 +1186,7 @@ emit_op_arg(struct op_assembler *opasm, struct jvst_ir_expr *arg)
 			struct jvst_op_instr *instr;
 
 			fidx = proc_add_float(opasm, arg->u.vnum);
-			freg = arg_ftmp(opasm);
+			freg = arg_new_slot(opasm);
 			instr = op_instr_new(JVST_OP_FLOAD);
 			instr->args[0] = freg;
 			instr->args[1] = arg_const(fidx);
@@ -1238,9 +1203,6 @@ emit_op_arg(struct op_assembler *opasm, struct jvst_ir_expr *arg)
 	case JVST_IR_EXPR_TOK_LEN:
 		return arg_special(JVST_VM_ARG_TLEN);
 
-	case JVST_IR_EXPR_TOK_COMPLETE:
-		return arg_special(JVST_VM_ARG_TCOMPLETE);
-
 	case JVST_IR_EXPR_COUNT:
 		{
 			struct jvst_op_arg ireg;
@@ -1251,12 +1213,7 @@ emit_op_arg(struct op_assembler *opasm, struct jvst_ir_expr *arg)
 			assert(counter != NULL);
 			assert(counter->type == JVST_IR_STMT_COUNTER);
 
-			ireg = arg_itmp(opasm);
-			instr = op_instr_new(JVST_OP_ILOAD);
-			instr->args[0] = ireg;
-			instr->args[1] = arg_slot(counter->u.counter.frame_off);
-			emit_instr(opasm, instr);
-			return ireg;
+			return arg_slot(counter->u.counter.frame_off);
 		}
 
 	case JVST_IR_EXPR_SIZE:
@@ -1287,7 +1244,7 @@ emit_op_arg(struct op_assembler *opasm, struct jvst_ir_expr *arg)
 			struct jvst_op_arg ireg;
 			int64_t split_ind;
 
-			ireg = arg_itmp(opasm);
+			ireg = arg_new_slot(opasm);
 			split_ind = proc_add_split(opasm, arg->u.split.frames);
 
 			instr = op_instr_new(JVST_OP_SPLIT);
@@ -1393,7 +1350,6 @@ cmp_type(enum jvst_ir_expr_type type, enum jvst_vm_op *iopp, enum jvst_vm_op *fo
 	case JVST_IR_EXPR_SIZE:
 	case JVST_IR_EXPR_TOK_TYPE:
 	case JVST_IR_EXPR_TOK_NUM:
-	case JVST_IR_EXPR_TOK_COMPLETE:
 	case JVST_IR_EXPR_TOK_LEN:
 	case JVST_IR_EXPR_COUNT:
 	case JVST_IR_EXPR_BCOUNT:
@@ -1547,7 +1503,7 @@ op_assemble_cond(struct op_assembler *opasm, struct jvst_ir_expr *cond)
 			} else {
 				// emit mask constant and load
 				cidx = proc_add_uconst(opasm, mask);
-				iarg0 = arg_itmp(opasm);
+				iarg0 = arg_new_slot(opasm);
 				instr = op_instr_new(JVST_OP_ILOAD);
 				instr->args[0] = iarg0;
 				instr->args[1] = arg_const(cidx);
@@ -1555,7 +1511,7 @@ op_assemble_cond(struct op_assembler *opasm, struct jvst_ir_expr *cond)
 			}
 
 			// emit slot load
-			ireg1 = arg_itmp(opasm);
+			ireg1 = arg_new_slot(opasm);
 			instr = op_instr_new(JVST_OP_ILOAD);
 			instr->args[0] = ireg1;
 			instr->args[1] = arg_slot(bv->u.bitvec.frame_off);
@@ -1586,7 +1542,6 @@ op_assemble_cond(struct op_assembler *opasm, struct jvst_ir_expr *cond)
 		return;
 
 	case JVST_IR_EXPR_BOOL:
-	case JVST_IR_EXPR_TOK_COMPLETE:
 	case JVST_IR_EXPR_BTESTONE:
 		fprintf(stderr, "%s:%d (%s) expression %s not yet supported\n",
 				__FILE__, __LINE__, __func__,

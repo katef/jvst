@@ -11,19 +11,11 @@ enum jvst_op_arg_type {
 	// Special read-only registers (cannot be set via a load)
 	JVST_VM_ARG_NONE,	// Empty/omitted arg
 
-	JVST_VM_ARG_FLAG,	// Comparison flag
-	JVST_VM_ARG_PC,		// Program counter
-
 	JVST_VM_ARG_TT,		// type of current token
 	JVST_VM_ARG_TNUM,	// floating point value of current token (if %TT is $NUMBER)
 	JVST_VM_ARG_TLEN,	// length of current token (if %TT is $STRING)
-	JVST_VM_ARG_TCOMPLETE,	// 1 if the curernt token is complete, 0 if it is a partial token
 
 	JVST_VM_ARG_M,		// Match case register
-
-	// Scratchpad registers (can be set via a load)
-	JVST_VM_ARG_INT,	// integer or size register
-	JVST_VM_ARG_FLOAT,	// double precision floating point register
 
 	// Slots on the stack
 	JVST_VM_ARG_SLOT,

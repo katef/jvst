@@ -313,12 +313,6 @@ static inline struct jvst_op_arg
 oparg_tok(enum SJP_EVENT evt) { return oparg_make(JVST_VM_ARG_TOKTYPE,evt); }
 
 static inline struct jvst_op_arg 
-oparg_ftmp(int n) { return oparg_make(JVST_VM_ARG_FLOAT,n); }
-
-static inline struct jvst_op_arg 
-oparg_itmp(int n) { return oparg_make(JVST_VM_ARG_INT,n); }
-
-static inline struct jvst_op_arg 
 oparg_slot(int n) { return oparg_make(JVST_VM_ARG_SLOT,n); }
 
 const char *

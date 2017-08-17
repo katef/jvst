@@ -912,9 +912,7 @@ void test_op_minmax_properties_1(void)
             newop_br(&A, JVST_OP_BR, "loop_2"),
 
             oplabel, "loop_end_2",
-            newop_load(&A, JVST_OP_ILOAD, oparg_itmp(0), oparg_slot(0)),
-            newop_load(&A, JVST_OP_ILOAD, oparg_itmp(1), oparg_lit(1)),
-            newop_cmp(&A, JVST_OP_IGE, oparg_itmp(0), oparg_itmp(1)),
+            newop_cmp(&A, JVST_OP_IGE, oparg_slot(0), oparg_lit(1)),
             newop_br(&A, JVST_OP_CBT, "valid"),
 
             oplabel, "invalid_4",
@@ -1036,9 +1034,7 @@ void test_op_minmax_properties_1(void)
             newop_br(&A, JVST_OP_BR, "loop_2"),
 
             oplabel, "loop_end_2",
-            newop_load(&A, JVST_OP_ILOAD, oparg_itmp(0), oparg_slot(0)),
-            newop_load(&A, JVST_OP_ILOAD, oparg_itmp(1), oparg_lit(2)),
-            newop_cmp(&A, JVST_OP_ILE, oparg_itmp(0), oparg_itmp(1)),
+            newop_cmp(&A, JVST_OP_ILE, oparg_slot(0), oparg_lit(2)),
             newop_br(&A, JVST_OP_CBT, "valid"),
 
             oplabel, "invalid_5",
@@ -1160,18 +1156,14 @@ void test_op_minmax_properties_1(void)
             newop_br(&A, JVST_OP_BR, "loop_2"),
 
             oplabel, "loop_end_2",
-            newop_load(&A, JVST_OP_ILOAD, oparg_itmp(2), oparg_slot(0)),
-            newop_load(&A, JVST_OP_ILOAD, oparg_itmp(3), oparg_lit(2)),
-            newop_cmp(&A, JVST_OP_IGE, oparg_itmp(2), oparg_itmp(3)),
+            newop_cmp(&A, JVST_OP_IGE, oparg_slot(0), oparg_lit(2)),
             newop_br(&A, JVST_OP_CBT, "L_10"),
 
             oplabel, "invalid_4",
             newop_invalid(&A, 4),
 
             oplabel, "L_10",
-            newop_load(&A, JVST_OP_ILOAD, oparg_itmp(0), oparg_slot(0)),
-            newop_load(&A, JVST_OP_ILOAD, oparg_itmp(1), oparg_lit(5)),
-            newop_cmp(&A, JVST_OP_ILE, oparg_itmp(0), oparg_itmp(1)),
+            newop_cmp(&A, JVST_OP_ILE, oparg_slot(0), oparg_lit(5)),
             newop_br(&A, JVST_OP_CBT, "valid"),
 
             oplabel, "invalid_5",
@@ -1341,9 +1333,7 @@ void test_op_minproperties_2(void)
             newop_br(&A, JVST_OP_BR, "match_join_7"),
 
             oplabel, "loop_end_2",
-            newop_load(&A, JVST_OP_ILOAD, oparg_itmp(0), oparg_slot(0)),
-            newop_load(&A, JVST_OP_ILOAD, oparg_itmp(1), oparg_lit(1)),
-            newop_cmp(&A, JVST_OP_IGE, oparg_itmp(0), oparg_itmp(1)),
+            newop_cmp(&A, JVST_OP_IGE, oparg_slot(0), oparg_lit(1)),
             newop_br(&A, JVST_OP_CBT, "valid"),
 
             oplabel, "invalid_4",
@@ -1553,9 +1543,9 @@ void test_op_required(void)
             newop_br(&A, JVST_OP_BR, "loop_2"),
 
             oplabel, "loop_end_2",
-            newop_load(&A, JVST_OP_ILOAD, oparg_itmp(0), oparg_slot(0)),
-            newop_instr2(&A, JVST_OP_BAND, oparg_itmp(0), oparg_lit(1)),
-            newop_cmp(&A, JVST_OP_IEQ, oparg_itmp(0), oparg_lit(1)),
+            newop_load(&A, JVST_OP_ILOAD, oparg_slot(1), oparg_slot(0)),
+            newop_instr2(&A, JVST_OP_BAND, oparg_slot(1), oparg_lit(1)),
+            newop_cmp(&A, JVST_OP_IEQ, oparg_slot(1), oparg_lit(1)),
             newop_br(&A, JVST_OP_CBT, "valid"),
 
             oplabel, "invalid_6",
@@ -1759,9 +1749,8 @@ void test_op_dependencies(void)
             newop_invalid(&A, 1),
 
             oplabel, "L_1",
-            newop_instr2(&A, JVST_OP_SPLIT, oparg_lit(0), oparg_itmp(0)),
-            newop_load(&A, JVST_OP_ILOAD, oparg_itmp(1), oparg_lit(1)),
-            newop_cmp(&A, JVST_OP_IGE, oparg_itmp(0), oparg_itmp(1)),
+            newop_instr2(&A, JVST_OP_SPLIT, oparg_lit(0), oparg_slot(1)),
+            newop_cmp(&A, JVST_OP_IGE, oparg_slot(1), oparg_lit(1)),
             newop_br(&A, JVST_OP_CBT, "valid"),
 
             oplabel, "invalid_7",
@@ -1831,9 +1820,9 @@ void test_op_dependencies(void)
             newop_br(&A, JVST_OP_BR, "loop_0"),
 
             oplabel, "loop_end_0",
-            newop_load(&A, JVST_OP_ILOAD, oparg_itmp(0), oparg_slot(0)),
-            newop_instr2(&A, JVST_OP_BAND, oparg_itmp(0), oparg_lit(3)),
-            newop_cmp(&A, JVST_OP_IEQ, oparg_itmp(0), oparg_lit(3)),
+            newop_load(&A, JVST_OP_ILOAD, oparg_slot(1), oparg_slot(0)),
+            newop_instr2(&A, JVST_OP_BAND, oparg_slot(1), oparg_lit(3)),
+            newop_cmp(&A, JVST_OP_IEQ, oparg_slot(1), oparg_lit(3)),
             newop_br(&A, JVST_OP_CBT, "valid"),
 
             oplabel, "invalid_6",
@@ -2007,9 +1996,8 @@ void test_op_dependencies(void)
             newop_invalid(&A, 1),
 
             oplabel, "L_1",
-            newop_instr2(&A, JVST_OP_SPLIT, oparg_lit(0), oparg_itmp(0)),
-            newop_load(&A, JVST_OP_ILOAD, oparg_itmp(1), oparg_lit(1)),
-            newop_cmp(&A, JVST_OP_IGE, oparg_itmp(0), oparg_itmp(1)),
+            newop_instr2(&A, JVST_OP_SPLIT, oparg_lit(0), oparg_slot(0)),
+            newop_cmp(&A, JVST_OP_IGE, oparg_slot(0), oparg_lit(1)),
             newop_br(&A, JVST_OP_CBT, "valid"),
 
             oplabel, "invalid_7",
@@ -2087,9 +2075,9 @@ void test_op_dependencies(void)
             newop_br(&A, JVST_OP_BR, "loop_0"),
 
             oplabel, "loop_end_0",
-            newop_load(&A, JVST_OP_ILOAD, oparg_itmp(0), oparg_slot(0)),
-            newop_instr2(&A, JVST_OP_BAND, oparg_itmp(0), oparg_lit(7)),
-            newop_cmp(&A, JVST_OP_IEQ, oparg_itmp(0), oparg_lit(7)),
+            newop_load(&A, JVST_OP_ILOAD, oparg_slot(1), oparg_slot(0)),
+            newop_instr2(&A, JVST_OP_BAND, oparg_slot(1), oparg_lit(7)),
+            newop_cmp(&A, JVST_OP_IEQ, oparg_slot(1), oparg_lit(7)),
             newop_br(&A, JVST_OP_CBT, "valid"),
 
             oplabel, "invalid_6",
@@ -2373,30 +2361,30 @@ void test_op_dependencies(void)
 
             oplabel, "L_1",
             newop_instr2(&A, JVST_OP_SPLITV, oparg_lit(0), oparg_slot(0)),
-            newop_load(&A, JVST_OP_ILOAD, oparg_itmp(0), oparg_slot(0)),
-            newop_instr2(&A, JVST_OP_BAND, oparg_itmp(0), oparg_lit(1)),
-            newop_cmp(&A, JVST_OP_INEQ, oparg_itmp(0), oparg_lit(0)),
+            newop_load(&A, JVST_OP_ILOAD, oparg_slot(1), oparg_slot(0)),
+            newop_instr2(&A, JVST_OP_BAND, oparg_slot(1), oparg_lit(1)),
+            newop_cmp(&A, JVST_OP_INEQ, oparg_slot(1), oparg_lit(0)),
             newop_br(&A, JVST_OP_CBT, "and_true_5"),
 
             oplabel, "or_false_6",
-            newop_load(&A, JVST_OP_ILOAD, oparg_itmp(1), oparg_slot(0)),
-            newop_instr2(&A, JVST_OP_BAND, oparg_itmp(1), oparg_lit(2)),
-            newop_cmp(&A, JVST_OP_IEQ, oparg_itmp(1), oparg_lit(2)),
+            newop_load(&A, JVST_OP_ILOAD, oparg_slot(2), oparg_slot(0)),
+            newop_instr2(&A, JVST_OP_BAND, oparg_slot(2), oparg_lit(2)),
+            newop_cmp(&A, JVST_OP_IEQ, oparg_slot(2), oparg_lit(2)),
             newop_br(&A, JVST_OP_CBT, "and_true_5"),
 
             oplabel, "invalid_7",
             newop_invalid(&A, 7),
 
             oplabel, "and_true_5",
-            newop_load(&A, JVST_OP_ILOAD, oparg_itmp(2), oparg_slot(0)),
-            newop_instr2(&A, JVST_OP_BAND, oparg_itmp(2), oparg_lit(4)),
-            newop_cmp(&A, JVST_OP_INEQ, oparg_itmp(2), oparg_lit(0)),
+            newop_load(&A, JVST_OP_ILOAD, oparg_slot(3), oparg_slot(0)),
+            newop_instr2(&A, JVST_OP_BAND, oparg_slot(3), oparg_lit(4)),
+            newop_cmp(&A, JVST_OP_INEQ, oparg_slot(3), oparg_lit(0)),
             newop_br(&A, JVST_OP_CBT, "valid"),
 
             oplabel, "or_false_7",
-            newop_load(&A, JVST_OP_ILOAD, oparg_itmp(3), oparg_slot(0)),
-            newop_instr2(&A, JVST_OP_BAND, oparg_itmp(3), oparg_lit(8)),
-            newop_cmp(&A, JVST_OP_IEQ, oparg_itmp(3), oparg_lit(8)),
+            newop_load(&A, JVST_OP_ILOAD, oparg_slot(4), oparg_slot(0)),
+            newop_instr2(&A, JVST_OP_BAND, oparg_slot(4), oparg_lit(8)),
+            newop_cmp(&A, JVST_OP_IEQ, oparg_slot(4), oparg_lit(8)),
             newop_br(&A, JVST_OP_CBT, "valid"),
             newop_br(&A, JVST_OP_BR, "invalid_7"),
 
@@ -2473,9 +2461,9 @@ void test_op_dependencies(void)
             newop_br(&A, JVST_OP_BR, "loop_0"),
 
             oplabel, "loop_end_0",
-            newop_load(&A, JVST_OP_ILOAD, oparg_itmp(0), oparg_slot(0)),
-            newop_instr2(&A, JVST_OP_BAND, oparg_itmp(0), oparg_lit(7)),
-            newop_cmp(&A, JVST_OP_IEQ, oparg_itmp(0), oparg_lit(7)),
+            newop_load(&A, JVST_OP_ILOAD, oparg_slot(1), oparg_slot(0)),
+            newop_instr2(&A, JVST_OP_BAND, oparg_slot(1), oparg_lit(7)),
+            newop_cmp(&A, JVST_OP_IEQ, oparg_slot(1), oparg_lit(7)),
             newop_br(&A, JVST_OP_CBT, "valid"),
 
             oplabel, "invalid_6",
@@ -2549,9 +2537,9 @@ void test_op_dependencies(void)
             newop_br(&A, JVST_OP_BR, "loop_0"),
 
             oplabel, "loop_end_0",
-            newop_load(&A, JVST_OP_ILOAD, oparg_itmp(0), oparg_slot(0)),
-            newop_instr2(&A, JVST_OP_BAND, oparg_itmp(0), oparg_lit(3)),
-            newop_cmp(&A, JVST_OP_IEQ, oparg_itmp(0), oparg_lit(3)),
+            newop_load(&A, JVST_OP_ILOAD, oparg_slot(1), oparg_slot(0)),
+            newop_instr2(&A, JVST_OP_BAND, oparg_slot(1), oparg_lit(3)),
+            newop_cmp(&A, JVST_OP_IEQ, oparg_slot(1), oparg_lit(3)),
             newop_br(&A, JVST_OP_CBT, "valid"),
 
             oplabel, "invalid_6",

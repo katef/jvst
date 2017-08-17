@@ -1371,7 +1371,6 @@ newir_op(struct arena_info *A, enum jvst_ir_expr_type op,
 	case JVST_IR_EXPR_BOOL:
 	case JVST_IR_EXPR_TOK_TYPE:
 	case JVST_IR_EXPR_TOK_NUM:
-	case JVST_IR_EXPR_TOK_COMPLETE:
 	case JVST_IR_EXPR_TOK_LEN:
 	case JVST_IR_EXPR_COUNT:
 	case JVST_IR_EXPR_BTEST:
@@ -1721,12 +1720,13 @@ newop_cmp(struct arena_info *A, enum jvst_vm_op op,
 	case JVST_OP_VALID:
 	case JVST_OP_INVALID:
 	case JVST_OP_MOVE:
-		fprintf(stderr, "OP %s is not a comparison\n",
-			jvst_op_name(op));
+		fprintf(stderr, "%s:%d (%s) OP %s is not a comparison\n",
+			__FILE__, __LINE__, __func__, jvst_op_name(op));
 		abort();
 	}
 
-	fprintf(stderr, "Unknown OP %d\n", op);
+	fprintf(stderr, "%s:%d (%s) Unknown OP %d\n",
+		__FILE__, __LINE__, __func__, op);
 	abort();
 }
 
@@ -1763,23 +1763,16 @@ arg_okay(struct jvst_op_arg arg, int kind, int writeable)
 	case JVST_VM_ARG_NONE:
 		return (kind == ARG_NONE) && (writeable == ARG_WRITEABLE);
 
-	case JVST_VM_ARG_FLAG:
-	case JVST_VM_ARG_PC:
 	case JVST_VM_ARG_TT:
 	case JVST_VM_ARG_TLEN:
 	case JVST_VM_ARG_M:
 	case JVST_VM_ARG_TOKTYPE:
 	case JVST_VM_ARG_CONST:
-	case JVST_VM_ARG_TCOMPLETE:
 		return (kind == ARG_INT) && (writeable == ARG_READABLE);
 
 	case JVST_VM_ARG_TNUM:
 		return (kind == ARG_FLOAT) && (writeable == ARG_READABLE);
 
-	case JVST_VM_ARG_FLOAT:
-		return (kind == ARG_FLOAT);
-
-	case JVST_VM_ARG_INT:
 	case JVST_VM_ARG_SLOT:
 		return (kind == ARG_INT) || (kind == ARG_FLOAT);
 
