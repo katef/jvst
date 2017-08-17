@@ -1940,11 +1940,11 @@ newop_match(struct arena_info *A, int64_t dfa)
 }
 
 struct jvst_op_instr *
-newop_call(struct arena_info *A, size_t pind)
+newop_call(struct arena_info *A, struct jvst_op_arg dest)
 {
 	struct jvst_op_instr *instr;
 	instr = newop_instr(A, JVST_OP_CALL);
-	instr->u.call.proc_index = pind;
+	instr->u.args[0] = dest;
 	return instr;
 }
 

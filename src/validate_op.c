@@ -1459,6 +1459,9 @@ ir_expr_type(enum jvst_ir_expr_type type)
 }
 
 static struct jvst_op_arg
+emit_match(struct op_assembler *opasm, struct jvst_ir_expr *expr);
+
+static struct jvst_op_arg
 emit_op_arg(struct op_assembler *opasm, struct jvst_ir_expr *arg)
 {
 	struct jvst_op_arg a;
@@ -1528,13 +1531,7 @@ emit_op_arg(struct op_assembler *opasm, struct jvst_ir_expr *arg)
 				abort();
 			}
 
-			ireg = arg_itmp(opasm);
-			instr = op_instr_new(JVST_OP_ILOAD);
-			instr->u.args[0] = ireg;
-			instr->u.args[1] = arg_const(v);
-
-			emit_instr(opasm, instr);
-			return ireg;
+			return arg_const(v);
 		}
 
 	// SPLIT(i, reg):
@@ -1566,16 +1563,7 @@ emit_op_arg(struct op_assembler *opasm, struct jvst_ir_expr *arg)
 		return arg_slot(opasm->currproc->temp_off + arg->u.temp.ind);
 
 	case JVST_IR_EXPR_MATCH:
-		{
-			struct jvst_op_instr *instr;
-			struct jvst_op_arg ireg;
-
-			instr = op_instr_new(JVST_OP_MATCH);
-			instr->u.args[0] = arg_const(arg->u.match.ind);
-			emit_instr(opasm, instr);
-
-			return arg_special(JVST_VM_ARG_M);
-		}
+		return emit_match(opasm, arg);
 
 	case JVST_IR_EXPR_INT:
 	case JVST_IR_EXPR_BOOL:
@@ -1894,55 +1882,28 @@ op_assemble_cond(struct op_assembler *opasm, struct jvst_ir_expr *cond)
 	abort();
 }
 
-static void
-op_assemble_match(struct op_assembler *opasm, struct jvst_ir_stmt *stmt)
+static struct jvst_op_arg
+emit_match(struct op_assembler *opasm, struct jvst_ir_expr *expr)
 {
-	struct jvst_ir_mcase *mc;
 	struct jvst_op_instr *instr;
-	struct jvst_op_block *cblk, *cjoin;
+	struct jvst_op_arg ireg;
 	size_t dfa;
 
-	// XXX - duplicate DFA and replace mcases with appropriate integer cases
-	// XXX - allocate DFA table
+	// XXX - allocate DFA table, replacing mcases with appropriate
+	//       integer results
 
-	assert(stmt->type == JVST_IR_STMT_MATCH);
+	assert(expr->type == JVST_IR_EXPR_MATCH);
 
 	dfa = opasm->currproc->ndfa++;
+	assert(dfa == expr->u.match.ind);
 
 	instr = op_instr_new(JVST_OP_MATCH);
 	instr->u.args[0] = arg_const(dfa);
 	instr->u.args[1] = arg_none();
 
-	*opasm->ipp = instr;
-	opasm->ipp = &instr->next;
+	emit_instr(opasm, instr);
 
-	cjoin = op_assemble_block(opasm, NULL, "match_join", NULL);
-	cjoin->ilist = op_instr_new(JVST_OP_NOP);
-
-	// default case
-	cblk = op_assemble_block(opasm, stmt->u.match.default_case, "M", cjoin);
-	instr = op_instr_new(JVST_OP_IEQ);
-	instr->u.args[0] = arg_special(JVST_VM_ARG_M);
-	instr->u.args[1] = arg_const(0);
-
-	*opasm->ipp = instr;
-	opasm->ipp = &instr->next;
-
-	emit_branch(opasm, JVST_OP_CBT, cblk);
-
-	for (mc = stmt->u.match.cases; mc != NULL; mc = mc->next) {
-		cblk = op_assemble_block(opasm, mc->stmt, "M", cjoin);
-		instr = op_instr_new(JVST_OP_IEQ);
-		instr->u.args[0] = arg_special(JVST_VM_ARG_M);
-		instr->u.args[1] = arg_const(mc->which);
-
-		*opasm->ipp = instr;
-		opasm->ipp = &instr->next;
-
-		emit_branch(opasm, JVST_OP_CBT, cblk);
-	}
-
-	opasm->ipp = &cjoin->ilist;
+	return arg_special(JVST_VM_ARG_M);
 }
 
 static void
