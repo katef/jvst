@@ -453,12 +453,12 @@ ir_expr_tmp(struct jvst_ir_stmt *frame, struct jvst_ir_expr *expr)
 	switch (expr->type) {
 	case JVST_IR_EXPR_NUM:
 	case JVST_IR_EXPR_FTEMP:
+	case JVST_IR_EXPR_TOK_NUM:
 		return ir_expr_ftemp(frame);
 
 	case JVST_IR_EXPR_INT:
 	case JVST_IR_EXPR_SIZE:
 	case JVST_IR_EXPR_TOK_TYPE:
-	case JVST_IR_EXPR_TOK_NUM:
 	case JVST_IR_EXPR_TOK_LEN:
 	case JVST_IR_EXPR_ITEMP:
 	case JVST_IR_EXPR_SLOT:

@@ -434,11 +434,11 @@ void test_ir_minimum(void)
           ),
 
           newir_block(&A, 2, "true",
-            newir_move(&A, newir_itemp(&A, 1), newir_expr(&A, JVST_IR_EXPR_TOK_NUM)),
+            newir_move(&A, newir_ftemp(&A, 1), newir_expr(&A, JVST_IR_EXPR_TOK_NUM)),
             newir_move(&A, newir_ftemp(&A, 0), newir_num(&A, 1.1)),
             newir_cbranch(&A,
               newir_op(&A, JVST_IR_EXPR_GE, 
-                newir_itemp(&A, 1),
+                newir_ftemp(&A, 1),
                 newir_ftemp(&A, 0)
               ),
               5, "valid",
