@@ -49,6 +49,7 @@ static struct jvst_op_instr ar_op_instr[NUM_TEST_THINGS];
 static double ar_op_float[NUM_TEST_THINGS];
 static int64_t ar_op_iconst[NUM_TEST_THINGS];
 static struct jvst_op_proc *ar_op_splits[NUM_TEST_THINGS];
+static size_t ar_op_splitmax[NUM_TEST_THINGS];
 
 // Returns a constant empty schema
 struct ast_schema *
@@ -1396,52 +1397,19 @@ newir_op(struct arena_info *A, enum jvst_ir_expr_type op,
 
 struct jvst_op_instr v_oplabel;
 struct jvst_op_instr v_opslots;
-struct jvst_op_instr v_opfloat;
-struct jvst_op_instr v_opconst;
-struct jvst_op_instr v_opdfa;
-struct jvst_op_instr v_opsplit;
+
+struct jvst_op_proc v_opfloat;
+struct jvst_op_proc v_opconst;
+struct jvst_op_proc v_opdfa;
+struct jvst_op_proc v_opsplit;
 
 const struct jvst_op_instr *const oplabel = &v_oplabel;
 const struct jvst_op_instr *const opslots = &v_opslots;
-const struct jvst_op_instr *const opfloat = &v_opfloat;
-const struct jvst_op_instr *const opconst = &v_opconst;
-const struct jvst_op_instr *const opdfa   = &v_opdfa;
-const struct jvst_op_instr *const opsplit = &v_opsplit;
 
-struct jvst_op_program *
-newop_program(struct arena_info *A, ...)
-{
-	size_t i, max;
-	struct jvst_op_program *prog;
-	struct jvst_op_proc **procpp;
-	va_list args;
-
-	i   = A->nprog++;
-	max = ARRAYLEN(ar_op_prog);
-	if (A->nprog >= max) {
-		fprintf(stderr, "too many OP programs: %zu max\n", max);
-		abort();
-	}
-
-	prog  = &ar_op_prog[i];
-	memset(prog, 0, sizeof *prog);
-	procpp = &prog->procs;
-
-	va_start(args, A);
-	for (;;) {
-		struct jvst_op_proc *proc;
-		proc = va_arg(args, struct jvst_op_proc *);
-		if (proc == NULL) {
-			break;
-		}
-
-		*procpp = proc;
-		procpp = &proc->next;
-	}
-	va_end(args);
-
-	return prog;
-}
+const struct jvst_op_proc *const opfloat = &v_opfloat;
+const struct jvst_op_proc *const opconst = &v_opconst;
+const struct jvst_op_proc *const opdfa   = &v_opdfa;
+const struct jvst_op_proc *const opsplit = &v_opsplit;
 
 static double *
 newfloats(struct arena_info *A, double *fv, size_t n)
@@ -1453,6 +1421,7 @@ newfloats(struct arena_info *A, double *fv, size_t n)
 	if (A->nfloat + n > max) {
 		fprintf(stderr, "%s:%d (%s) too many floats (%zu max)\n",
 			__FILE__, __LINE__, __func__, max);
+		abort();
 	}
 
 	off = A->nfloat;
@@ -1476,6 +1445,7 @@ newconsts(struct arena_info *A, int64_t *cv, size_t n)
 	if (A->nconst + n > max) {
 		fprintf(stderr, "%s:%d (%s) too many integer constants (%zu max)\n",
 			__FILE__, __LINE__, __func__, max);
+		abort();
 	}
 
 	off = A->nconst;
@@ -1489,6 +1459,29 @@ newconsts(struct arena_info *A, int64_t *cv, size_t n)
 	return iconsts;
 }
 
+static size_t *
+newsplitmax(struct arena_info *A, size_t *smv, size_t n)
+{
+	size_t i,off,max;
+	size_t *splitmax;
+
+	off = A->nsplitmax;
+	max = ARRAYLEN(ar_op_splitmax);
+	if (off + n > max) {
+		fprintf(stderr, "%s:%d (%s) too many splits (%zu max)\n",
+			__FILE__, __LINE__, __func__, max);
+		abort();
+	}
+	A->nsplitmax += n;
+
+	splitmax = &ar_op_splitmax[off];
+	for (i=0; i < n; i++) {
+		splitmax[i] = smv[i];
+	}
+
+	return splitmax;
+}
+
 static struct jvst_op_proc **
 newsplits(struct arena_info *A, struct jvst_op_proc **sv, size_t n)
 {
@@ -1499,6 +1492,7 @@ newsplits(struct arena_info *A, struct jvst_op_proc **sv, size_t n)
 	if (A->nsplit + n > max) {
 		fprintf(stderr, "%s:%d (%s) too many splits (%zu max)\n",
 			__FILE__, __LINE__, __func__, max);
+		abort();
 	}
 
 	off = A->nsplit;
@@ -1512,18 +1506,138 @@ newsplits(struct arena_info *A, struct jvst_op_proc **sv, size_t n)
 	return splits;
 }
 
+struct jvst_op_program *
+newop_program(struct arena_info *A, ...)
+{
+	size_t i, max;
+	struct jvst_op_program *prog;
+	struct jvst_op_proc **procpp;
+	size_t nfloat = 0;
+	size_t nconst = 0;
+	size_t nsplit = 0;
+	double flt[16] = { 0.0 };
+	int64_t iconsts[16] = { 0 };
+	size_t splitmax[16] = { 0 };
+	struct jvst_op_proc *splits[64] = { NULL };
+	va_list args;
+
+	i   = A->nprog++;
+	max = ARRAYLEN(ar_op_prog);
+	if (A->nprog >= max) {
+		fprintf(stderr, "too many OP programs: %zu max\n", max);
+		abort();
+	}
+
+	prog  = &ar_op_prog[i];
+	memset(prog, 0, sizeof *prog);
+	procpp = &prog->procs;
+
+	va_start(args, A);
+	for (;;) {
+		struct jvst_op_proc *proc;
+		proc = va_arg(args, struct jvst_op_proc *);
+		if (proc == NULL) {
+			break;
+		}
+
+		if (proc == opfloat) {
+			int ind;
+
+			ind = nfloat++;
+			if (nfloat >= ARRAYLEN(flt)) {
+				fprintf(stderr, "%s:%d (%s) too many floats! (max is %zu)\n",
+					__FILE__, __LINE__, __func__, ARRAYLEN(flt));
+				abort();
+			}
+			flt[ind] = va_arg(args, double);
+			continue;
+		}
+
+		if (proc == opconst) {
+			int ind;
+
+			ind = nconst++;
+			if (nconst >= ARRAYLEN(iconsts)) {
+				fprintf(stderr, "%s:%d (%s) too many integer constants! (max is %zu)\n",
+					__FILE__, __LINE__, __func__, ARRAYLEN(iconsts));
+				abort();
+			}
+			iconsts[ind] = va_arg(args, int64_t);
+			continue;
+		}
+
+		if (proc == opsplit) {
+			int ind;
+			int j,n,off;
+			struct jvst_op_proc *spl, **splpp;
+
+			ind = nsplit++;
+			if (nsplit>= ARRAYLEN(splitmax)) {
+				fprintf(stderr, "%s:%d (%s) too many splits ! (max is %zu)\n",
+					__FILE__, __LINE__, __func__, ARRAYLEN(splitmax));
+				abort();
+			}
+
+			n = va_arg(args, int);
+			off = (ind>0) ? splitmax[ind-1] : 0;
+
+			if (off+n >= (int)ARRAYLEN(splits)) {
+				fprintf(stderr, "%s:%d (%s) too many total split functions ! (max is %zu)\n",
+					__FILE__, __LINE__, __func__, ARRAYLEN(splits));
+				abort();
+			}
+
+			splitmax[ind] = off+n;
+
+			for (j=0; j < n; j++) {
+				int pind;
+				pind = va_arg(args, int);
+
+				splits[off + j] = newop_proc(A, NULL);
+				splits[off + j]->proc_index = pind;
+			}
+
+			continue;
+		}
+
+		if (proc == opdfa) {
+			int ndfa;
+
+			ndfa = va_arg(args, int);
+			prog->ndfa += ndfa;
+			continue;
+		}
+
+		*procpp = proc;
+		procpp = &proc->next;
+	}
+	va_end(args);
+
+	if (nfloat > 0) {
+		prog->fdata = newfloats(A, flt, nfloat);
+		prog->nfloat = nfloat;
+	}
+
+	if (nconst > 0) {
+		prog->cdata = newconsts(A, iconsts, nconst);
+		prog->nconst = nconst;
+	}
+
+	if (nsplit > 0) {
+		prog->splitmax = newsplitmax(A, splitmax, nsplit);
+		prog->splits = newsplits(A, splits, splitmax[nsplit-1]);
+		prog->nsplit = nsplit;
+	}
+
+	return prog;
+}
+
 struct jvst_op_proc *
 newop_proc(struct arena_info *A, ...)
 {
 	size_t i, max;
 	struct jvst_op_proc *proc;
 	struct jvst_op_instr **ipp;
-	size_t nfloat = 0;
-	size_t nconst = 0;
-	size_t nsplit = 0;
-	double flt[16] = { 0.0 };
-	int64_t iconsts[16] = { 0 };
-	struct jvst_op_proc *splits[16] = { NULL };
 	va_list args;
 
 
@@ -1554,70 +1668,6 @@ fetch:
 			goto fetch;
 		}
 
-		if (instr == opfloat) {
-			int ind;
-
-			ind = nfloat++;
-			if (nfloat >= ARRAYLEN(flt)) {
-				fprintf(stderr, "%s:%d (%s) too many floats! (max is %zu)\n",
-					__FILE__, __LINE__, __func__, ARRAYLEN(flt));
-				abort();
-			}
-			flt[ind] = va_arg(args, double);
-			continue;
-		}
-
-		if (instr == opconst) {
-			int ind;
-
-			ind = nconst++;
-			if (nconst >= ARRAYLEN(iconsts)) {
-				fprintf(stderr, "%s:%d (%s) too many integer constants! (max is %zu)\n",
-					__FILE__, __LINE__, __func__, ARRAYLEN(iconsts));
-				abort();
-			}
-			iconsts[ind] = va_arg(args, int64_t);
-			continue;
-		}
-
-		if (instr == opsplit) {
-			int ind;
-			int j,n;
-			struct jvst_op_proc *spl, **splpp;
-
-			ind = nsplit++;
-			if (nsplit>= ARRAYLEN(splits)) {
-				fprintf(stderr, "%s:%d (%s) too many splits ! (max is %zu)\n",
-					__FILE__, __LINE__, __func__, ARRAYLEN(splits));
-				abort();
-			}
-
-			splpp = &splits[ind];
-
-			n = va_arg(args, int);
-			for (j=0; j < n; j++) {
-				int pind;
-				pind = va_arg(args, int);
-
-				*splpp = newop_proc(A, NULL);
-				(*splpp)->proc_index = pind;
-				(*splpp)->next = NULL;
-				(*splpp)->split_next = NULL;
-
-				splpp = &(*splpp)->split_next;
-			}
-
-			continue;
-		}
-
-		if (instr == opdfa) {
-			int ndfa;
-
-			ndfa = va_arg(args, int);
-			proc->ndfa += ndfa;
-			continue;
-		}
-
 		if (instr == opslots) {
 			int nslots;
 
@@ -1630,25 +1680,38 @@ fetch:
 			instr->label = label;
 		}
 
+		{
+			struct jvst_op_proc *ptest = (struct jvst_op_proc *)instr;
+
+			if (ptest == opfloat) {
+				fprintf(stderr, "%s:%d (%s) opfloat belongs on programs, not procs\n",
+					__FILE__, __LINE__, __func__);
+				abort();
+			}
+
+			if (ptest == opconst) {
+				fprintf(stderr, "%s:%d (%s) opconst belongs on programs, not procs\n",
+					__FILE__, __LINE__, __func__);
+				abort();
+			}
+
+			if (ptest == opsplit) {
+				fprintf(stderr, "%s:%d (%s) opsplit belongs on programs, not procs\n",
+					__FILE__, __LINE__, __func__);
+				abort();
+			}
+
+			if (ptest == opdfa) {
+				fprintf(stderr, "%s:%d (%s) opdfa belongs on programs, not procs\n",
+					__FILE__, __LINE__, __func__);
+				abort();
+			}
+		}
+
 		*ipp = instr;
 		ipp = &instr->next;
 	}
 	va_end(args);
-
-	if (nfloat > 0) {
-		proc->fdata = newfloats(A, flt, nfloat);
-		proc->nfloat = nfloat;
-	}
-
-	if (nconst > 0) {
-		proc->cdata = newconsts(A, iconsts, nconst);
-		proc->nconst = nconst;
-	}
-
-	if (nsplit > 0) {
-		proc->splits = newsplits(A, splits, nsplit);
-		proc->nsplit = nsplit;
-	}
 
 	return proc;
 }

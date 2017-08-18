@@ -397,9 +397,10 @@ void test_op_minimum(void)
       ),
 
       newop_program(&A,
+          opfloat, 1.1,
+
           newop_proc(&A,
             opslots, 2,
-            opfloat, 1.1,
 
             oplabel, "entry_0",
             newop_instr(&A, JVST_OP_TOKEN),
@@ -518,8 +519,9 @@ void test_op_properties(void)
       ),
 
       newop_program(&A,
+          opdfa, 1,
+
           newop_proc(&A,
-            opdfa, 1,
             opslots, 1,
 
             oplabel, "entry_0",
@@ -565,11 +567,11 @@ void test_op_properties(void)
             newop_br(&A, JVST_OP_BR, "loop_4"),
 
             oplabel, "M_11",
-            newop_call(&A, oparg_lit(2)),
+            newop_call(&A, oparg_lit(1)),
             newop_br(&A, JVST_OP_BR, "loop_4"),
 
             oplabel, "M_13",
-            newop_call(&A, oparg_lit(3)),
+            newop_call(&A, oparg_lit(2)),
             newop_br(&A, JVST_OP_BR, "loop_4"),
 
             oplabel, "invalid_1_19",
@@ -686,8 +688,8 @@ void test_op_properties(void)
       ),
 
       newop_program(&A,
+          opdfa, 1,
           newop_proc(&A,
-            opdfa, 1,
             opslots, 1,
 
             oplabel, "entry_0",
@@ -733,11 +735,11 @@ void test_op_properties(void)
             newop_br(&A, JVST_OP_BR, "loop_4"),
 
             oplabel, "M_11",
-            newop_call(&A, oparg_lit(2)),
+            newop_call(&A, oparg_lit(1)),
             newop_br(&A, JVST_OP_BR, "loop_4"),
 
             oplabel, "M_13",
-            newop_call(&A, oparg_lit(3)),
+            newop_call(&A, oparg_lit(2)),
             newop_br(&A, JVST_OP_BR, "loop_4"),
 
             oplabel, "invalid_1_19",

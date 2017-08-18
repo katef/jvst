@@ -30,18 +30,23 @@ enum jvst_op_arg_type {
 	// Branch destinations
 	JVST_VM_ARG_INSTR,
 	JVST_VM_ARG_LABEL,
+
+	// Call and split destinations
+	JVST_VM_ARG_CALL,
 };
+
+struct jvst_op_proc;
+struct jvst_op_instr;
 
 struct jvst_op_arg {
 	enum jvst_op_arg_type type;
 	union {
 		int64_t index;
 		struct jvst_op_instr *dest;
+		struct jvst_op_proc *proc;
 		const char *label;
 	} u;
 };
-
-struct jvst_op_proc;
 
 struct jvst_op_instr {
 	struct jvst_op_instr *next;
@@ -59,18 +64,6 @@ struct jvst_op_proc {
 
 	size_t proc_index;
 
-	size_t nfloat;
-	double *fdata;
-
-	size_t nconst;
-	int64_t *cdata;
-
-	size_t ndfa;
-	struct jvst_vm_dfa *dfas;
-
-	size_t nsplit;
-	struct jvst_op_proc **splits;
-
 	size_t nslots;
 	size_t temp_off;
 
@@ -83,6 +76,19 @@ struct jvst_op_proc {
 
 struct jvst_op_program {
 	struct jvst_op_proc *procs;
+
+	size_t nfloat;
+	double *fdata;
+
+	size_t nconst;
+	int64_t *cdata;
+
+	size_t ndfa;
+	struct jvst_vm_dfa *dfas;
+
+	size_t nsplit;
+	size_t *splitmax;
+	struct jvst_op_proc **splits;
 };
 
 struct jvst_ir_stmt;

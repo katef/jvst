@@ -39,6 +39,7 @@ struct arena_info {
 	size_t nfloat;
 	size_t nconst;
 	size_t nsplit;
+	size_t nsplitmax;
 };
 
 struct ast_schema *
@@ -280,10 +281,10 @@ newop_instr2(struct arena_info *A, enum jvst_vm_op op,
 
 extern const struct jvst_op_instr *const oplabel;
 extern const struct jvst_op_instr *const opslots;
-extern const struct jvst_op_instr *const opfloat;
-extern const struct jvst_op_instr *const opconst;
-extern const struct jvst_op_instr *const opsplit;
-extern const struct jvst_op_instr *const opdfa;
+extern const struct jvst_op_proc *const opfloat;
+extern const struct jvst_op_proc *const opconst;
+extern const struct jvst_op_proc *const opsplit;
+extern const struct jvst_op_proc *const opdfa;
 
 static inline struct jvst_op_arg 
 oparg_make(enum jvst_op_arg_type type, int64_t ind) {

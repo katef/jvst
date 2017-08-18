@@ -119,6 +119,31 @@ static void prog_gc(void)
 	// currently nop
 }
 
+static void *
+enlarge_vec(void *orig, size_t *np, size_t incr, size_t width)
+{
+	size_t newmax;
+
+	if (incr == 0) {
+		return orig;
+	}
+
+	newmax = *np;
+
+	if (newmax+incr < 4) {
+		newmax = 4;
+	} else if (newmax+incr < 2048) {
+		newmax *= 2;
+	} else if (incr < newmax/8) {
+		newmax += newmax/4;
+	} else {
+		newmax += 2*incr;
+	}
+
+	*np = newmax;
+	return xrealloc(orig, newmax * width);
+}
+
 static struct jvst_op_instr *
 op_instr_new(enum jvst_vm_op type)
 {
@@ -198,6 +223,16 @@ op_arg_dump(struct sbuf *buf, struct jvst_op_arg arg)
 			}
 
 			sbuf_snprintf(buf,":%s", lbl);
+		}
+		return;
+
+	case JVST_VM_ARG_CALL:
+		{
+			if (arg.u.proc == NULL) {
+				sbuf_snprintf(buf,"<null>");
+			} else {
+				sbuf_snprintf(buf, "$%zu", arg.u.proc->proc_index);
+			}
 		}
 		return;
 	}
@@ -336,67 +371,6 @@ op_proc_dump(struct sbuf *buf, struct jvst_op_proc *proc, size_t fno, int indent
 	sbuf_snprintf(buf, ".PROC %zu %zu\n", fno, proc->nslots);
 
 	sbuf_indent(buf, indent);
-	sbuf_snprintf(buf, ".DATA\n");
-
-	for (i=0; i < proc->nfloat; i++) {
-		sbuf_indent(buf, indent+2);
-		sbuf_snprintf(buf, "FLOAT(%zu)\t%g\n", i, proc->fdata[i]);
-	}
-
-	if (proc->nfloat > 0) {
-		sbuf_snprintf(buf, "\n");
-	}
-
-	for (i=0; i < proc->nconst; i++) {
-		sbuf_indent(buf, indent+2);
-		sbuf_snprintf(buf, "CONST(%zu)\t%" PRId64 "\t%" PRIu64 "\n",
-			i, proc->cdata[i], (uint64_t) proc->cdata[i]);
-	}
-
-	if (proc->nconst > 0) {
-		sbuf_snprintf(buf, "\n");
-	}
-
-	for (i=0; i < proc->nsplit; i++) {
-		struct jvst_op_proc *p;
-		size_t c;
-
-		assert(proc->splits != NULL);
-
-		sbuf_indent(buf, indent+2);
-		sbuf_snprintf(buf, "SPLIT(%zu)\t", i);
-		for (c=0, p = proc->splits[i]; p != NULL; c++, p = p->split_next) {
-			sbuf_snprintf(buf, " %zu", p->proc_index);
-
-			if (c >= 6 && p->next != NULL) {
-				sbuf_snprintf(buf, "\n");
-				sbuf_indent(buf, indent+2);
-				sbuf_snprintf(buf, "\t\t");
-			}
-		}
-
-		sbuf_snprintf(buf, "\n");
-	}
-
-	if (proc->nsplit > 0) {
-		sbuf_snprintf(buf, "\n");
-	}
-
-	// surely we can provide more data than this?
-	for (i=0; i < proc->ndfa; i++) {
-		sbuf_indent(buf, indent+2);
-		sbuf_snprintf(buf, "DFA(%zu)\n", i);
-	}
-
-	if (proc->ndfa> 0) {
-		sbuf_snprintf(buf, "\n");
-	}
-
-	if (proc->nsplit> 0) {
-		sbuf_snprintf(buf, "\n");
-	}
-
-	sbuf_indent(buf, indent);
 	sbuf_snprintf(buf, ".CODE\n");
 
 	for (i=0, instr = proc->ilist; instr != NULL; i++, instr = instr->next) {
@@ -421,6 +395,68 @@ jvst_op_dump_inner(struct sbuf *buf, struct jvst_op_program *prog, int indent)
 	assert(prog != NULL);
 	sbuf_indent(buf, indent);
 	sbuf_snprintf(buf, ".PROGRAM\n\n");
+
+	sbuf_indent(buf, indent);
+	sbuf_snprintf(buf, ".DATA\n");
+
+	for (i=0; i < prog->nfloat; i++) {
+		sbuf_indent(buf, indent+2);
+		sbuf_snprintf(buf, "FLOAT(%zu)\t%g\n", i, prog->fdata[i]);
+	}
+
+	if (prog->nfloat > 0) {
+		sbuf_snprintf(buf, "\n");
+	}
+
+	for (i=0; i < prog->nconst; i++) {
+		sbuf_indent(buf, indent+2);
+		sbuf_snprintf(buf, "CONST(%zu)\t%" PRId64 "\t%" PRIu64 "\n",
+			i, prog->cdata[i], (uint64_t) prog->cdata[i]);
+	}
+
+	if (prog->nconst > 0) {
+		sbuf_snprintf(buf, "\n");
+	}
+
+	for (i=0; i < prog->nsplit; i++) {
+		struct jvst_op_proc *p;
+		size_t c;
+
+		assert(prog->splits != NULL);
+
+		sbuf_indent(buf, indent+2);
+		sbuf_snprintf(buf, "SPLIT(%zu)\t", i);
+		for (c=0, p = prog->splits[i]; p != NULL; c++, p = p->split_next) {
+			sbuf_snprintf(buf, " %zu", p->proc_index);
+
+			if (c >= 6 && p->next != NULL) {
+				sbuf_snprintf(buf, "\n");
+				sbuf_indent(buf, indent+2);
+				sbuf_snprintf(buf, "\t\t");
+			}
+		}
+
+		sbuf_snprintf(buf, "\n");
+	}
+
+	if (prog->nsplit > 0) {
+		sbuf_snprintf(buf, "\n");
+	}
+
+	// surely we can provide more data than this?
+	for (i=0; i < prog->ndfa; i++) {
+		sbuf_indent(buf, indent+2);
+		sbuf_snprintf(buf, "DFA(%zu)\n", i);
+	}
+
+	if (prog->ndfa> 0) {
+		sbuf_snprintf(buf, "\n");
+	}
+
+	if (prog->nsplit> 0) {
+		sbuf_snprintf(buf, "\n");
+	}
+
 	for (i=0, proc=prog->procs; proc != NULL; i++, proc=proc->next) {
 		op_proc_dump(buf, proc, i, indent);
 		sbuf_snprintf(buf, "\n");
@@ -483,10 +519,21 @@ jvst_op_dump(struct jvst_op_program *prog, char *buf, size_t nb)
 	return (b.len < b.cap) ? 0 : -1;
 }
 
+enum addr_fixup_type {
+	FIXUP_ARG,
+	FIXUP_PROC,
+};
+
 struct asm_addr_fixup {
 	struct jvst_op_instr *instr;
-	struct jvst_op_arg *arg;
 	struct jvst_ir_stmt *ir;
+
+	union {
+		struct jvst_op_arg *arg;
+		struct jvst_op_proc **procp;
+	} u;
+
+	enum addr_fixup_type type;
 };
 
 struct asm_addr_fixup_list {
@@ -505,37 +552,49 @@ asm_addr_fixup_list_free(struct asm_addr_fixup_list *l)
 	free(l->elts);
 }
 
-static void
-asm_addr_fixup_add(struct asm_addr_fixup_list *l,
-	struct jvst_op_instr *instr, struct jvst_op_arg *arg, struct jvst_ir_stmt *ir)
+static struct asm_addr_fixup *
+asm_addr_fixup_alloc(struct asm_addr_fixup_list *l)
 {
 	size_t i;
 
 	assert(l != NULL);
 	assert(l->len <= l->cap);
 	if (l->len >= l->cap) {
-		size_t newsz = l->cap;
-
-		if (newsz < 4) {
-			newsz = 4;
-		} else if (newsz < 2048) {
-			newsz *= 2;
-		} else {
-			newsz += newsz/4;
-		}
-
-		assert(newsz > l->cap+1);
-
-		l->elts = xrealloc(l->elts, newsz * sizeof l->elts[0]);
-		l->cap  = newsz;
+		l->elts = enlarge_vec(l->elts, &l->cap, 1, sizeof l->elts[0]);
 	}
 
 	i = l->len++;
 	assert(i < l->cap);
 
-	l->elts[i].instr = instr;
-	l->elts[i].arg   = arg;
-	l->elts[i].ir    = ir;
+	return &l->elts[i];
+}
+
+static void
+asm_addr_fixup_add_dest(struct asm_addr_fixup_list *l,
+	struct jvst_op_instr *instr, struct jvst_op_arg *arg, struct jvst_ir_stmt *ir)
+{
+	struct asm_addr_fixup *fixup;
+
+	fixup = asm_addr_fixup_alloc(l);
+
+	fixup->instr = instr;
+	fixup->ir    = ir;
+	fixup->u.arg = arg;
+	fixup->type  = FIXUP_ARG;
+}
+
+static void
+asm_addr_fixup_add_proc(struct asm_addr_fixup_list *l,
+	struct jvst_op_instr *instr, struct jvst_op_proc **procp, struct jvst_ir_stmt *ir)
+{
+	struct asm_addr_fixup *fixup;
+
+	fixup = asm_addr_fixup_alloc(l);
+
+	fixup->instr   = instr;
+	fixup->ir      = ir;
+	fixup->u.procp = procp;
+	fixup->type    = FIXUP_PROC;
 }
 
 static void
@@ -547,11 +606,21 @@ asm_fixup_addr(struct asm_addr_fixup *fix)
 	case JVST_OP_CBF:
 		assert(fix->ir != NULL);
 		assert(fix->ir->data != NULL);
-		fix->arg->type = JVST_VM_ARG_INSTR;
-		fix->arg->u.dest = fix->ir->data;
+		assert(fix->type == FIXUP_ARG);
+		fix->u.arg->type = JVST_VM_ARG_INSTR;
+		fix->u.arg->u.dest = fix->ir->data;
 		return;
 
 	case JVST_OP_CALL:
+		assert(fix->ir != NULL);
+		assert(fix->ir->data != NULL);
+		assert(fix->type == FIXUP_ARG);
+		fix->u.arg->type = JVST_VM_ARG_CALL;
+		fix->u.arg->u.proc = fix->ir->data;
+		return;
+
+	case JVST_OP_SPLIT:
+	case JVST_OP_SPLITV:
 		fprintf(stderr, "%s:%d (%s) address fixup for op %s not yet implemented\n",
 			__FILE__, __LINE__, __func__, jvst_op_name(fix->instr->op));
 		abort();
@@ -571,8 +640,6 @@ asm_fixup_addr(struct asm_addr_fixup *fix)
 	case JVST_OP_FGT:
 	case JVST_OP_FNEQ:
 	case JVST_OP_FINT:
-	case JVST_OP_SPLIT:
-	case JVST_OP_SPLITV:
 	case JVST_OP_TOKEN:
 	case JVST_OP_CONSUME:
 	case JVST_OP_MATCH:
@@ -612,18 +679,26 @@ struct op_assembler {
 	struct jvst_op_proc *currproc;
 	struct jvst_op_instr **ipp;
 
+	/* float pool list */
 	double *fdata;
 	size_t maxfloat;
 
+	/* integer pool list */
 	int64_t *cdata;
 	size_t maxconst;
 
+	/* split lists */
 	struct jvst_op_proc **splits;
 	size_t maxsplit;
 
+	size_t *splitmax;
+	size_t maxsplitmax;
+
+	/* dfa list */
 	size_t maxdfa;
 	struct jvst_vm_dfa *dfas;
 
+	/* instruction list */
 	size_t maxinstr;
 	struct jvst_op_instr *ilist;
 
@@ -669,6 +744,7 @@ arg_special(enum jvst_op_arg_type type)
 	case JVST_VM_ARG_SLOT:
 	case JVST_VM_ARG_INSTR:
 	case JVST_VM_ARG_LABEL:
+	case JVST_VM_ARG_CALL:
 		fprintf(stderr, "%s:%d (%s) arg type %d is not a special arg\n",
 			__FILE__, __LINE__, __func__, type);
 		abort();
@@ -738,58 +814,53 @@ arg_new_slot(struct op_assembler *opasm)
 }
 
 static int64_t
-proc_add_split(struct op_assembler *opasm, struct jvst_ir_stmt *frames)
+proc_add_split(struct op_assembler *opasm, struct jvst_op_instr *instr, struct jvst_ir_stmt *frames)
 {
-	struct jvst_op_proc *parent, *split_procs, **splpp;
+	struct jvst_op_program *prog;
+	struct jvst_op_proc **plist;
+
+	struct jvst_op_proc *split_procs, **splpp;
 	struct jvst_ir_stmt *fr;
-	size_t ind;
+	size_t n, ind, off, max;
 
 	assert(opasm  != NULL);
 	assert(frames != NULL);
 
-	parent = opasm->currproc;
-	assert(parent != NULL);
+	prog = opasm->prog;
+	assert(prog != NULL);
 
-	split_procs = NULL;
-	splpp = &split_procs;
-
+	n=0;
 	for (fr = frames; fr != NULL; fr = fr->next) {
-		struct jvst_op_proc *p;
-
-		assert(fr->type == JVST_IR_STMT_FRAME);
-
-		p = op_assemble_frame(opasm, fr);
-
-		*splpp = p;
-		splpp = &p->split_next;
+		n++;
 	}
 
-	ind = parent->nsplit++;
-	if (parent->nsplit > opasm->maxsplit) {
-		size_t newmax;
-		struct jvst_op_proc **pv;
+	if (prog->nsplit >= opasm->maxsplit) {
+		opasm->splitmax = enlarge_vec(opasm->splitmax,
+			&opasm->maxsplitmax, 1, sizeof opasm->splitmax[0]);
+		prog->splitmax = opasm->splitmax;
+	}
 
-		if (opasm->maxsplit < 4) {
-			newmax = 4;
-		} else if (opasm->maxsplit < 1024) {
-			newmax = 2*opasm->maxsplit;
+	ind = prog->nsplit++;
+	assert(ind < opasm->maxsplit);
+	off = (ind > 0) ? prog->splitmax[ind-1] : 0;
+	max = off + n;
+	prog->splitmax[ind] = max;
+
+	if (max > opasm->maxsplit) {
+		opasm->splits = enlarge_vec(opasm->splits,
+			&opasm->maxsplit, n, sizeof opasm->splits[0]);
+		prog->splits = opasm->splits;
+	}
+
+	plist = &prog->splits[off];
+	for (fr = frames; fr != NULL; fr = fr->next) {
+		if (fr->data != NULL) {
+			*plist = fr->data;
 		} else {
-			newmax = opasm->maxsplit;
-			newmax += newmax/4;
+			asm_addr_fixup_add_proc(opasm->fixups, instr, plist, fr);
 		}
-
-		assert(newmax > opasm->maxsplit+1);
-		pv = xrealloc(opasm->splits, newmax * sizeof opasm->splits[0]);
-		assert(pv != NULL);
-
-		opasm->splits = pv;
-		opasm->maxsplit = newmax;
-
-		parent->splits = opasm->splits;
+		plist++;
 	}
-
-	assert(split_procs != NULL);
-	parent->splits[ind] = split_procs;
 
 	return (int64_t)ind;
 }
@@ -797,36 +868,19 @@ proc_add_split(struct op_assembler *opasm, struct jvst_ir_stmt *frames)
 static int64_t
 proc_add_float(struct op_assembler *opasm, double v)
 {
-	struct jvst_op_proc *proc;
+	struct jvst_op_program *prog;
 	size_t ind;
 
-	proc = opasm->currproc;
-	assert(proc != NULL);
+	prog = opasm->prog;
+	assert(prog != NULL);
 
-	ind = proc->nfloat++;
-	if (proc->nfloat > opasm->maxfloat) {
-		size_t newmax;
-		double *fv;
-
-		if (opasm->maxfloat < 4) {
-			newmax = 4;
-		} else if (opasm->maxfloat < 1024) {
-			newmax = 2*opasm->maxfloat;
-		} else {
-			newmax = opasm->maxfloat;
-			newmax += newmax/4;
-		}
-
-		assert(newmax > opasm->maxfloat+1);
-		fv = xrealloc(opasm->fdata, newmax * sizeof opasm->fdata[0]);
-		assert(fv != NULL);
-		opasm->fdata = fv;
-		opasm->maxfloat = newmax;
-
-		proc->fdata = opasm->fdata;
+	ind = prog->nfloat++;
+	if (prog->nfloat > opasm->maxfloat) {
+		opasm->fdata = enlarge_vec(opasm->fdata, &opasm->maxfloat, 1, sizeof opasm->fdata[0]);
+		prog->fdata = opasm->fdata;
 	}
 
-	proc->fdata[ind] = v;
+	prog->fdata[ind] = v;
 
 	return (int64_t)ind;
 }
@@ -834,36 +888,19 @@ proc_add_float(struct op_assembler *opasm, double v)
 static int64_t
 proc_add_uconst(struct op_assembler *opasm, uint64_t v)
 {
-	struct jvst_op_proc *proc;
+	struct jvst_op_program *prog;
 	size_t ind;
 
-	proc = opasm->currproc;
-	assert(proc != NULL);
+	prog = opasm->prog;
+	assert(prog != NULL);
 
-	ind = proc->nconst++;
-	if (proc->nconst > opasm->maxconst) {
-		size_t newmax;
-		int64_t *cv;
-
-		if (opasm->maxconst < 4) {
-			newmax = 4;
-		} else if (opasm->maxconst < 1024) {
-			newmax = 2*opasm->maxconst;
-		} else {
-			newmax = opasm->maxconst;
-			newmax += newmax/4;
-		}
-
-		assert(newmax > opasm->maxconst+1);
-		cv = xrealloc(opasm->cdata, newmax * sizeof opasm->cdata[0]);
-		assert(cv != NULL);
-		opasm->cdata = cv;
-		opasm->maxconst = newmax;
-
-		proc->cdata = opasm->cdata;
+	ind = prog->nconst++;
+	if (prog->nconst > opasm->maxconst) {
+		opasm->cdata = enlarge_vec(opasm->cdata, &opasm->maxconst, 1, sizeof opasm->cdata[0]);
+		prog->cdata = opasm->cdata;
 	}
 
-	proc->cdata[ind] = (int64_t)v;
+	prog->cdata[ind] = (int64_t)v;
 
 	return (int64_t)ind;
 }
@@ -871,39 +908,22 @@ proc_add_uconst(struct op_assembler *opasm, uint64_t v)
 static int64_t
 proc_add_dfa(struct op_assembler *opasm, struct fsm *fsm)
 {
-	struct jvst_op_proc *proc;
+	struct jvst_op_program *prog;
 	size_t ind;
 
-	proc = opasm->currproc;
-	assert(proc != NULL);
+	prog = opasm->prog;
+	assert(prog != NULL);
 
-	ind = proc->ndfa++;
-	if (proc->ndfa > opasm->maxdfa) {
-		size_t newmax;
-		struct jvst_vm_dfa *dfas;
-
-		newmax = opasm->maxdfa;
-		if (newmax < 4) {
-			newmax = 4;
-		} else if (newmax < 2048) {
-			newmax *= 2;
-		} else {
-			newmax += newmax/4;
-		}
-
-		assert(newmax > opasm->maxdfa+1);
-		dfas = xrealloc(opasm->dfas, newmax * sizeof opasm->dfas[0]);
-		assert(dfas != NULL);
-		opasm->dfas = dfas;
-		opasm->maxdfa = newmax;
-
-		proc->dfas = opasm->dfas;
+	ind = prog->ndfa++;
+	if (prog->ndfa > opasm->maxdfa) {
+		opasm->dfas = enlarge_vec(opasm->dfas, &opasm->maxdfa, 1, sizeof opasm->dfas[0]);
+		prog->dfas = opasm->dfas;
 	}
 
 	assert(ind < opasm->maxdfa);
 
-	jvst_op_build_vm_dfa(fsm, &proc->dfas[ind]);
-	jvst_vm_dfa_debug(&proc->dfas[ind]);
+	jvst_op_build_vm_dfa(fsm, &prog->dfas[ind]);
+	jvst_vm_dfa_debug(&prog->dfas[ind]);
 
 	return (int64_t)ind;
 }
@@ -1048,7 +1068,9 @@ op_assemble_frame(struct op_assembler *opasm, struct jvst_ir_stmt *top)
 	proc->nslots = off + top->u.frame.ntemps;
 	*opasm->procpp = proc;
 	opasm->procpp = &proc->next;
-	
+
+	top->data = proc;
+
 	frame_opasm = *opasm;
 	frame_opasm.nlbl = 0;
 	frame_opasm.ntmp = 0;
@@ -1073,7 +1095,7 @@ op_assemble_frame(struct op_assembler *opasm, struct jvst_ir_stmt *top)
 	return proc;
 }
 
-enum { ARG_NONE, ARG_SLOT, ARG_BOOL, ARG_FLOAT, ARG_INT, ARG_DEST };
+enum { ARG_NONE, ARG_SLOT, ARG_BOOL, ARG_FLOAT, ARG_INT, ARG_DEST, ARG_PROC };
 
 static int
 op_arg_type(enum jvst_op_arg_type type)
@@ -1097,6 +1119,8 @@ op_arg_type(enum jvst_op_arg_type type)
 	case JVST_VM_ARG_INSTR:
 	case JVST_VM_ARG_LABEL:
 		return ARG_DEST;
+	case JVST_VM_ARG_CALL:
+		return ARG_PROC;
 	}
 
 	fprintf(stderr, "%s:%d (%s) unknown op arg type %d\n",
@@ -1237,9 +1261,9 @@ emit_op_arg(struct op_assembler *opasm, struct jvst_ir_expr *arg)
 			int64_t split_ind;
 
 			ireg = arg_new_slot(opasm);
-			split_ind = proc_add_split(opasm, arg->u.split.frames);
-
 			instr = op_instr_new(JVST_OP_SPLIT);
+			split_ind = proc_add_split(opasm, instr, arg->u.split.frames);
+
 			instr->args[0] = arg_const(split_ind);
 			instr->args[1] = ireg;
 
@@ -1611,25 +1635,25 @@ op_assemble_cbranch(struct op_assembler *opasm, struct jvst_ir_stmt *stmt)
 
 	if (stmt->u.cbranch.br_false == stmt->next) {
 		instr = op_instr_new(JVST_OP_CBT);
-		asm_addr_fixup_add(opasm->fixups, instr, &instr->args[0], stmt->u.cbranch.br_true);
+		asm_addr_fixup_add_dest(opasm->fixups, instr, &instr->args[0], stmt->u.cbranch.br_true);
 		emit_instr(opasm, instr);
 		return;
 	}
 
 	if (stmt->u.cbranch.br_true == stmt->next) {
 		instr = op_instr_new(JVST_OP_CBF);
-		asm_addr_fixup_add(opasm->fixups, instr, &instr->args[0], stmt->u.cbranch.br_false);
+		asm_addr_fixup_add_dest(opasm->fixups, instr, &instr->args[0], stmt->u.cbranch.br_false);
 		emit_instr(opasm, instr);
 		return;
 	}
 
 emit_two_branches:
 	instr = op_instr_new(JVST_OP_CBT);
-	asm_addr_fixup_add(opasm->fixups, instr, &instr->args[0], stmt->u.cbranch.br_true);
+	asm_addr_fixup_add_dest(opasm->fixups, instr, &instr->args[0], stmt->u.cbranch.br_true);
 	emit_instr(opasm, instr);
 
 	instr = op_instr_new(JVST_OP_BR);
-	asm_addr_fixup_add(opasm->fixups, instr, &instr->args[0], stmt->u.cbranch.br_false);
+	asm_addr_fixup_add_dest(opasm->fixups, instr, &instr->args[0], stmt->u.cbranch.br_false);
 	emit_instr(opasm, instr);
 	return;
 }
@@ -1689,9 +1713,9 @@ op_assemble(struct op_assembler *opasm, struct jvst_ir_stmt *stmt)
 			assert(bv != NULL);
 			assert(bv->type == JVST_IR_STMT_BITVECTOR);
 
-			split_ind = proc_add_split(opasm, stmt->u.splitvec.split_frames);
-
 			instr = op_instr_new(JVST_OP_SPLITV);
+			split_ind = proc_add_split(opasm, instr, stmt->u.splitvec.split_frames);
+
 			instr->args[0] = arg_const(split_ind);
 			instr->args[1] = arg_slot(bv->u.bitvec.frame_off);
 
@@ -1706,7 +1730,7 @@ op_assemble(struct op_assembler *opasm, struct jvst_ir_stmt *stmt)
 
 	case JVST_IR_STMT_BRANCH:
 		instr = op_instr_new(JVST_OP_BR);
-		asm_addr_fixup_add(opasm->fixups, instr, &instr->args[0], stmt->u.branch);
+		asm_addr_fixup_add_dest(opasm->fixups, instr, &instr->args[0], stmt->u.branch);
 		emit_instr(opasm, instr);
 		return;
 
@@ -1769,7 +1793,7 @@ op_assemble(struct op_assembler *opasm, struct jvst_ir_stmt *stmt)
 			assert(stmt->u.call.frame != NULL);
 
 			instr->args[0] = arg_const(stmt->u.call.frame->u.frame.frame_ind);
-			// XXX - fixup call address in args[1]
+			asm_addr_fixup_add_dest(opasm->fixups, instr, &instr->args[0], stmt->u.call.frame);
 			emit_instr(opasm, instr);
 		}
 		return;
