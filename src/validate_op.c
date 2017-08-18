@@ -689,6 +689,7 @@ asm_fixup_addresses(struct asm_addr_fixup_list *l)
 }
 
 struct op_assembler {
+	struct jvst_ir_stmt *ir;
 	struct jvst_op_program *prog;
 	struct jvst_op_proc **procpp;
 	struct jvst_op_proc *currproc;
@@ -829,26 +830,25 @@ arg_new_slot(struct op_assembler *opasm)
 }
 
 static int64_t
-proc_add_split(struct op_assembler *opasm, struct jvst_op_instr *instr, struct jvst_ir_stmt *frames)
+proc_add_split(struct op_assembler *opasm, struct jvst_op_instr *instr, struct jvst_ir_stmt *splitlist)
 {
 	struct jvst_op_program *prog;
-	struct jvst_op_proc **plist;
 
 	struct jvst_op_proc *split_procs, **splpp;
-	struct jvst_ir_stmt *fr;
-	size_t n, ind, off, max;
+	struct jvst_ir_stmt *frames;
+	size_t i,n, ind, off, max;
 
 	assert(opasm  != NULL);
-	assert(frames != NULL);
+	assert(splitlist != NULL);
+	assert(splitlist->type == JVST_IR_STMT_SPLITLIST);
+
+	assert(opasm->ir != NULL);
+	assert(opasm->ir->type == JVST_IR_STMT_PROGRAM);
 
 	prog = opasm->prog;
 	assert(prog != NULL);
 
-	n=0;
-	for (fr = frames; fr != NULL; fr = fr->next) {
-		n++;
-	}
-
+	n=splitlist->u.split_list.nframes;
 	if (prog->nsplit >= opasm->maxsplit) {
 		opasm->splitmax = enlarge_vec(opasm->splitmax,
 			&opasm->maxsplitmax, 1, sizeof opasm->splitmax[0]);
@@ -869,14 +869,39 @@ proc_add_split(struct op_assembler *opasm, struct jvst_op_instr *instr, struct j
 
 	assert(max < opasm->maxsplit);
 
-	plist = &prog->splits[off];
-	for (fr = frames; fr != NULL; fr = fr->next) {
+	frames = opasm->ir->u.program.frames;
+	for (i=0; i < n; i++) {
+		struct jvst_op_proc **plist;
+		struct jvst_ir_stmt *fr;
+		size_t ind;
+
+		plist = &prog->splits[i+off];
+		ind = splitlist->u.split_list.frame_indices[i];
+
+		// XXX - replace this with something better!
+		//
+		// Q: can we guarantee that the splitlist indices are
+		// sorted and that the ir program's frame list is sorted
+		// by frame_ind?  if so, we can make a single pass
+		// through the frame list
+		for (fr = frames; fr != NULL; fr = fr->next) {
+			assert(fr->type == JVST_IR_STMT_FRAME);
+			if (fr->u.frame.frame_ind == ind) {
+				break;
+			}
+		}
+
+		if (fr == NULL) {
+			fprintf(stderr, "%s:%d (%s) cannot find frame %zu\n",
+				__FILE__, __LINE__, __func__, ind);
+			abort();
+		}
+
 		if (fr->data != NULL) {
 			*plist = fr->data;
 		} else {
 			asm_addr_fixup_add_proc(opasm->fixups, instr, plist, fr);
 		}
-		plist++;
 	}
 
 	return (int64_t)ind;
@@ -1276,7 +1301,7 @@ emit_op_arg(struct op_assembler *opasm, struct jvst_ir_expr *arg)
 		{
 			struct jvst_op_instr *instr;
 			struct jvst_op_arg ireg;
-			struct jvst_ir_stmt *splitlist, *frames;
+			struct jvst_ir_stmt *splitlist;
 			int64_t split_ind;
 
 			ireg = arg_new_slot(opasm);
@@ -1286,9 +1311,7 @@ emit_op_arg(struct op_assembler *opasm, struct jvst_ir_expr *arg)
 			assert(splitlist != NULL);
 			assert(splitlist->type == JVST_IR_STMT_SPLITLIST);
 
-			frames = splitlist->u.split_list.frames;
-			assert(frames != NULL);
-			split_ind = proc_add_split(opasm, instr, frames);
+			split_ind = proc_add_split(opasm, instr, splitlist);
 
 			instr->args[0] = arg_const(split_ind);
 			instr->args[1] = ireg;
@@ -1743,11 +1766,8 @@ op_assemble(struct op_assembler *opasm, struct jvst_ir_stmt *stmt)
 			assert(splitlist != NULL);
 			assert(splitlist->type == JVST_IR_STMT_SPLITLIST);
 
-			frames = splitlist->u.split_list.frames;
-			assert(frames != NULL);
-
 			instr = op_instr_new(JVST_OP_SPLITV);
-			split_ind = proc_add_split(opasm, instr, frames);
+			split_ind = proc_add_split(opasm, instr, splitlist);
 
 			instr->args[0] = arg_const(split_ind);
 			instr->args[1] = arg_slot(bv->u.bitvec.frame_off);
@@ -1869,7 +1889,8 @@ jvst_op_assemble(struct jvst_ir_stmt *ir)
 	assert(ir != NULL);
 	assert(ir->type == JVST_IR_STMT_PROGRAM);
 
-	opasm.prog = op_prog_new(NULL);
+	opasm.ir     = ir;
+	opasm.prog   = op_prog_new(NULL);
 	opasm.procpp = &opasm.prog->procs;
 	opasm.fixups = &fixups;
 

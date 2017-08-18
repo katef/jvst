@@ -31,6 +31,7 @@ struct arena_info {
         size_t nstmt;
         size_t nexpr;
 	size_t nmcases;
+	size_t nsplitinds;
 
 	/* OP related */
 	size_t nprog;

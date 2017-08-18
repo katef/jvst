@@ -41,6 +41,7 @@ static struct jvst_cnode_matchset ar_cnode_matchsets[NUM_TEST_THINGS];
 static struct jvst_ir_stmt ar_ir_stmts[NUM_TEST_THINGS];
 static struct jvst_ir_expr ar_ir_exprs[NUM_TEST_THINGS];
 static struct jvst_ir_mcase ar_ir_mcases[NUM_TEST_THINGS];
+static size_t ar_ir_splitinds[NUM_TEST_THINGS];
 
 static struct jvst_op_program ar_op_prog[NUM_TEST_THINGS];
 static struct jvst_op_proc ar_op_proc[NUM_TEST_THINGS];
@@ -994,33 +995,35 @@ newir_splitlist(struct arena_info *A, size_t ind, size_t n, ...)
 	size_t i;
 	va_list args;
 	struct jvst_ir_stmt *sl, **fpp;
+	size_t off,max, *inds;
 
 	sl = newir_stmt(A,JVST_IR_STMT_SPLITLIST);
 	sl->u.split_list.ind = ind;
 	sl->u.split_list.nframes = n;
-	fpp = &sl->u.split_list.frames;
 
 	if (n == 0) {
 		return sl;
 	}
 
+	off = A->nsplitinds;
+	max = ARRAYLEN(ar_ir_splitinds);
+	if (off+n >= max) {
+		fprintf(stderr, "too many IR split indices: %zu max\n", max);
+		abort();
+	}
+
+	A->nsplitinds += n;
+	inds = &ar_ir_splitinds[off];
+
 	va_start(args, n);
 	for (i=0; i < n; i++) {
 		size_t ind;
-		struct jvst_ir_stmt *fr;
 
-		ind = va_arg(args, int);
-
-		// cheesy, but avoids requiring us to wire things up for
-		// a test comparison
-		fr = newir_stmt(A,JVST_IR_STMT_FRAME);
-		fr->u.frame.frame_ind = ind;
-		*fpp = fr;
-		fpp = &fr->u.frame.split_next;
+		inds[i] = (size_t)va_arg(args, int);
 	}
 	va_end(args);
 
-	*fpp = NULL;
+	sl->u.split_list.frame_indices = inds;
 
 	return sl;
 }

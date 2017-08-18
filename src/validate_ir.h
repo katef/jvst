@@ -247,7 +247,7 @@ struct jvst_ir_stmt {
 		struct {
 			size_t ind;
 			size_t nframes;
-			struct jvst_ir_stmt *frames;
+			size_t *frame_indices;
 			bool fixed_up;
 		} split_list;
 
