@@ -20,6 +20,8 @@
 
 #include "validate_sbuf.h"
 
+#define DEBUG_DFA 0
+
 /** some OP encoding constants **/
 
 // 16-bit signed constants can be inlined into the opcodes
@@ -922,8 +924,9 @@ proc_add_dfa(struct op_assembler *opasm, struct fsm *fsm)
 
 	assert(ind < opasm->maxdfa);
 
-	jvst_op_build_vm_dfa(fsm, &prog->dfas[ind]);
-	jvst_vm_dfa_debug(&prog->dfas[ind]);
+	if (DEBUG_DFA) {
+		jvst_op_build_vm_dfa(fsm, &prog->dfas[ind]);
+	}
 
 	return (int64_t)ind;
 }
