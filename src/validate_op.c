@@ -1528,7 +1528,7 @@ op_assemble_cond(struct op_assembler *opasm, struct jvst_ir_expr *cond)
 
 			// emit slot load
 			ireg1 = arg_new_slot(opasm);
-			instr = op_instr_new(JVST_OP_ILOAD);
+			instr = op_instr_new(JVST_OP_MOVE);
 			instr->args[0] = ireg1;
 			instr->args[1] = arg_slot(bv->u.bitvec.frame_off);
 			emit_instr(opasm, instr);
