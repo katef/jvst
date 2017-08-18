@@ -1613,7 +1613,7 @@ emit_match(struct op_assembler *opasm, struct jvst_ir_expr *expr)
 	assert(expr->type == JVST_IR_EXPR_MATCH);
 
 	dfa = proc_add_dfa(opasm, expr->u.match.dfa);
-	assert(dfa == expr->u.match.ind);
+	// assert(dfa == expr->u.match.ind);
 
 	instr = op_instr_new(JVST_OP_MATCH);
 	instr->args[0] = arg_const(dfa);
