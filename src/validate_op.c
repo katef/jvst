@@ -1833,7 +1833,6 @@ jvst_op_assemble(struct jvst_ir_stmt *ir)
 {
 	struct op_assembler opasm = { 0 };
 	struct asm_addr_fixup_list fixups = { 0 };
-	struct jvst_op_program *prog;
 	struct jvst_ir_stmt *fr;
 	size_t i;
 
