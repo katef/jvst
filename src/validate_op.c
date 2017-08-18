@@ -421,14 +421,20 @@ jvst_op_dump_inner(struct sbuf *buf, struct jvst_op_program *prog, int indent)
 	}
 
 	for (i=0; i < prog->nsplit; i++) {
-		struct jvst_op_proc *p;
+		size_t si,off,max;
 		size_t c;
 
-		assert(prog->splits != NULL);
+		assert(prog->splitmax != NULL);
+		assert(prog->splits   != NULL);
+
+		off = (i > 0) ? prog->splitmax[i-1] : 0;
+		max = prog->splitmax[i];
 
 		sbuf_indent(buf, indent+2);
 		sbuf_snprintf(buf, "SPLIT(%zu)\t", i);
-		for (c=0, p = prog->splits[i]; p != NULL; c++, p = p->split_next) {
+		for (c=0, si=off; si < max; c++, si++) {
+			struct jvst_op_proc *p;
+			p = prog->splits[si];
 			sbuf_snprintf(buf, " %zu", p->proc_index);
 
 			if (c >= 6 && p->next != NULL) {
@@ -623,6 +629,13 @@ asm_fixup_addr(struct asm_addr_fixup *fix)
 
 	case JVST_OP_SPLIT:
 	case JVST_OP_SPLITV:
+		assert(fix->ir != NULL);
+		assert(fix->ir->type == JVST_IR_STMT_FRAME);
+		assert(fix->ir->data != NULL);
+		assert(fix->type == FIXUP_PROC);
+		*fix->u.procp = fix->ir->data;
+		return;
+
 		fprintf(stderr, "%s:%d (%s) address fixup for op %s not yet implemented\n",
 			__FILE__, __LINE__, __func__, jvst_op_name(fix->instr->op));
 		abort();
@@ -843,7 +856,7 @@ proc_add_split(struct op_assembler *opasm, struct jvst_op_instr *instr, struct j
 	}
 
 	ind = prog->nsplit++;
-	assert(ind < opasm->maxsplit);
+	assert(ind < opasm->maxsplitmax);
 	off = (ind > 0) ? prog->splitmax[ind-1] : 0;
 	max = off + n;
 	prog->splitmax[ind] = max;
@@ -853,6 +866,8 @@ proc_add_split(struct op_assembler *opasm, struct jvst_op_instr *instr, struct j
 			&opasm->maxsplit, n, sizeof opasm->splits[0]);
 		prog->splits = opasm->splits;
 	}
+
+	assert(max < opasm->maxsplit);
 
 	plist = &prog->splits[off];
 	for (fr = frames; fr != NULL; fr = fr->next) {
@@ -1261,11 +1276,19 @@ emit_op_arg(struct op_assembler *opasm, struct jvst_ir_expr *arg)
 		{
 			struct jvst_op_instr *instr;
 			struct jvst_op_arg ireg;
+			struct jvst_ir_stmt *splitlist, *frames;
 			int64_t split_ind;
 
 			ireg = arg_new_slot(opasm);
 			instr = op_instr_new(JVST_OP_SPLIT);
-			split_ind = proc_add_split(opasm, instr, arg->u.split.frames);
+
+			splitlist = arg->u.split.split_list;
+			assert(splitlist != NULL);
+			assert(splitlist->type == JVST_IR_STMT_SPLITLIST);
+
+			frames = splitlist->u.split_list.frames;
+			assert(frames != NULL);
+			split_ind = proc_add_split(opasm, instr, frames);
 
 			instr->args[0] = arg_const(split_ind);
 			instr->args[1] = ireg;
@@ -1709,15 +1732,22 @@ op_assemble(struct op_assembler *opasm, struct jvst_ir_stmt *stmt)
 
 	case JVST_IR_STMT_SPLITVEC:
 		{
-			struct jvst_ir_stmt *bv;
+			struct jvst_ir_stmt *bv, *splitlist, *frames;
 			int64_t split_ind;
 
 			bv = stmt->u.splitvec.bitvec;
 			assert(bv != NULL);
 			assert(bv->type == JVST_IR_STMT_BITVECTOR);
 
+			splitlist = stmt->u.splitvec.split_list;
+			assert(splitlist != NULL);
+			assert(splitlist->type == JVST_IR_STMT_SPLITLIST);
+
+			frames = splitlist->u.split_list.frames;
+			assert(frames != NULL);
+
 			instr = op_instr_new(JVST_OP_SPLITV);
-			split_ind = proc_add_split(opasm, instr, stmt->u.splitvec.split_frames);
+			split_ind = proc_add_split(opasm, instr, frames);
 
 			instr->args[0] = arg_const(split_ind);
 			instr->args[1] = arg_slot(bv->u.bitvec.frame_off);
