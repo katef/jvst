@@ -128,17 +128,17 @@ enlarge_vec(void *orig, size_t *np, size_t incr, size_t width)
 		return orig;
 	}
 
-	newmax = *np;
+	newmax = *np + incr;
 
-	if (newmax+incr < 4) {
+	if (newmax < 4) {
 		newmax = 4;
-	} else if (newmax+incr < 2048) {
+	} else if (newmax < 2048) {
 		newmax *= 2;
-	} else if (incr < newmax/8) {
-		newmax += newmax/4;
 	} else {
-		newmax += 2*incr;
+		newmax += newmax/4;
 	}
+
+	assert(newmax > *np + incr);
 
 	*np = newmax;
 	return xrealloc(orig, newmax * width);
