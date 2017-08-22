@@ -1781,7 +1781,6 @@ newop_cmp(struct arena_info *A, enum jvst_vm_op op,
 	case JVST_OP_ILOAD:
 	case JVST_OP_INCR:
 	case JVST_OP_BSET:
-	case JVST_OP_BTEST:
 	case JVST_OP_BAND:
 	case JVST_OP_VALID:
 	case JVST_OP_INVALID:
@@ -1915,7 +1914,6 @@ newop_load(struct arena_info *A, enum jvst_vm_op op,
 	case JVST_OP_MATCH:
 	case JVST_OP_INCR:
 	case JVST_OP_BSET:
-	case JVST_OP_BTEST:
 	case JVST_OP_BAND:
 	case JVST_OP_VALID:
 	case JVST_OP_INVALID:
@@ -1973,7 +1971,6 @@ newop_br(struct arena_info *A, enum jvst_vm_op op, const char *label)
 	case JVST_OP_ILOAD:
 	case JVST_OP_INCR:
 	case JVST_OP_BSET:
-	case JVST_OP_BTEST:
 	case JVST_OP_BAND:
 	case JVST_OP_VALID:
 	case JVST_OP_INVALID:

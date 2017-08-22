@@ -352,10 +352,6 @@ op_instr_dump(struct sbuf *buf, struct jvst_op_instr *instr)
 		op_arg_dump(buf, instr->args[1]);
 		return;
 
-	case JVST_OP_BTEST:
-		fprintf(stderr, "%s:%d (%s) OP %s not yet implemented\n",
-			__FILE__, __LINE__, __func__, jvst_op_name(instr->op));
-		abort();
 	}
 
 	fprintf(stderr, "%s:%d (%s) Unknown OP arg type %02x\n",
@@ -505,7 +501,6 @@ jvst_op_name(enum jvst_vm_op op)
 	case JVST_OP_MOVE: 	return "MOVE";
 	case JVST_OP_INCR:      return "INCR";
 	case JVST_OP_BSET:      return "BSET";
-	case JVST_OP_BTEST:     return "BTEST";
 	case JVST_OP_BAND:      return "BAND";
 	case JVST_OP_VALID:     return "VALID";
 	case JVST_OP_INVALID:   return "INVALID";
@@ -662,7 +657,6 @@ asm_fixup_addr(struct asm_addr_fixup *fix)
 	case JVST_OP_ILOAD:
 	case JVST_OP_INCR:
 	case JVST_OP_BSET:
-	case JVST_OP_BTEST:
 	case JVST_OP_BAND:
 	case JVST_OP_VALID:
 	case JVST_OP_INVALID:
@@ -1035,7 +1029,6 @@ emit_cond(struct op_assembler *opasm, enum jvst_vm_op op,
 	case JVST_OP_ILOAD:
 	case JVST_OP_INCR:
 	case JVST_OP_BSET:
-	case JVST_OP_BTEST:
 	case JVST_OP_BAND:
 	case JVST_OP_VALID:
 	case JVST_OP_INVALID:
