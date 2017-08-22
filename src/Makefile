@@ -33,6 +33,7 @@ VALID_SRC += src/validate_constraints.c
 # VALID_SRC += src/validate_testing.c
 VALID_SRC += src/validate_ir.c
 VALID_SRC += src/validate_op.c
+VALID_SRC += src/validate_vm.c
 VALID_SRC += src/sjp_parser.c
 VALID_SRC += src/sjp_testing.c
 

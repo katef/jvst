@@ -99,9 +99,6 @@ jvst_op_assemble(struct jvst_ir_stmt *stmt);
 struct jvst_op_program *
 jvst_op_optimize(struct jvst_op_program *prog);
 
-const char *
-jvst_op_name(enum jvst_vm_op op);
-
 int
 jvst_op_dump(struct jvst_op_program *prog, char *buf, size_t nb);
 

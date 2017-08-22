@@ -120,6 +120,9 @@ enum jvst_vm_op {
  * number.
  */
 
+const char *
+jvst_op_name(enum jvst_vm_op op);
+
 static inline enum jvst_vm_op
 jvst_vm_decode_op(uint32_t op)
 {

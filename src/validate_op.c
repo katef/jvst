@@ -468,48 +468,6 @@ jvst_op_dump_inner(struct sbuf *buf, struct jvst_op_program *prog, int indent)
 
 }
 
-const char *
-jvst_op_name(enum jvst_vm_op op)
-{
-	switch (op) {
-	case JVST_OP_NOP:	return "NOP";
-	case JVST_OP_PROC:	return "PROC";
-	case JVST_OP_ILT:       return "ILT";
-	case JVST_OP_ILE:       return "ILE";
-	case JVST_OP_IEQ:       return "IEQ";
-	case JVST_OP_IGE:       return "IGE";
-	case JVST_OP_IGT:       return "IGT";
-	case JVST_OP_INEQ:      return "INEQ";
-	case JVST_OP_FLT:       return "FLT";
-	case JVST_OP_FLE:       return "FLE";
-	case JVST_OP_FEQ:       return "FEQ";
-	case JVST_OP_FGE:       return "FGE";
-	case JVST_OP_FGT:       return "FGT";
-	case JVST_OP_FNEQ:      return "FNEQ";
-	case JVST_OP_FINT:      return "FINT";
-	case JVST_OP_BR:        return "BR";
-	case JVST_OP_CBT:       return "CBT";
-	case JVST_OP_CBF:      	return "CBF";
-	case JVST_OP_CALL:      return "CALL";
-	case JVST_OP_SPLIT:     return "SPLIT";
-	case JVST_OP_SPLITV:    return "SPLITV";
-	case JVST_OP_TOKEN:     return "TOKEN";
-	case JVST_OP_CONSUME:   return "CONSUME";
-	case JVST_OP_MATCH:     return "MATCH";
-	case JVST_OP_FLOAD:     return "FLOAD";
-	case JVST_OP_ILOAD:     return "ILOAD";
-	case JVST_OP_MOVE: 	return "MOVE";
-	case JVST_OP_INCR:      return "INCR";
-	case JVST_OP_BSET:      return "BSET";
-	case JVST_OP_BAND:      return "BAND";
-	case JVST_OP_VALID:     return "VALID";
-	case JVST_OP_INVALID:   return "INVALID";
-	}
-
-	fprintf(stderr, "Unknown OP %d\n", op);
-	abort();
-}
-
 int
 jvst_op_dump(struct jvst_op_program *prog, char *buf, size_t nb)
 {
