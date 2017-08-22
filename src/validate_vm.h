@@ -328,24 +328,31 @@ struct jvst_vm {
 		double   f;
 	} *stack;
 
-	// builtin registers
-	uint32_t flag;
-	uint32_t pc;
-	uint32_t m;
-	uint32_t fp;
-	uint32_t sp;
+	// machine state registers, when active they aren't stored on
+	// the stack
+	uint64_t r_flag;
+	uint64_t r_pc;
+	uint64_t r_fp;
+
+	size_t nsplit;
+	size_t maxsplit;
+	struct jvst_vm *splits;
 
 	struct sjp_parser parser;
+	int error;
 };
 
 void
-jvst_vm_initialize(struct jvst_vm *vm, struct jvst_vm_program *prog);
+jvst_vm_init_defaults(struct jvst_vm *vm, struct jvst_vm_program *prog);
 
 enum jvst_result
-jvst_vm_validate_more(struct jvst_vm *v, char *data, size_t n);
+jvst_vm_more(struct jvst_vm *vm, char *data, size_t n);
 
 enum jvst_result
-jvst_vm_validate_close(struct jvst_vm *v);
+jvst_vm_close(struct jvst_vm *vm);
+
+void
+jvst_vm_finalize(struct jvst_vm *vm);
 
 #endif /* VALIDATE_VM_H */
 

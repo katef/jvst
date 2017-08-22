@@ -264,8 +264,82 @@ jvst_vm_dfa_finalize(struct jvst_vm_dfa *dfa)
 void
 jvst_vm_program_free(struct jvst_vm_program *prog)
 {
-	// XXX - free stuff!
-	(void)prog;
+	size_t i;
+	assert(prog != NULL);
+	free(prog->fdata);
+	free(prog->cdata);
+	free(prog->sdata);
+
+	for (i=0; i < prog->ndfa; i++) {
+		jvst_vm_dfa_finalize(&prog->dfas[i]);
+	}
+	free(prog->dfas);
+
+	free(prog->code);
+	free(prog);
 }
+
+enum { VM_DEFAULT_STACK = 1024 };   // 8 bytes per stack element, so default to 16K stack
+enum { VM_DEFAULT_MAXSPLIT = 16 };
+
+void
+jvst_vm_init_defaults(struct jvst_vm *vm, struct jvst_vm_program *prog)
+{
+	vm->prog = prog;
+
+	vm->maxstack = VM_DEFAULT_STACK;
+	vm->stack = xmalloc(vm->maxstack * sizeof vm->stack[0]);
+
+	vm->nsplit = 0;
+	vm->maxsplit = VM_DEFAULT_MAXSPLIT;
+	vm->splits = xmalloc(vm->maxsplit * sizeof vm->splits[0]);
+
+	vm->r_flag = 0;
+	vm->r_pc = 0;
+	vm->r_fp = 0;
+}
+
+void
+jvst_vm_finalize(struct jvst_vm *vm)
+{
+	size_t i;
+
+	static struct jvst_vm zero = { 0 };
+	free(vm->stack);
+
+	for (i=0; i < vm->nsplit; i++) {
+		jvst_vm_finalize(&vm->splits[i]);
+	}
+	free(vm->splits);
+
+	*vm = zero;
+}
+
+static enum jvst_result
+vm_run(struct jvst_vm *vm)
+{
+	vm->error = 1;
+	return JVST_INVALID;
+}
+
+enum jvst_result
+jvst_vm_more(struct jvst_vm *vm, char *data, size_t n)
+{
+	if (vm->error) {
+		return JVST_INVALID;
+	}
+
+	sjp_parser_more(&vm->parser, data, n);
+	return vm_run(vm);
+}
+
+enum jvst_result
+jvst_vm_close(struct jvst_vm *vm)
+{
+	// XXX - handle actual close!
+	return vm->error ? JVST_INVALID : JVST_VALID;
+}
+
+
 
 /* vim: set tabstop=8 shiftwidth=8 noexpandtab: */

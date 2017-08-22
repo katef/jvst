@@ -9,6 +9,9 @@
 #include "ast.h"
 #include "validate.h"
 #include "validate_testing.h"
+#include "validate_vm.h"
+
+#define PROTOTYPE 0
 
 struct validation_test {
   bool succeeds;
@@ -29,7 +32,7 @@ static void dump_err_stack(struct jvst_validator *v)
   }
 }
 
-static int run_test(const struct validation_test *t)
+static int run_prototype_test(const struct validation_test *t)
 {
   struct jvst_validator v;
   size_t n;
@@ -70,6 +73,47 @@ static int run_test(const struct validation_test *t)
   return !failed;
 }
 
+static int run_vm_test(const struct validation_test *t)
+{
+  struct jvst_vm_program *prog;
+  struct jvst_vm vm;
+  char buf[4096];
+  size_t n;
+  int ret, failed;
+
+  prog = jvst_compile_schema(t->schema);
+
+  jvst_vm_init_defaults(&vm, prog);
+  n = strlen(t->json);
+  if (n >= sizeof buf) {
+    fprintf(stderr, "json exceeds buffer size (%s:%d)\n", __FILE__, __LINE__);
+    abort();
+  }
+
+  // already checked buffer size
+  strcpy(buf, t->json);
+  ret = jvst_vm_more(&vm, buf, n);
+  failed = JVST_IS_INVALID(ret);
+
+  if (failed && t->succeeds) {
+    fprintf(stderr, "%s:%d (%s) XXX - DUMP VM ERROR STACK - XXX\n",
+        __FILE__, __LINE__, __func__);
+  }
+
+  ret = jvst_vm_close(&vm);
+  if (!failed && JVST_IS_INVALID(ret) && t->succeeds) {
+    fprintf(stderr, "%s:%d (%s) XXX - DUMP VM ERROR STACK - XXX\n",
+        __FILE__, __LINE__, __func__);
+  }
+
+  failed = failed || JVST_IS_INVALID(ret);
+
+  jvst_vm_finalize(&vm);
+  jvst_vm_program_free(prog);
+
+  return !failed;
+}
+
 #define RUNTESTS(testlist) runtests(__func__, (testlist))
 static void runtests(const char *testname, const struct validation_test tests[])
 {
@@ -79,7 +123,12 @@ static void runtests(const char *testname, const struct validation_test tests[])
     bool succ;
     ntest++;
 
-    succ = !!run_test(&tests[i]);
+#if PROTOTYPE
+    succ = !!run_prototype_test(&tests[i]);
+#else 
+    succ = !!run_vm_test(&tests[i]);
+#endif
+
     if (succ != tests[i].succeeds) {
       printf("%s_%d: failed (expected %s but found %s)\n",
           testname, i+1,
@@ -642,6 +691,7 @@ int main(void)
 {
   test_empty_schema();
 
+#if PROTOTYPE
   test_type_integer();
   test_type_number();
   test_type_object();
@@ -661,6 +711,7 @@ int main(void)
 
   test_anyof_1();
   test_anyof_2();
+#endif /* 0 */
 
   return report_tests();
 }
