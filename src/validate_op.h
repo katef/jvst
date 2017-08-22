@@ -52,7 +52,7 @@ struct jvst_op_instr {
 	struct jvst_op_instr *next;
 	struct jvst_op_arg args[2];
 	const char *label;
-	uint32_t *code_ptr;
+	uint32_t code_off;
 
 	enum jvst_vm_op op;
 };
@@ -61,6 +61,7 @@ struct jvst_op_instr {
 struct jvst_op_proc {
 	struct jvst_op_proc *next;		// list of all procs
 	struct jvst_op_proc *split_next;	// list of procs involved in a split
+	uint32_t code_off;
 
 	size_t proc_index;
 
@@ -106,10 +107,16 @@ void
 jvst_op_print(struct jvst_op_program *prog);
 
 struct jvst_vm_program *
+jvst_op_encode(struct jvst_op_program *prog);
+
+struct jvst_vm_program *
 jvst_ir_assemble(struct jvst_ir_stmt *prog);
 
 void
 jvst_op_build_vm_dfa(struct fsm *fsm, struct jvst_vm_dfa *dfa);
+
+void
+jvst_op_copy_vm_dfa(struct jvst_vm_dfa *dst, const struct jvst_vm_dfa *src);
 
 void
 jvst_vm_dfa_debug(struct jvst_vm_dfa *dfa);

@@ -52,6 +52,10 @@ static int64_t ar_op_iconst[NUM_TEST_THINGS];
 static struct jvst_op_proc *ar_op_splits[NUM_TEST_THINGS];
 static size_t ar_op_splitmax[NUM_TEST_THINGS];
 
+enum { NUM_VM_PROGRAMS = 64 };
+static struct jvst_vm_program ar_vm_progs[NUM_VM_PROGRAMS];
+static uint32_t ar_vm_code[NUM_TEST_THINGS];
+
 // Returns a constant empty schema
 struct ast_schema *
 empty_schema(void)
@@ -1431,8 +1435,10 @@ newfloats(struct arena_info *A, double *fv, size_t n)
 	A->nfloat += n;
 
 	flts = &ar_op_float[off];
-	for (i=0; i < n; i++) {
-		flts[i] = fv[i];
+	if (fv != NULL) {
+		for (i=0; i < n; i++) {
+			flts[i] = fv[i];
+		}
 	}
 
 	return flts;
@@ -2010,7 +2016,7 @@ newop_incr(struct arena_info *A, size_t slot)
 	struct jvst_op_instr *instr;
 	instr = newop_instr(A, JVST_OP_INCR);
 	instr->args[0] = oparg_slot(slot);
-	instr->args[1] = oparg_none();
+	instr->args[1] = oparg_lit(1);
 	return instr;
 }
 
@@ -2022,6 +2028,233 @@ newop_invalid(struct arena_info *A, enum jvst_invalid_code ecode)
 	instr->args[0].type = JVST_VM_ARG_CONST;
 	instr->args[0].u.index = ecode;
 	return instr;
+}
+
+struct jvst_vm_program *
+newvm_program(struct arena_info *A, ...)
+{
+	struct jvst_vm_program *prog;
+	va_list args;
+	size_t ind,max,nlbl,nproc,off;
+	uint32_t pc;
+
+	struct {
+		const char *name;
+		uint32_t off;
+	} labels[64];
+
+	uint32_t procs[16] = { 0 };
+	uint32_t code[256] = { 0 };
+
+	memset(labels, 0, sizeof labels);
+
+	ind = A->nvmprog++;
+	max = ARRAYLEN(ar_vm_code);
+	if (A->nvmprog > max) {
+		fprintf(stderr, "too many vm programs: %zu max\n", max);
+		abort();
+	}
+
+	prog = &ar_vm_progs[ind];
+	memset(prog, 0, sizeof *prog);
+
+	// first pass, find all labels
+	va_start(args, A);
+	nlbl = 0;
+	nproc = 0;
+	pc = 0;
+	for (;;) {
+		int op = va_arg(args, int);
+		switch (op) {
+		case VM_END:
+			goto end_label_scan;
+
+		case VM_DFA:
+			{
+				int n;
+				n = va_arg(args, int);
+				prog->ndfa = n;
+			}
+			break;
+
+		case VM_FLOATS:
+			{
+				int i,n;
+				double *fv;
+
+				n = va_arg(args, int);
+				fv = newfloats(A, NULL, n);
+				for (i=0; i < n; i++) {
+					fv[i] = va_arg(args, double);
+				}
+
+				prog->fdata = fv;
+				prog->nfloat = n;
+			}
+			break;
+
+		case VM_LABEL:
+			{
+				size_t ind;
+				if (nlbl >= ARRAYLEN(labels)) {
+					fprintf(stderr, "too many instructions: %zu max\n",
+							ARRAYLEN(labels));
+					abort();
+				}
+
+				ind = nlbl++;
+				labels[ind].name = va_arg(args, const char *);
+				labels[ind].off = pc;
+			}
+			break;
+
+
+		default:
+			if (op == JVST_OP_PROC) {
+				assert(nproc < ARRAYLEN(procs));
+				procs[nproc++] = pc;
+			}
+
+			// eat two int arguments
+			va_arg(args, int);
+			va_arg(args, int);
+			pc++;
+			break;
+
+		case JVST_OP_BR:
+		case JVST_OP_CBT:
+		case JVST_OP_CBF:
+			// eat label
+			va_arg(args, const char *);
+			pc++;
+			break;
+
+		case JVST_OP_CALL:
+			{
+				// eat proc index
+				(void) va_arg(args, int);
+				pc++;
+			}
+			break;
+
+		}
+
+		if (pc > ARRAYLEN(code)) {
+			fprintf(stderr, "too many instructions: %zu max\n",
+					ARRAYLEN(code));
+			abort();
+		}
+	}
+end_label_scan:
+	va_end(args);
+
+	/* second pass, all labels are already set */
+	va_start(args, A);
+	pc = 0;
+	for (;;) {
+		int op = va_arg(args, int);
+
+		switch (op) {
+		case VM_END:
+			goto end_instructions;
+
+		case VM_FLOATS:
+			{
+				int i,n = va_arg(args, int);
+				for (i=0; i < n; i++) {
+					(void)va_arg(args, double);
+				}
+			}
+			continue;
+
+		case VM_DFA:
+			(void)va_arg(args, int);
+			continue;
+
+		case VM_LABEL:
+			// eat label argument
+			(void)va_arg(args, const char *);
+			continue;
+
+		case JVST_OP_BR:
+		case JVST_OP_CBT:
+		case JVST_OP_CBF:
+			{
+				const char *lbl;
+				size_t i;
+				int32_t delta;
+
+				lbl = va_arg(args, const char *);
+
+				// dumb linear scan... should be fine
+				// for testing purposes
+				for (i=0; i < nlbl; i++) {
+					if (strcmp(lbl, labels[i].name) == 0) {
+						break;
+					}
+				}
+
+				if (i >= nlbl) {
+					fprintf(stderr, "%s:%d (%s) could not find label %s\n",
+						__FILE__, __LINE__, __func__, lbl);
+					abort();
+				}
+
+				delta = labels[i].off - pc;
+				assert(delta >= JVST_VM_BARG_MIN && delta <= JVST_VM_BARG_MAX);
+
+				code[pc++] = VMBR(op,delta);
+			}
+			break;
+
+		case JVST_OP_CALL:
+			{
+				int proc_ind;
+				long delta;
+
+				proc_ind = va_arg(args, int);
+				assert(proc_ind >= 1 && (size_t)proc_ind <= nproc);
+
+				delta = (long)procs[proc_ind-1] - (long)pc;
+				code[pc++] = VMBR(op,delta);
+			}
+			break;
+
+		default:
+			{
+				int a0,a1;
+
+				assert(op >= 0 && op <= JVST_OP_MAX);
+
+				a0 = va_arg(args, int);
+				a1 = va_arg(args, int);
+
+				code[pc++] = VMOP(op,a0,a1);
+			}
+			break;
+		}
+
+		assert(pc <= ARRAYLEN(code));
+	}
+end_instructions:
+	va_end(args);
+
+	// allocate code
+	max = ARRAYLEN(ar_vm_code);
+	off = A->nvmcode;
+	assert(max >= pc);
+	assert(off+pc >= off);
+	if (off +pc >= max) {
+		fprintf(stderr, "too many vm opcodes: %zu max\n", max);
+		abort();
+	}
+
+	A->nvmcode += pc;
+	prog->ncode = pc;
+	prog->code = &ar_vm_code[off];
+	memcpy(prog->code, code, pc * sizeof code[0]);
+
+	return prog;
 }
 
 void
