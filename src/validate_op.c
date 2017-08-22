@@ -1970,26 +1970,6 @@ collect_transitions(const struct fsm *fsm,
 	return 1;
 }
 
-static size_t
-vm_dfa_init(struct jvst_vm_dfa *dfa, size_t nstates, size_t nedges, size_t nends)
-{
-	size_t nelts;
-	int *elts;
-
-	nelts = (nstates+1) + 2*nedges + 2*nends;
-	elts = xmalloc(nelts * sizeof *elts);
-
-	dfa->nstates = nstates;
-	dfa->nedges  = nedges;
-	dfa->nends   = nends;
-
-	dfa->offs = elts;
-	dfa->transitions = dfa->offs + (nstates+1);
-	dfa->endstates = dfa->transitions  + 2*nedges;
-
-	return nelts;
-}
-
 void
 jvst_op_build_vm_dfa(struct fsm *fsm, struct jvst_vm_dfa *dfa)
 {
@@ -2002,7 +1982,7 @@ jvst_op_build_vm_dfa(struct fsm *fsm, struct jvst_vm_dfa *dfa)
 	nedges  = fsm_countedges(fsm);
 	nends   = fsm_count(fsm, fsm_isend);
 
-	(void) vm_dfa_init(dfa, nstates, nedges, nends);
+	(void) jvst_vm_dfa_init(dfa, nstates, nedges, nends);
 	tbl = xmalloc(nstates * sizeof *tbl);
 
 	for (i=0; i < nstates+1; i++) {
@@ -2020,16 +2000,6 @@ jvst_op_build_vm_dfa(struct fsm *fsm, struct jvst_vm_dfa *dfa)
 	}
 
 	free(tbl);
-}
-
-void
-jvst_op_copy_vm_dfa(struct jvst_vm_dfa *dst, const struct jvst_vm_dfa *src)
-{
-	(void) vm_dfa_init(dst, src->nstates, src->nedges, src->nends);
-
-	memcpy(dst->offs, src->offs, (src->nstates+1)*sizeof src->offs[0]);
-	memcpy(dst->transitions, src->transitions, 2*src->nedges * sizeof src->transitions[0]);
-	memcpy(dst->endstates, src->endstates, 2*src->nends * sizeof src->endstates[0]);
 }
 
 void
@@ -2281,7 +2251,7 @@ jvst_op_encode(struct jvst_op_program *prog)
 		vmprog->ndfa = n;
 
 		for (i=0; i < n; i++) {
-			jvst_op_copy_vm_dfa(&vmprog->dfas[i], &prog->dfas[i]);
+			jvst_vm_dfa_copy(&vmprog->dfas[i], &prog->dfas[i]);
 		}
 	}
 

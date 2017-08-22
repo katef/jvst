@@ -116,9 +116,6 @@ void
 jvst_op_build_vm_dfa(struct fsm *fsm, struct jvst_vm_dfa *dfa);
 
 void
-jvst_op_copy_vm_dfa(struct jvst_vm_dfa *dst, const struct jvst_vm_dfa *src);
-
-void
 jvst_vm_dfa_debug(struct jvst_vm_dfa *dfa);
 
 #endif /* VALIDATE_OP_H */

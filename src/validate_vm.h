@@ -269,6 +269,15 @@ struct jvst_vm_dfa {
 	int *endstates;
 };
 
+size_t
+jvst_vm_dfa_init(struct jvst_vm_dfa *dfa, size_t nstates, size_t nedges, size_t nends);
+
+void
+jvst_vm_dfa_copy(struct jvst_vm_dfa *dst, const struct jvst_vm_dfa *src);
+
+void
+jvst_vm_dfa_finalize(struct jvst_vm_dfa *dfa);
+
 struct jvst_vm_program {
 	size_t ncode;
 

@@ -8,6 +8,8 @@
 #include <stddef.h>
 #include <string.h>
 
+#include "xalloc.h"
+
 const char *
 jvst_op_name(enum jvst_vm_op op)
 {
@@ -217,6 +219,46 @@ void
 jvst_vm_program_debug(const struct jvst_vm_program *prog)
 {
 	jvst_vm_program_print(stderr,prog);
+}
+
+size_t
+jvst_vm_dfa_init(struct jvst_vm_dfa *dfa, size_t nstates, size_t nedges, size_t nends)
+{
+	size_t nelts;
+	int *elts;
+
+	nelts = (nstates+1) + 2*nedges + 2*nends;
+	elts = xmalloc(nelts * sizeof *elts);
+
+	dfa->nstates = nstates;
+	dfa->nedges  = nedges;
+	dfa->nends   = nends;
+
+	dfa->offs = elts;
+	dfa->transitions = dfa->offs + (nstates+1);
+	dfa->endstates = dfa->transitions  + 2*nedges;
+
+	return nelts;
+}
+
+void
+jvst_vm_dfa_copy(struct jvst_vm_dfa *dst, const struct jvst_vm_dfa *src)
+{
+	(void) jvst_vm_dfa_init(dst, src->nstates, src->nedges, src->nends);
+
+	memcpy(dst->offs, src->offs, (src->nstates+1)*sizeof src->offs[0]);
+	memcpy(dst->transitions, src->transitions, 2*src->nedges * sizeof src->transitions[0]);
+	memcpy(dst->endstates, src->endstates, 2*src->nends * sizeof src->endstates[0]);
+}
+
+void
+jvst_vm_dfa_finalize(struct jvst_vm_dfa *dfa)
+{
+	static struct jvst_vm_dfa zero = { 0 };
+	// arrays within the dfa were allocated as a single chunk, so
+	// this frees them
+	free(dfa->offs);
+	*dfa = zero;
 }
 
 void
