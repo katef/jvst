@@ -4582,4 +4582,14 @@ jvst_ir_flatten(struct jvst_ir_stmt *prog)
 	return copy;
 }
 
+struct jvst_ir_stmt *
+jvst_ir_from_cnode(struct jvst_cnode *ctree)
+{
+	struct jvst_ir_stmt *translated, *linearized, *flattened;
+	translated = jvst_ir_translate(ctree);
+	linearized = jvst_ir_linearize(translated);
+	flattened  = jvst_ir_flatten(linearized);
+	return flattened;
+}
+
 /* vim: set tabstop=8 shiftwidth=8 noexpandtab: */

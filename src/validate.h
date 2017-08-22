@@ -54,6 +54,11 @@ jvst_validate_more(struct jvst_validator *v, char *data, size_t n);
 enum jvst_result
 jvst_validate_close(struct jvst_validator *v);
 
+struct jvst_vm_program;
+
+struct jvst_vm_program *
+jvst_compile_schema(const struct ast_schema *schema);
+
 #endif /* JVST_VALIDATE_H */
 
 /* vim: set tabstop=8 shiftwidth=8 noexpandtab: */

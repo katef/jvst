@@ -374,6 +374,10 @@ jvst_ir_linearize(struct jvst_ir_stmt *ir);
 struct jvst_ir_stmt *
 jvst_ir_flatten(struct jvst_ir_stmt *);
 
+/* Returns a linearized and flattened IR from a canonical cnode tree */
+struct jvst_ir_stmt *
+jvst_ir_from_cnode(struct jvst_cnode *ctree);
+
 int
 jvst_ir_dump(struct jvst_ir_stmt *ir, char *buf, size_t nb);
 

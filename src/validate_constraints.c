@@ -727,12 +727,19 @@ jvst_cnode_dump(struct jvst_cnode *node, char *buf, size_t nb)
 // Translates the AST into a contraint tree and simplifys the constraint
 // tree
 struct jvst_cnode *
-jvst_cnode_from_ast(struct ast_schema *ast);
+jvst_cnode_from_ast(const struct ast_schema *ast)
+{
+	struct jvst_cnode *translated, *simplified, *canonified;
+	translated = jvst_cnode_translate_ast(ast);
+	simplified = jvst_cnode_simplify(translated);
+	canonified = jvst_cnode_canonify(simplified);
+	return canonified;
+}
 
 // Just do a raw translation without doing any optimization of the
 // constraint tree
 struct jvst_cnode *
-jvst_cnode_translate_ast(struct ast_schema *ast)
+jvst_cnode_translate_ast(const struct ast_schema *ast)
 {
 	struct jvst_cnode *node;
 	enum json_valuetype types;
