@@ -65,6 +65,21 @@ jvst_invalid_msg(enum jvst_invalid_code code)
 
 	case JVST_INVALID_MATCH_CASE:
 		return "invalid match case (internal error)";
+
+	case JVST_INVALID_JSON:
+		return "encountered invalid JSON";
+
+	case JVST_INVALID_VM_BAD_PC:
+		return "VM invalid PC";
+
+	case JVST_INVALID_VM_STACK_OVERFLOW:
+		return "VM stack overflow";
+
+	case JVST_INVALID_VM_INVALID_ARG:
+		return "VM invalid op argument";
+
+	case JVST_INVALID_VM_INVALID_OP:
+		return "VM invalid op";
 	}
 
 	return "Unknown error";

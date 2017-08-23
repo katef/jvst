@@ -2,6 +2,7 @@
 #define VALIDATE_VM_H
 
 #include <assert.h>
+#include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 
@@ -14,9 +15,6 @@
 // Registers are just slots that are always allocated at the top of the stack framae
 enum jvst_vm_register {
 	// values used to return from a CALL
-	JVST_VM_PPC,		// previous program counter
-	JVST_VM_PFP,		// previous frame pointer
-
 	JVST_VM_TT,		// type of current token
 	JVST_VM_TNUM,		// floating point value of current token (if %TT is $NUMBER)
 	JVST_VM_TLEN,		// length of current token (if %TT is $STRING)
@@ -275,6 +273,32 @@ jvst_vm_dfa_init(struct jvst_vm_dfa *dfa, size_t nstates, size_t nedges, size_t 
 void
 jvst_vm_dfa_copy(struct jvst_vm_dfa *dst, const struct jvst_vm_dfa *src);
 
+enum {
+	JVST_VM_DFA_START    =  0,
+	JVST_VM_DFA_NOMATCH  = -1,
+	JVST_VM_DFA_BADSTATE = -2,
+};
+
+/* Runs the DFA on the input in buf, starting with state st0.  Returns
+ * the DFA state after consuming all input in buf, or
+ * JVST_VM_DFA_NOMATCH if the DFA cannot match the input.
+ *
+ * The starting state is always zero.  st0 can be passed a value of
+ * JVST_VM_DFA_NOMATCH as well, in which case the function will just
+ * return.  If st0 is not a valid state or JVST_VM_DFA_NOMATCH, then
+ * JVST_VM_DFA_BADSTATE will be returned.
+ */
+int
+jvst_vm_dfa_run(const struct jvst_vm_dfa *dfa, int st0, const char *buf, size_t n);
+
+
+/* Returns if st1 is a valid end state of the DFA.  If st1 is a valid
+ * end state and datap is not NULL, *datap is set to the value
+ * associated with the end state.
+ */
+bool
+jvst_vm_dfa_endstate(const struct jvst_vm_dfa *dfa, int st1, int *datap);
+
 void
 jvst_vm_dfa_finalize(struct jvst_vm_dfa *dfa);
 
@@ -318,28 +342,49 @@ jvst_vm_program_debug(const struct jvst_vm_program *prog);
 void
 jvst_vm_program_free(struct jvst_vm_program *prog);
 
+
+enum {
+	JVST_VM_PARSER_STKSIZE = 4096,
+	JVST_VM_PARSER_BUFSIZE = 4096,
+};
+
+union jvst_vm_stackval {
+	int64_t  i;
+	uint64_t u;
+	double   f;
+};
+
 struct jvst_vm {
 	struct jvst_vm_program *prog;
 
 	size_t maxstack;
-	union {
-		int64_t  i;
-		uint64_t u;
-		double   f;
-	} *stack;
-
-	// machine state registers, when active they aren't stored on
-	// the stack
-	uint64_t r_flag;
-	uint64_t r_pc;
-	uint64_t r_fp;
+	union jvst_vm_stackval *stack;
 
 	size_t nsplit;
 	size_t maxsplit;
 	struct jvst_vm *splits;
 
+	// for consuming nested structures
+	size_t nobj;
+	size_t narr;
+
 	struct sjp_parser parser;
+	struct sjp_event evt;
+
+	// machine state registers, when active they aren't stored on
+	// the stack
+	int64_t  r_flag;
+	uint32_t r_pc;
+	uint32_t r_fp;
+	uint32_t r_sp;
+
+	int nbracket;
 	int error;
+	int dfa_st;
+	int consumed; // flag if a token has been consumed or not
+
+	char pstack[JVST_VM_PARSER_STKSIZE];
+	char pbuf[JVST_VM_PARSER_BUFSIZE];
 };
 
 void
@@ -353,6 +398,9 @@ jvst_vm_close(struct jvst_vm *vm);
 
 void
 jvst_vm_finalize(struct jvst_vm *vm);
+
+void
+jvst_vm_dumpstate(struct jvst_vm *vm);
 
 #endif /* VALIDATE_VM_H */
 

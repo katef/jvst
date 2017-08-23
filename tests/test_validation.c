@@ -96,8 +96,7 @@ static int run_vm_test(const struct validation_test *t)
   failed = JVST_IS_INVALID(ret);
 
   if (failed && t->succeeds) {
-    fprintf(stderr, "%s:%d (%s) XXX - DUMP VM ERROR STACK - XXX\n",
-        __FILE__, __LINE__, __func__);
+    jvst_vm_dumpstate(&vm);
   }
 
   ret = jvst_vm_close(&vm);
@@ -298,6 +297,10 @@ void test_properties(void)
 
     // "description": "both properties invalid is invalid",
     { false, "{\"foo\": [], \"bar\": {}}", &schema },
+
+    // "description": "both properties present, but have invalid types
+    // (switched types)
+    { false, "{\"bar\": 1, \"foo\": \"baz\"}", &schema },
 
     // "description": "doesn't invalidate other properties",
     { true, "{\"quux\": []}", &schema },
@@ -691,7 +694,6 @@ int main(void)
 {
   test_empty_schema();
 
-#if PROTOTYPE
   test_type_integer();
   test_type_number();
   test_type_object();
@@ -709,6 +711,7 @@ int main(void)
 
   test_required();
 
+#if PROTOTYPE
   test_anyof_1();
   test_anyof_2();
 #endif /* 0 */
