@@ -1057,11 +1057,9 @@ jvst_ir_dump_expr(struct sbuf *buf, const struct jvst_ir_expr *expr, int indent)
 
 	case JVST_IR_EXPR_SEQ:
 		sbuf_snprintf(buf, "%s(\n", jvst_ir_expr_type_name(expr->type));
-		sbuf_indent(buf, indent+2);
 		jvst_ir_dump_inner(buf,expr->u.seq.stmt,indent+2);
 
 		sbuf_snprintf(buf, ",\n", jvst_ir_expr_type_name(expr->type));
-		sbuf_indent(buf, indent+2);
 		jvst_ir_dump_expr(buf,expr->u.seq.expr,indent+2);
 		sbuf_snprintf(buf, "\n", jvst_ir_expr_type_name(expr->type));
 		sbuf_indent(buf, indent);
