@@ -1070,15 +1070,6 @@ op_assemble_frame(struct op_assembler *opasm, struct jvst_ir_stmt *top)
 	frame_opasm.nlbl = 0;
 	frame_opasm.ntmp = 0;
 
-	frame_opasm.fdata = NULL;
-	frame_opasm.maxfloat = 0;
-
-	frame_opasm.cdata = NULL;
-	frame_opasm.maxconst = 0;
-
-	frame_opasm.splits = NULL;
-	frame_opasm.maxsplit = 0;
-
 	frame_opasm.currproc = proc;
 	frame_opasm.ipp = &proc->ilist;
 
@@ -1086,6 +1077,18 @@ op_assemble_frame(struct op_assembler *opasm, struct jvst_ir_stmt *top)
 	op_assemble_seq(&frame_opasm, top->u.frame.stmts);
 
 	opasm->procpp = frame_opasm.procpp;
+
+	opasm->fdata    = frame_opasm.fdata;
+	opasm->maxfloat = frame_opasm.maxfloat;
+
+	opasm->cdata    = frame_opasm.cdata;
+	opasm->maxconst = frame_opasm.maxconst;
+
+	opasm->splits   = frame_opasm.splits;
+	opasm->maxsplit = frame_opasm.maxsplit;
+
+	opasm->dfas     = frame_opasm.dfas;
+	opasm->maxdfa   = frame_opasm.maxdfa;
 
 	return proc;
 }
