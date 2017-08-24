@@ -65,7 +65,36 @@ jvst_op_name(enum jvst_vm_op op)
 }
 
 static const char *
-argname(uint16_t arg, char buf[static 16]) {
+stackname(uint32_t slot, char buf[static 16])
+{
+	switch (slot) {
+	case JVST_VM_TT:
+		snprintf(buf, 16, "%%TT");
+		break;
+
+	case JVST_VM_TNUM:
+		snprintf(buf, 16, "%%TN");
+		break;
+
+	case JVST_VM_TLEN:
+		snprintf(buf, 16, "%%TL");
+		break;
+
+	case JVST_VM_M:
+		snprintf(buf, 16, "%%M");
+		break;
+
+	default:
+		snprintf(buf, 16, "%%R%d", slot - JVST_VM_NUMREG);
+		break;
+	}
+
+	return buf;
+}
+
+static const char *
+argname(uint16_t arg, char buf[static 16])
+{
 	if (jvst_vm_arg_isslot(arg)) {
 		int slot = jvst_vm_arg_toslot(arg);
 		switch (slot) {
@@ -438,7 +467,7 @@ vm_dumpregs(struct sbuf *buf, const struct jvst_vm *vm)
 static void
 vm_dumpstack(FILE *f, const struct jvst_vm *vm)
 {
-	uint32_t fp,sp,i;
+	uint32_t fp,sp,i,n;
 
 	fp = vm->r_fp;
 	sp = vm->r_sp;
@@ -447,11 +476,16 @@ vm_dumpstack(FILE *f, const struct jvst_vm *vm)
 		fprintf(f, "[%5d] %" PRId64 "\t(PFP)\n", fp-1, vm->stack[fp-1].i);
 		fprintf(f, "---\n");
 	}
-	for (i=fp; i < sp; i++) {
-		if (i == fp+1) {
-			fprintf(f, "[%5d] %f\n", i, vm->stack[i].f);
+
+	assert(sp >= fp);
+	n = sp - fp;
+	for (i=0; i < n; i++) {
+		char rname[16];
+		fprintf(f, "[%5d] %-3s ", i, stackname(i,rname));
+		if (i == JVST_VM_TNUM) {
+			fprintf(f, "%f\n", vm->stack[i].f);
 		} else {
-			fprintf(f, "[%5d] %" PRId64 "\n", i, vm->stack[i].i);
+			fprintf(f, "%" PRId64 "\n", vm->stack[i].i);
 		}
 	}
 	fprintf(f, "\n");
@@ -882,52 +916,52 @@ loop:
 
 	/* integer comparisons */
 	case JVST_OP_ILT:
-		flag = iopdiff(vm, fp, opcode) < 0;
+		vm->r_flag = flag = iopdiff(vm, fp, opcode) < 0;
 		NEXT;
 
 	case JVST_OP_ILE:
-		flag = iopdiff(vm, fp, opcode) <= 0;
+		vm->r_flag = flag = iopdiff(vm, fp, opcode) <= 0;
 		NEXT;
 
 	case JVST_OP_IEQ:
-		flag = iopdiff(vm, fp, opcode) == 0;
+		vm->r_flag = flag = iopdiff(vm, fp, opcode) == 0;
 		NEXT;
 
 	case JVST_OP_IGE:
-		flag = iopdiff(vm, fp, opcode) >= 0;
+		vm->r_flag = flag = iopdiff(vm, fp, opcode) >= 0;
 		NEXT;
 
 	case JVST_OP_IGT:
-		flag = iopdiff(vm, fp, opcode) > 0;
+		vm->r_flag = flag = iopdiff(vm, fp, opcode) > 0;
 		NEXT;
 
 	case JVST_OP_INEQ:
-		flag = iopdiff(vm, fp, opcode) != 0;
+		vm->r_flag = flag = iopdiff(vm, fp, opcode) != 0;
 		NEXT;
 
 	/* floating point comparisons */
 	case JVST_OP_FLT:
-		flag = fopdiff(vm, fp, opcode) < 0;
+		vm->r_flag = flag = fopdiff(vm, fp, opcode) < 0;
 		NEXT;
 
 	case JVST_OP_FLE:
-		flag = fopdiff(vm, fp, opcode) <= 0;
+		vm->r_flag = flag = fopdiff(vm, fp, opcode) <= 0;
 		NEXT;
 
 	case JVST_OP_FEQ:
-		flag = fopdiff(vm, fp, opcode) == 0;
+		vm->r_flag = flag = fopdiff(vm, fp, opcode) == 0;
 		NEXT;
 
 	case JVST_OP_FGE:
-		flag = fopdiff(vm, fp, opcode) >= 0;
+		vm->r_flag = flag = fopdiff(vm, fp, opcode) >= 0;
 		NEXT;
 
 	case JVST_OP_FGT:
-		flag = fopdiff(vm, fp, opcode) > 0;
+		vm->r_flag = flag = fopdiff(vm, fp, opcode) > 0;
 		NEXT;
 
 	case JVST_OP_FNEQ:
-		flag = fopdiff(vm, fp, opcode) != 0;
+		vm->r_flag = flag = fopdiff(vm, fp, opcode) != 0;
 		NEXT;
 
 	case JVST_OP_FINT:
@@ -940,7 +974,7 @@ loop:
 			assert(jvst_vm_arg_isslot(arg0));
 
 			v = vm_fvalptr(vm, fp, arg0)[0];
-			flag = isfinite(v) && (v == ceil(v));
+			vm->r_flag = flag = isfinite(v) && (v == ceil(v));
 		}
 		NEXT;
 
