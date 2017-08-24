@@ -1232,6 +1232,7 @@ finish:
 }
 #undef NEXT
 #undef BRANCH
+#undef DEBUG_OP
 
 enum jvst_result
 jvst_vm_more(struct jvst_vm *vm, char *data, size_t n)
