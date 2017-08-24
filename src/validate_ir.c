@@ -1441,44 +1441,19 @@ jvst_ir_dump(struct jvst_ir_stmt *ir, char *buf, size_t nb)
 	return (b.len < b.cap) ? 0 : -1;
 }
 
-static struct jvst_ir_stmt *
-ir_translate_number(struct jvst_cnode *top)
+static struct jvst_ir_expr *
+ir_translate_number_expr(struct jvst_cnode *top)
 {
-	struct jvst_ir_stmt *stmt, **spp;
-	// struct jvst_ir_expr *expr, **epp;
-
-	stmt = NULL;
-	spp = &stmt;
-
+	struct jvst_ir_expr *cond;
 	switch (top->type) {
-	case JVST_CNODE_VALID:
-		*spp = ir_stmt_new(JVST_IR_STMT_VALID);
-		break;
-
-	case JVST_CNODE_INVALID:
-		*spp = ir_stmt_invalid(JVST_INVALID_UNEXPECTED_TOKEN);
-		break;
-
 	case JVST_CNODE_NUM_INTEGER:
-		{
-			struct jvst_ir_stmt *br;
-			struct jvst_ir_expr *cond;
-			cond = ir_expr_new(JVST_IR_EXPR_ISINT);
-			cond->u.isint.arg = ir_expr_new(JVST_IR_EXPR_TOK_NUM);
-
-			br = ir_stmt_new(JVST_IR_STMT_IF);
-			br->u.if_.cond = cond;
-			br->u.if_.br_true = ir_stmt_new(JVST_IR_STMT_VALID);
-			br->u.if_.br_false = ir_stmt_invalid(JVST_INVALID_NOT_INTEGER);
-
-			*spp = br;
-		}
-		break;
+		cond = ir_expr_new(JVST_IR_EXPR_ISINT);
+		cond->u.isint.arg = ir_expr_new(JVST_IR_EXPR_TOK_NUM);
+		return cond;
 
 	case JVST_CNODE_NUM_RANGE:
 		{
-			struct jvst_ir_stmt *br;
-			struct jvst_ir_expr *cond, *lower, *upper;
+			struct jvst_ir_expr *lower, *upper;
 
 			lower = NULL;
 			upper = NULL;
@@ -1512,15 +1487,101 @@ ir_translate_number(struct jvst_cnode *top)
 				cond = upper;
 			}
 
-			br = ir_stmt_if(cond,
-				ir_stmt_new(JVST_IR_STMT_VALID),
-				ir_stmt_invalid(JVST_INVALID_NUMBER));
-			*spp = br;
+			return cond;
 		}
+
+	case JVST_CNODE_AND:
+	case JVST_CNODE_OR:
+		{
+			struct jvst_ir_expr **conjpp;
+			struct jvst_cnode *n;
+			enum jvst_ir_expr_type conj;
+
+			conj = (top->type == JVST_CNODE_AND)
+				? JVST_IR_EXPR_AND
+				: JVST_IR_EXPR_OR;
+
+			cond = NULL;
+			conjpp = &cond;
+
+			for (n = top->u.ctrl; n != NULL; n = n->next) {
+				struct jvst_ir_expr *ncond;
+
+				ncond = ir_translate_number_expr(n);
+				if (n->next == NULL) {
+					*conjpp = ncond;
+				} else {
+					struct jvst_ir_expr *econj;
+
+					econj = ir_expr_new(conj);
+					econj->u.and_or.left = ncond;
+
+					*conjpp = econj;
+					conjpp = &econj->u.and_or.right;
+				}
+			}
+
+			assert(cond != NULL);
+			return cond;
+		}
+
+	case JVST_CNODE_NOT:
+	case JVST_CNODE_XOR:
+
+	case JVST_CNODE_VALID:
+	case JVST_CNODE_INVALID:
+		fprintf(stderr, "[%s:%d] number expression for cnode %s not yet implemented\n",
+				__FILE__, __LINE__, 
+				jvst_cnode_type_name(top->type));
+		abort();
+
+	default:
+		fprintf(stderr, "[%s:%d] invalid cnode type %s for $NUMBER\n",
+				__FILE__, __LINE__, 
+				jvst_cnode_type_name(top->type));
+		abort();
+	}
+}
+
+static struct jvst_ir_stmt *
+ir_translate_number(struct jvst_cnode *top)
+{
+	struct jvst_ir_stmt *stmt, **spp;
+	// struct jvst_ir_expr *expr, **epp;
+
+	stmt = NULL;
+	spp = &stmt;
+
+	switch (top->type) {
+	case JVST_CNODE_VALID:
+		*spp = ir_stmt_new(JVST_IR_STMT_VALID);
+		break;
+
+	case JVST_CNODE_INVALID:
+		*spp = ir_stmt_invalid(JVST_INVALID_UNEXPECTED_TOKEN);
 		break;
 
 	case JVST_CNODE_AND:
 	case JVST_CNODE_OR:
+	case JVST_CNODE_NUM_INTEGER:
+	case JVST_CNODE_NUM_RANGE:
+		{
+			struct jvst_ir_stmt *br;
+			struct jvst_ir_expr *cond;
+			enum jvst_invalid_code ecode;
+
+			cond = ir_translate_number_expr(top);
+			ecode = (top->type != JVST_CNODE_NUM_INTEGER)
+				? JVST_INVALID_NUMBER
+				: JVST_INVALID_NOT_INTEGER;
+
+			br = ir_stmt_if(cond,
+				ir_stmt_new(JVST_IR_STMT_VALID),
+				ir_stmt_invalid(ecode));
+			*spp = br;
+		}
+		break;
+
 	case JVST_CNODE_NOT:
 	case JVST_CNODE_XOR:
 		fprintf(stderr, "[%s:%d] cnode %s not yet implemented\n",
