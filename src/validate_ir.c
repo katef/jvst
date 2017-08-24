@@ -3966,6 +3966,9 @@ ir_linearize_cmp(struct op_linearizer *oplin, struct jvst_ir_expr *cond)
 	return lin_cond;
 }
 
+static void
+ir_linearize_emit_expr(struct op_linearizer *oplin, struct jvst_ir_stmt *cbr);
+
 static struct jvst_ir_stmt *
 ir_linearize_cond(struct op_linearizer *oplin, struct jvst_ir_expr *cond, struct jvst_ir_stmt *btrue, struct jvst_ir_stmt *bfalse)
 {
@@ -4028,7 +4031,7 @@ ir_linearize_cond(struct op_linearizer *oplin, struct jvst_ir_expr *cond, struct
 			and_oplin.ipp = &btrue1->u.block.stmts;
 
 			cbr2 = ir_linearize_cond(&and_oplin, cond->u.and_or.right, btrue, bfalse);
-			*and_oplin.ipp = cbr2;
+			ir_linearize_emit_expr(&and_oplin, cbr2);
 
 			oplin->fpp = and_oplin.fpp;
 			oplin->bpp = and_oplin.bpp;
@@ -4053,7 +4056,7 @@ ir_linearize_cond(struct op_linearizer *oplin, struct jvst_ir_expr *cond, struct
 			or_oplin.ipp = &bfalse1->u.block.stmts;
 
 			cbr2 = ir_linearize_cond(&or_oplin, cond->u.and_or.right, btrue, bfalse);
-			*or_oplin.ipp = cbr2;
+			ir_linearize_emit_expr(&or_oplin, cbr2);
 
 			oplin->fpp = or_oplin.fpp;
 			oplin->bpp = or_oplin.bpp;
