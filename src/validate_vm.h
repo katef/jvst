@@ -378,10 +378,12 @@ struct jvst_vm {
 	uint32_t r_fp;
 	uint32_t r_sp;
 
-	int nbracket;
+	enum SJP_RESULT pret;
 	int error;
 	int dfa_st;
 	int consumed; // flag if a token has been consumed or not
+	int nexttok;  // flag if a new token has been requested
+	int needtok;  // flag if the next call to vm_run_next should have a token
 
 	char pstack[JVST_VM_PARSER_STKSIZE];
 	char pbuf[JVST_VM_PARSER_BUFSIZE];

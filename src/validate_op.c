@@ -121,31 +121,6 @@ static void prog_gc(void)
 	// currently nop
 }
 
-static void *
-enlarge_vec(void *orig, size_t *np, size_t incr, size_t width)
-{
-	size_t newmax;
-
-	if (incr == 0) {
-		return orig;
-	}
-
-	newmax = *np + incr;
-
-	if (newmax < 4) {
-		newmax = 4;
-	} else if (newmax < 2048) {
-		newmax *= 2;
-	} else {
-		newmax += newmax/4;
-	}
-
-	assert(newmax > *np + incr);
-
-	*np = newmax;
-	return xrealloc(orig, newmax * width);
-}
-
 static struct jvst_op_instr *
 op_instr_new(enum jvst_vm_op type)
 {
@@ -521,7 +496,7 @@ asm_addr_fixup_alloc(struct asm_addr_fixup_list *l)
 	assert(l != NULL);
 	assert(l->len <= l->cap);
 	if (l->len >= l->cap) {
-		l->elts = enlarge_vec(l->elts, &l->cap, 1, sizeof l->elts[0]);
+		l->elts = xenlargevec(l->elts, &l->cap, 1, sizeof l->elts[0]);
 	}
 
 	i = l->len++;
@@ -802,7 +777,7 @@ proc_add_split(struct op_assembler *opasm, struct jvst_op_instr *instr, struct j
 
 	n=splitlist->u.split_list.nframes;
 	if (prog->nsplit >= opasm->maxsplit) {
-		opasm->splitmax = enlarge_vec(opasm->splitmax,
+		opasm->splitmax = xenlargevec(opasm->splitmax,
 			&opasm->maxsplitmax, 1, sizeof opasm->splitmax[0]);
 		prog->splitmax = opasm->splitmax;
 	}
@@ -814,7 +789,7 @@ proc_add_split(struct op_assembler *opasm, struct jvst_op_instr *instr, struct j
 	prog->splitmax[ind] = max;
 
 	if (max > opasm->maxsplit) {
-		opasm->splits = enlarge_vec(opasm->splits,
+		opasm->splits = xenlargevec(opasm->splits,
 			&opasm->maxsplit, n, sizeof opasm->splits[0]);
 		prog->splits = opasm->splits;
 	}
@@ -870,7 +845,7 @@ proc_add_float(struct op_assembler *opasm, double v)
 
 	ind = prog->nfloat++;
 	if (prog->nfloat > opasm->maxfloat) {
-		opasm->fdata = enlarge_vec(opasm->fdata, &opasm->maxfloat, 1, sizeof opasm->fdata[0]);
+		opasm->fdata = xenlargevec(opasm->fdata, &opasm->maxfloat, 1, sizeof opasm->fdata[0]);
 		prog->fdata = opasm->fdata;
 	}
 
@@ -890,7 +865,7 @@ proc_add_uconst(struct op_assembler *opasm, uint64_t v)
 
 	ind = prog->nconst++;
 	if (prog->nconst > opasm->maxconst) {
-		opasm->cdata = enlarge_vec(opasm->cdata, &opasm->maxconst, 1, sizeof opasm->cdata[0]);
+		opasm->cdata = xenlargevec(opasm->cdata, &opasm->maxconst, 1, sizeof opasm->cdata[0]);
 		prog->cdata = opasm->cdata;
 	}
 
@@ -910,7 +885,7 @@ proc_add_dfa(struct op_assembler *opasm, struct fsm *fsm)
 
 	ind = prog->ndfa++;
 	if (prog->ndfa > opasm->maxdfa) {
-		opasm->dfas = enlarge_vec(opasm->dfas, &opasm->maxdfa, 1, sizeof opasm->dfas[0]);
+		opasm->dfas = xenlargevec(opasm->dfas, &opasm->maxdfa, 1, sizeof opasm->dfas[0]);
 		prog->dfas = opasm->dfas;
 	}
 
@@ -2057,7 +2032,7 @@ encoder_emit(struct op_encoder *enc, uint32_t code)
 {
 	size_t ind;
 	if (enc->len >= enc->cap) {
-		enc->code = enlarge_vec(enc->code, &enc->cap, 1, sizeof enc->code[0]);
+		enc->code = xenlargevec(enc->code, &enc->cap, 1, sizeof enc->code[0]);
 	}
 
 	ind = enc->len++;
@@ -2237,6 +2212,7 @@ jvst_op_encode(struct jvst_op_program *prog)
 	vmprog = xmalloc(sizeof *vmprog);
 	memset(vmprog, 0, sizeof *vmprog);
 
+	// encode floating point constants
 	if (prog->nfloat > 0) {
 		size_t nb = prog->nfloat * sizeof vmprog->fdata[0];
 		vmprog->fdata = xmalloc(nb);
@@ -2244,6 +2220,15 @@ jvst_op_encode(struct jvst_op_program *prog)
 		memcpy(vmprog->fdata, prog->fdata, nb);
 	}
 
+	// encode large integer constants
+	if (prog->nconst > 0) {
+		size_t nb = prog->nconst * sizeof vmprog->cdata[0];
+		vmprog->cdata = xmalloc(nb);
+		vmprog->nconst = prog->nconst;
+		memcpy(vmprog->cdata, prog->cdata, nb);
+	}
+
+	// encode dfa tables
 	if (prog->ndfa > 0) {
 		size_t i,n,nb;
 
@@ -2257,8 +2242,6 @@ jvst_op_encode(struct jvst_op_program *prog)
 			jvst_vm_dfa_copy(&vmprog->dfas[i], &prog->dfas[i]);
 		}
 	}
-
-	// XXX - encode splits, dfas!
 
 	encoder_init(&enc);
 
@@ -2278,6 +2261,31 @@ jvst_op_encode(struct jvst_op_program *prog)
 	for (proc = prog->procs; proc != NULL; proc = proc->next) {
 		assert(proc->ilist != NULL);
 		encode_pass2(&enc, proc->ilist);
+	}
+
+	// encode splits last, after proc indexes have been generated
+	if (prog->nsplit > 0) {
+		size_t i, nentries, nsdata, off;
+		uint32_t *sdata;
+
+		nentries = prog->splitmax[prog->nsplit-1];
+		nsdata = prog->nsplit + 1 + nentries;
+
+		sdata = xmalloc(nsdata * sizeof *sdata);
+
+		sdata[0] = 0;
+		for (i=0; i < prog->nsplit; i++) {
+			sdata[i+1] = prog->splitmax[i];
+		}
+
+		off = prog->nsplit+1;
+		for (i=0; i < nentries; i++) {
+			assert(prog->splits[i] != NULL);
+			sdata[off+i] = prog->splits[i]->code_off;
+		}
+
+		vmprog->nsplit = prog->nsplit;
+		vmprog->sdata  = sdata;
 	}
 
 	vmprog->ncode = enc.len;

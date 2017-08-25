@@ -69,3 +69,29 @@ xcalloc(size_t count, size_t sz)
 
 	return p;
 }
+
+void *
+xenlargevec(void *orig, size_t *np, size_t incr, size_t width)
+{
+	size_t newmax;
+
+	if (incr == 0) {
+		return orig;
+	}
+
+	newmax = *np + incr;
+
+	if (newmax < 4) {
+		newmax = 4;
+	} else if (newmax < 2048) {
+		newmax *= 2;
+	} else {
+		newmax += newmax/4;
+	}
+
+	assert(newmax > *np + incr);
+
+	*np = newmax;
+	return xrealloc(orig, newmax * width);
+}
+

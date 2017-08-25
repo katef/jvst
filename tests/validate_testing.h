@@ -325,6 +325,7 @@ enum {
 	VM_LABEL  = -2,
 	VM_FLOATS = -3,
 	VM_DFA    = -4,
+	VM_SPLIT  = -5,
 };
 
 struct jvst_vm_program *
