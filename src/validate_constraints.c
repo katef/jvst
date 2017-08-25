@@ -74,7 +74,7 @@ cnode_strset_alloc(void)
 
 	// first try bump allocation
 	if (strset_pool.top < ARRAYLEN(strset_pool.head->items)) {
-		return &strset_pool.head->items[pool_item++];
+		return &strset_pool.head->items[strset_pool.top++];
 	}
 
 	// next try the free list
@@ -142,7 +142,7 @@ cnode_matchset_alloc(void)
 
 	// first try bump allocation
 	if (matchset_pool.top < ARRAYLEN(matchset_pool.head->items)) {
-		return &matchset_pool.head->items[pool_item++];
+		return &matchset_pool.head->items[matchset_pool.top++];
 	}
 
 	// next try the free list

@@ -4,81 +4,7 @@
 #include <stdlib.h>
 
 #include "validate_ir.h"
-
-enum jvst_vm_op {
-	JVST_OP_NOP	= 0,
-	JVST_OP_FRAME,		// FRAME N sets up a call frame and reserves N 64-bit slots on the call stack
-	// JVST_OP_PUSH,		// PUSH N -- reserve N 64-bit slots on the call stack
-
-	// Integer comparison operators.  Args may be either integer registers or immediate constants
-	JVST_OP_ILT,
-	JVST_OP_ILE,
-	JVST_OP_IEQ,
-	JVST_OP_IGE,
-	JVST_OP_IGT,
-	JVST_OP_INEQ,
-
-	// Floating point comparison operators.  Args must be floating point registers
-	JVST_OP_FLT,
-	JVST_OP_FLE,
-	JVST_OP_FEQ,
-	JVST_OP_FGE,
-	JVST_OP_FGT,
-	JVST_OP_FNEQ,
-
-	JVST_OP_FINT,		// Checks if a float is an integer.  args: reg.  result: isnormal(reg) && (reg == ceil(reg)).
-
-	JVST_OP_BR,		// Unconditional branch
-	JVST_OP_CBT,		// Conditional branch on true
-	JVST_OP_CBF,		// Conditional branch on false
-
-	JVST_OP_CALL,		// Calls into another proc.  Control will continue at the next 
-				// instruction if the proc returns VALID.
-
-	JVST_OP_SPLIT,		// SPLIT(split_ind, reg)
-	JVST_OP_SPLITV,		// SPLITV(split_ind, slot0)
-
-	JVST_OP_TOKEN,		// Loads the next token
-	JVST_OP_CONSUME,	// Consumes the next value, including objects and arrays
-
-	JVST_OP_MATCH,		// Matches the current string token: MATCH(dfa_index)
-
-	// Loads proc constants into registers
-	JVST_OP_FLOAD,		// Loads a float: FLOAD(const_index)
-	JVST_OP_ILOAD,		// Loads a size/int: ILOAD(const_index)
-
-	JVST_OP_INCR,		// Increments a register or slot: INCR(reg_slotA)
-
-	JVST_OP_BSET,		// Sets a bit. BSET(reg_slotA,bit)
-	JVST_OP_BTEST,		// Tests a bit: BTEST(reg_slotA,bit)
-
-	JVST_OP_BAND,		// Bitwise-AND: BAND(regA,reg_slotB)  regA = regA & reg_slotB
-
-	JVST_OP_VALID,		// Consumes the current token and returns a VALID result for the current proc.
-				// If the current token in $OBJECT_BEG or $ARRAY_BEG, consumes the entire object/array.
-	JVST_OP_INVALID,	// Raises an INVALID result: INVALID(errcode)
-};
-
-enum jvst_vm_register {
-	JVST_VM_NONE = 0,	// Empty/omitted value
-
-	JVST_VM_FLAG,		// Comparison flag
-	JVST_VM_PC,		// Program counter register (read-only)
-	JVST_VM_BP,		// stack base pointer
-	JVST_VM_SP,		// current stack pointer
-
-	JVST_VM_TT,		// type of current token
-	JVST_VM_TNUM,		// floating point value of current token (if %TT is $NUMBER)
-	JVST_VM_TLEN,		// length of current token (if %TT is $STRING)
-	JVST_VM_TCOMPLETE,	// 1 if the curernt token is complete, 0 if it is a partial token
-
-	JVST_VM_M,		// Match case register
-
-	JVST_VM_IPREFIX = 1<<14,
-	JVST_VM_FPREFIX = 1<<15,
-	JVST_VM_SPREFIX = (1<<14)|(1<<15),
-};
-
+#include "validate_vm.h"
 
 /* What follows is for assembling the opcodes */
 enum jvst_op_arg_type {
@@ -102,7 +28,10 @@ enum jvst_op_arg_type {
 	// Slots on the stack
 	JVST_VM_ARG_SLOT,
 
-	// Integer constant
+	// Item in the constant pool
+	JVST_VM_ARG_POOL,
+
+	// Integer literal values
 	JVST_VM_ARG_TOKTYPE,
 	JVST_VM_ARG_CONST,
 };
@@ -156,6 +85,9 @@ struct jvst_op_proc {
 
 	size_t nfloat;
 	double *fdata;
+
+	size_t nconst;
+	int64_t *cdata;
 
 	size_t ndfa;
 	struct fsm **dfas;

@@ -37,6 +37,8 @@ struct arena_info {
 	size_t nproc;
 	size_t ninstr;
 	size_t nfloat;
+	size_t nconst;
+	size_t nsplit;
 };
 
 struct ast_schema *
@@ -115,6 +117,9 @@ newmatchset(struct arena_info *A, ...);
 
 
 /* IR-related */
+extern const struct jvst_ir_stmt *const frameindex;
+extern const struct jvst_ir_stmt *const splitlist;
+
 struct jvst_ir_stmt *
 newir_stmt(struct arena_info *A, enum jvst_ir_stmt_type type);
 
@@ -128,7 +133,13 @@ struct jvst_ir_stmt *
 newir_frame(struct arena_info *A, ...);
 
 struct jvst_ir_stmt *
+newir_program(struct arena_info *A, ...);
+
+struct jvst_ir_stmt *
 newir_seq(struct arena_info *A, ...);
+
+struct jvst_ir_stmt *
+newir_block(struct arena_info *A, size_t lind, const char *prefix, ...);
 
 struct jvst_ir_stmt *
 newir_loop(struct arena_info *A, const char *loopname, size_t ind, ...);
@@ -153,6 +164,9 @@ struct jvst_ir_stmt *
 newir_match(struct arena_info *A, size_t ind, ...);
 
 struct jvst_ir_stmt *
+newir_splitlist(struct arena_info *A, size_t ind, size_t n, ...);
+
+struct jvst_ir_stmt *
 newir_splitvec(struct arena_info *A, size_t ind, const char *label, ...);
 
 struct jvst_ir_stmt *
@@ -160,6 +174,20 @@ newir_incr(struct arena_info *A, size_t ind, const char *label);
 
 struct jvst_ir_stmt *
 newir_bitop(struct arena_info *A, enum jvst_ir_stmt_type op, size_t ind, const char *label, size_t bit);
+
+struct jvst_ir_stmt *
+newir_branch(struct arena_info *A, size_t lind, const char *prefix);
+
+struct jvst_ir_stmt *
+newir_cbranch(struct arena_info *A, struct jvst_ir_expr *cond,
+	size_t tind, const char *tprefix,
+	size_t find, const char *fprefix);
+
+struct jvst_ir_stmt *
+newir_move(struct arena_info *A, struct jvst_ir_expr *tmp, struct jvst_ir_expr *expr);
+
+struct jvst_ir_stmt *
+newir_call(struct arena_info *A, size_t frame_ind);
 
 struct jvst_ir_mcase *
 newir_case(struct arena_info *A, size_t ind, struct jvst_cnode_matchset *mset, struct jvst_ir_stmt *frame);
@@ -196,6 +224,21 @@ newir_btestany(struct arena_info *A, size_t ind, const char *label, size_t b0, s
 struct jvst_ir_expr *
 newir_split(struct arena_info *A, ...);
 
+struct jvst_ir_expr *
+newir_ftemp(struct arena_info *A, size_t ind);
+
+struct jvst_ir_expr *
+newir_itemp(struct arena_info *A, size_t ind);
+
+struct jvst_ir_expr *
+newir_slot(struct arena_info *A, size_t ind);
+
+struct jvst_ir_expr *
+newir_eseq(struct arena_info *A, struct jvst_ir_stmt *stmt, struct jvst_ir_expr *expr);
+
+struct jvst_ir_expr *
+newir_ematch(struct arena_info *A, size_t mind);
+
 struct jvst_op_program *
 newop_program(struct arena_info *A, ...);
 
@@ -228,9 +271,18 @@ newop_incr(struct arena_info *A, size_t slot);
 struct jvst_op_instr *
 newop_invalid(struct arena_info *A, enum jvst_invalid_code ecode);
 
+struct jvst_op_instr *
+newop_bitop(struct arena_info *A, enum jvst_vm_op op, int frame_off, int bit);
+
+struct jvst_op_instr *
+newop_instr2(struct arena_info *A, enum jvst_vm_op op,
+	struct jvst_op_arg arg1, struct jvst_op_arg arg2);
+
 extern const struct jvst_op_instr *const oplabel;
 extern const struct jvst_op_instr *const opslots;
 extern const struct jvst_op_instr *const opfloat;
+extern const struct jvst_op_instr *const opconst;
+extern const struct jvst_op_instr *const opsplit;
 extern const struct jvst_op_instr *const opdfa;
 
 static inline struct jvst_op_arg 

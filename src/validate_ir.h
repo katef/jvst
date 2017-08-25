@@ -1,6 +1,7 @@
 #ifndef JVST_VALIDATE_IR_H
 #define JVST_VALIDATE_IR_H
 
+#include <stdbool.h>
 #include <stdint.h>
 
 #include "sjp_parser.h"
@@ -30,6 +31,7 @@ enum jvst_ir_stmt_type {
 	JVST_IR_STMT_COUNTER,		// allocates a named counter in the current frame
 	JVST_IR_STMT_MATCHER,		// allocates a named matcher state in the current frame
 	JVST_IR_STMT_BITVECTOR,		// allocates a bitvector in the current frame
+	JVST_IR_STMT_SPLITLIST,		// allocates a list of frames involved in a split
 
 	JVST_IR_STMT_BSET,		// sets a bit in a bitmask
 	JVST_IR_STMT_BCLEAR,		// sets a bit in a bitmask
@@ -44,6 +46,14 @@ enum jvst_ir_stmt_type {
 
 	JVST_IR_STMT_SPLITVEC,		// Splits the validator, stores
 					// results for each subvalidator in a bitvec
+
+	JVST_IR_STMT_BLOCK,
+	JVST_IR_STMT_BRANCH,
+	JVST_IR_STMT_CBRANCH,
+	JVST_IR_STMT_MOVE,
+	JVST_IR_STMT_CALL,
+
+	JVST_IR_STMT_PROGRAM,
 };
 
 // expressions
@@ -52,6 +62,7 @@ enum jvst_ir_expr_type {
 
 	// literal values
 	JVST_IR_EXPR_NUM,		// literal number
+	JVST_IR_EXPR_INT,		// literal integer
 	JVST_IR_EXPR_SIZE,		// literal size
 	JVST_IR_EXPR_BOOL,		// literal boolean
 
@@ -90,6 +101,13 @@ enum jvst_ir_expr_type {
 	JVST_IR_EXPR_SPLIT,		// SPLITs the validator.  each sub-validator moves in lock-step.
 					// children must be FRAMEs.  result is the number of FRAMEs that
 					// return valid.
+
+	JVST_IR_EXPR_MATCH,
+
+	JVST_IR_EXPR_SLOT,		// SLOT(n), value at slot n
+	JVST_IR_EXPR_ITEMP,		// ITEMP(n) integer temporary n
+	JVST_IR_EXPR_FTEMP,		// FTEMP(n) floating point temporary n
+	JVST_IR_EXPR_SEQ,		// ESEQ(s, e) statement s, then return expression e
 };
 
 enum jvst_invalid_code {
@@ -101,6 +119,7 @@ enum jvst_invalid_code {
 	JVST_INVALID_MISSING_REQUIRED_PROPERTIES = 0x0006,
 	JVST_INVALID_SPLIT_CONDITION  = 0x0007,
 	JVST_INVALID_BAD_PROPERTY_NAME = 0x0008,
+	JVST_INVALID_MATCH_CASE       = 0x0009,
 };
 
 const char *
@@ -116,16 +135,30 @@ struct jvst_ir_mcase {
 	struct jvst_ir_stmt *stmt;
 };
 
+struct jvst_ir_program {
+	struct jvst_ir_stmt *frames;
+};
+
 struct jvst_ir_frame {
+	struct jvst_ir_stmt *split_next;
+
 	struct jvst_ir_stmt *counters;
 	struct jvst_ir_stmt *matchers;
 	struct jvst_ir_stmt *bitvecs;
+	struct jvst_ir_stmt *blocks;
+	struct jvst_ir_stmt *splits;
 	struct jvst_ir_stmt *stmts;
+
+	size_t frame_ind;
+
+	size_t blockind;
 
 	size_t nloops;
 	size_t nmatchers;
 	size_t ncounters;
 	size_t nbitvecs;
+	size_t nsplits;
+	size_t ntemps;
 };
 
 struct jvst_ir_stmt {
@@ -160,10 +193,13 @@ struct jvst_ir_stmt {
 		struct {
 			const char *name;
 			size_t ind;
+			struct jvst_ir_stmt *loop_block;
+			struct jvst_ir_stmt *end_block;
 			struct jvst_ir_stmt *stmts;
 		} loop;
 
 		struct jvst_ir_frame frame;
+		struct jvst_ir_program program;
 
 		struct {
 			const char *label;
@@ -195,8 +231,7 @@ struct jvst_ir_stmt {
 
 		struct {
 			struct jvst_ir_stmt *frame;
-			const char *label;
-			size_t ind;
+			struct jvst_ir_stmt *bitvec;
 			size_t bit;
 		} bitop;
 
@@ -211,12 +246,45 @@ struct jvst_ir_stmt {
 		} match;
 
 		struct {
+			size_t ind;
+			size_t nframes;
+			struct jvst_ir_stmt *frames;
+			bool fixed_up;
+		} split_list;
+
+		struct {
 			struct jvst_ir_stmt *frame;
 			struct jvst_ir_stmt *bitvec;
 			struct jvst_ir_stmt *split_frames;
-			const char *label;
-			size_t ind;
+			struct jvst_ir_stmt *split_list;
 		} splitvec;
+
+		struct {
+			struct jvst_ir_stmt *block_next;
+			size_t lindex;
+			const char *prefix;
+			struct jvst_ir_stmt *stmts;
+
+			bool reachable;
+			bool sorted;
+		} block;
+
+		struct jvst_ir_stmt *branch;
+
+		struct {
+			struct jvst_ir_expr *cond;
+			struct jvst_ir_stmt *br_true;
+			struct jvst_ir_stmt *br_false;
+		} cbranch;
+
+		struct {
+			struct jvst_ir_expr *src;
+			struct jvst_ir_expr *dst;
+		} move;
+
+		struct {
+			struct jvst_ir_stmt *frame;
+		} call;
 	} u;
 };
 
@@ -226,6 +294,7 @@ struct jvst_ir_expr {
 	union {
 		// literals
 		double vnum;
+		int64_t vint;
 		size_t vsize;
 		int vbool;
 
@@ -237,8 +306,7 @@ struct jvst_ir_expr {
 
 		struct {
 			struct jvst_ir_stmt *frame;
-			const char *label;
-			size_t ind;
+			struct jvst_ir_stmt *bitvec;
 			size_t b0;
 			size_t b1;
 		} btest;
@@ -265,7 +333,28 @@ struct jvst_ir_expr {
 
 		struct {
 			struct jvst_ir_stmt *frames;
+			struct jvst_ir_stmt *split_list;
 		} split;
+
+		struct {
+			struct jvst_ir_stmt *stmt;
+			struct jvst_ir_expr *expr;
+		} seq;
+
+		struct {
+			size_t ind;
+		} temp;
+
+		struct {
+			size_t ind;
+		} slot;
+
+		struct {
+			struct fsm *dfa;
+			const char *name;
+			size_t ind;
+		} match;
+
 	} u;
 };
 
@@ -273,6 +362,18 @@ struct jvst_cnode;
 
 struct jvst_ir_stmt *
 jvst_ir_translate(struct jvst_cnode *ctree);
+
+struct jvst_ir_stmt *
+jvst_ir_stmt_copy(struct jvst_ir_stmt *ir);
+
+struct jvst_ir_stmt *
+jvst_ir_linearize(struct jvst_ir_stmt *ir);
+
+/* Flattens IR, eliminates unnecessary branches, and numbers remaining
+ * instructions
+ */
+struct jvst_ir_stmt *
+jvst_ir_flatten(struct jvst_ir_stmt *);
 
 int
 jvst_ir_dump(struct jvst_ir_stmt *ir, char *buf, size_t nb);

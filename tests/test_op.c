@@ -37,6 +37,7 @@ run_test(const char *fname, const struct op_test *t)
   canonified = jvst_cnode_canonify(simplified);
   ir = jvst_ir_translate(canonified);
 
+  // jvst_ir_print(ir);
   result = jvst_op_assemble(ir);
 
   // fprintf(stderr, "\n");
@@ -44,7 +45,7 @@ run_test(const char *fname, const struct op_test *t)
 
   ret = op_progs_equal(fname, result, t->prog);
   if (!ret) {
-    jvst_ir_print(ir);
+    // jvst_ir_print(ir);
   }
 
   return ret;
@@ -1177,17 +1178,17 @@ void test_op_minproperties_2(void)
   // together).  Reduction will occur on a later pass.
   const struct op_test tests[] = {
     {
-        newcnode_switch(&A, 1,
-          SJP_OBJECT_BEG, newcnode_bool(&A,JVST_CNODE_AND,
-                            newcnode_counts(&A, 1, 0),
-                            newcnode_propset(&A,
-                              newcnode_prop_match(&A, RE_LITERAL, "foo",
-                                newcnode_switch(&A, 0, SJP_NUMBER, newcnode_valid(), SJP_NONE)),
-                              newcnode_prop_match(&A, RE_LITERAL, "bar",
-                                newcnode_switch(&A, 0, SJP_STRING, newcnode_valid(), SJP_NONE)),
-                              NULL),
+      newcnode_switch(&A, 1,
+        SJP_OBJECT_BEG, newcnode_bool(&A,JVST_CNODE_AND,
+                          newcnode_counts(&A, 1, 0),
+                          newcnode_propset(&A,
+                            newcnode_prop_match(&A, RE_LITERAL, "foo",
+                              newcnode_switch(&A, 0, SJP_NUMBER, newcnode_valid(), SJP_NONE)),
+                            newcnode_prop_match(&A, RE_LITERAL, "bar",
+                              newcnode_switch(&A, 0, SJP_STRING, newcnode_valid(), SJP_NONE)),
                             NULL),
-          SJP_NONE),
+                          NULL),
+        SJP_NONE),
 
       newir_frame(&A,
           newir_counter(&A, 0, "num_props"),
@@ -1372,14 +1373,13 @@ void test_op_minproperties_2(void)
   RUNTESTS(tests);
 }
 
-#if 0
 void test_op_required(void)
 {
   struct arena_info A = {0};
 
   // initial schema is not reduced (additional constraints are ANDed
   // together).  Reduction will occur on a later pass.
-  const struct ir_test tests[] = {
+  const struct op_test tests[] = {
     {
       // schema:
       // {
@@ -1478,7 +1478,105 @@ void test_op_required(void)
             )
           ),
           NULL
-      )
+      ),
+
+      newop_program(&A,
+          newop_proc(&A,
+            opslots, 1,
+            opdfa, 1,
+
+            oplabel, "entry",
+            newop_instr(&A, JVST_OP_TOKEN),
+            newop_cmp(&A, JVST_OP_IEQ, oparg_tt(), oparg_tok(SJP_OBJECT_BEG)),
+            newop_br(&A, JVST_OP_CBT, "loop_2"),
+
+            oplabel, "L_14",
+            newop_cmp(&A, JVST_OP_IEQ, oparg_tt(), oparg_tok(SJP_OBJECT_END)),
+            newop_br(&A, JVST_OP_CBT, "invalid_1"),
+
+            oplabel, "L_17",
+            newop_cmp(&A, JVST_OP_IEQ, oparg_tt(), oparg_tok(SJP_ARRAY_END)),
+            newop_br(&A, JVST_OP_CBT, "invalid_1"),
+
+            oplabel, "valid",
+            newop_instr(&A, JVST_OP_VALID),
+
+            oplabel, "invalid_1",
+            newop_invalid(&A, 1),
+
+            oplabel, "loop_2",
+            newop_instr(&A, JVST_OP_TOKEN),
+            newop_cmp(&A, JVST_OP_IEQ, oparg_tt(), oparg_tok(SJP_OBJECT_END)),
+            newop_br(&A, JVST_OP_CBT, "loop_end_2"),
+
+            oplabel, "L_6",
+            newop_match(&A, 0),
+            newop_cmp(&A, JVST_OP_IEQ, oparg_m(), oparg_lit(0)),
+            newop_br(&A, JVST_OP_CBT, "M_8"),
+
+            newop_cmp(&A, JVST_OP_IEQ, oparg_m(), oparg_lit(1)),
+            newop_br(&A, JVST_OP_CBT, "M_9"),
+
+            newop_cmp(&A, JVST_OP_IEQ, oparg_m(), oparg_lit(2)),
+
+            oplabel, "M_10",
+            newop_call(&A, 2),
+            newop_bitop(&A, JVST_OP_BSET, 0, 0),
+            newop_br(&A, JVST_OP_BR, "loop_2"),
+
+            oplabel, "M_9",
+            newop_call(&A, 1),
+            newop_br(&A, JVST_OP_BR, "loop_2"),
+
+            oplabel, "M_8",
+            newop_instr(&A, JVST_OP_CONSUME),
+            newop_br(&A, JVST_OP_BR, "loop_2"),
+
+            oplabel, "loop_end_2",
+            newop_load(&A, JVST_OP_ILOAD, oparg_itmp(0), oparg_slot(0)),
+            newop_instr2(&A, JVST_OP_BAND, oparg_itmp(0), oparg_lit(1)),
+            newop_cmp(&A, JVST_OP_IEQ, oparg_itmp(0), oparg_lit(1)),
+            newop_br(&A, JVST_OP_CBT, "valid"),
+
+            oplabel, "invalid_6",
+            newop_invalid(&A, 6),
+
+            NULL
+          ),
+
+          newop_proc(&A,
+            oplabel, "entry",
+            newop_instr(&A, JVST_OP_TOKEN),
+            newop_cmp(&A, JVST_OP_IEQ, oparg_tt(), oparg_tok(SJP_STRING)),
+            newop_br(&A, JVST_OP_CBT, "valid"),
+
+            oplabel, "invalid_1",
+            newop_invalid(&A, 1),
+
+            oplabel, "valid",
+            newop_instr(&A, JVST_OP_VALID),
+
+            NULL
+          ),
+
+          newop_proc(&A,
+            oplabel, "entry",
+            newop_instr(&A, JVST_OP_TOKEN),
+            newop_cmp(&A, JVST_OP_IEQ, oparg_tt(), oparg_tok(SJP_NUMBER)),
+            newop_br(&A, JVST_OP_CBT, "valid"),
+
+            oplabel, "invalid_1",
+            newop_invalid(&A, 1),
+
+            oplabel, "valid",
+            newop_instr(&A, JVST_OP_VALID),
+
+            NULL
+          ),
+
+          NULL
+      ),
+
     },
 
     { NULL },
@@ -1493,7 +1591,7 @@ void test_op_dependencies(void)
 
   // initial schema is not reduced (additional constraints are ANDed
   // together).  Reduction will occur on a later pass.
-  const struct ir_test tests[] = {
+  const struct op_test tests[] = {
     {
       // schema: { "dependencies": {"bar": ["foo"]} }
       newcnode_switch(&A, 1,
@@ -1615,7 +1713,121 @@ void test_op_dependencies(void)
               )
           ),
           NULL
-      )
+      ),
+
+      newop_program(&A,
+          newop_proc(&A,
+            opsplit, 2, 1, 2,
+
+            oplabel, "entry",
+            newop_instr(&A, JVST_OP_TOKEN),
+            newop_cmp(&A, JVST_OP_IEQ, oparg_tt(), oparg_tok(SJP_OBJECT_BEG)),
+            newop_br(&A, JVST_OP_CBT, "L_1"),
+
+            oplabel, "L_5",
+            newop_cmp(&A, JVST_OP_IEQ, oparg_tt(), oparg_tok(SJP_OBJECT_END)),
+            newop_br(&A, JVST_OP_CBT, "invalid_1"),
+
+            oplabel, "L_8",
+            newop_cmp(&A, JVST_OP_IEQ, oparg_tt(), oparg_tok(SJP_ARRAY_END)),
+            newop_br(&A, JVST_OP_CBT, "invalid_1"),
+
+            oplabel, "valid",
+            newop_instr(&A, JVST_OP_VALID),
+
+            oplabel, "invalid_1",
+            newop_invalid(&A, 1),
+
+            oplabel, "L_1",
+            newop_instr2(&A, JVST_OP_SPLIT, oparg_lit(0), oparg_itmp(0)),
+            newop_load(&A, JVST_OP_ILOAD, oparg_itmp(1), oparg_lit(1)),
+            newop_cmp(&A, JVST_OP_IGE, oparg_itmp(0), oparg_itmp(1)),
+            newop_br(&A, JVST_OP_CBT, "valid"),
+
+            oplabel, "invalid_7",
+            newop_invalid(&A, 7),
+            NULL
+          ),
+
+          newop_proc(&A,
+            opdfa, 1,
+
+            oplabel, "loop_0",
+            newop_instr(&A, JVST_OP_TOKEN),
+            newop_cmp(&A, JVST_OP_IEQ, oparg_tt(), oparg_tok(SJP_OBJECT_END)),
+            newop_br(&A, JVST_OP_CBT, "valid"),
+
+            oplabel, "L_4",
+            newop_match(&A, 0),
+            newop_cmp(&A, JVST_OP_IEQ, oparg_m(), oparg_lit(0)),
+            newop_br(&A, JVST_OP_CBT, "M_6"),
+
+            newop_cmp(&A, JVST_OP_IEQ, oparg_m(), oparg_lit(1)),
+
+            oplabel, "invalid_8",
+            newop_invalid(&A, 8),
+
+            oplabel, "M_6",
+            newop_instr(&A, JVST_OP_CONSUME),
+            newop_br(&A, JVST_OP_BR, "loop_0"),
+
+            oplabel, "valid",
+            newop_instr(&A, JVST_OP_VALID),
+
+            NULL
+          ),
+
+          newop_proc(&A,
+            opslots, 1,
+            opdfa, 1,
+
+            oplabel, "loop_0",
+            newop_instr(&A, JVST_OP_TOKEN),
+            newop_cmp(&A, JVST_OP_IEQ, oparg_tt(), oparg_tok(SJP_OBJECT_END)),
+            newop_br(&A, JVST_OP_CBT, "loop_end_0"),
+
+            oplabel, "L_4",
+            newop_match(&A, 0),
+            newop_cmp(&A, JVST_OP_IEQ, oparg_m(), oparg_lit(0)),
+            newop_br(&A, JVST_OP_CBT, "M_6"),
+
+            newop_cmp(&A, JVST_OP_IEQ, oparg_m(), oparg_lit(1)),
+            newop_br(&A, JVST_OP_CBT, "M_7"),
+
+            newop_cmp(&A, JVST_OP_IEQ, oparg_m(), oparg_lit(2)),
+
+            oplabel, "M_8",
+            newop_bitop(&A, JVST_OP_BSET, 0, 1),
+            newop_instr(&A, JVST_OP_CONSUME),
+            newop_br(&A, JVST_OP_BR, "loop_0"),
+
+            oplabel, "M_7",
+            newop_bitop(&A, JVST_OP_BSET, 0, 0),
+            newop_instr(&A, JVST_OP_CONSUME),
+            newop_br(&A, JVST_OP_BR, "loop_0"),
+
+            oplabel, "M_6",
+            newop_instr(&A, JVST_OP_CONSUME),
+            newop_br(&A, JVST_OP_BR, "loop_0"),
+
+            oplabel, "loop_end_0",
+            newop_load(&A, JVST_OP_ILOAD, oparg_itmp(0), oparg_slot(0)),
+            newop_instr2(&A, JVST_OP_BAND, oparg_itmp(0), oparg_lit(3)),
+            newop_cmp(&A, JVST_OP_IEQ, oparg_itmp(0), oparg_lit(3)),
+            newop_br(&A, JVST_OP_CBT, "valid"),
+
+            oplabel, "invalid_6",
+            newop_invalid(&A, 6),
+
+            oplabel, "valid",
+            newop_instr(&A, JVST_OP_VALID),
+
+            NULL
+          ),
+              
+          NULL
+      ),
+
     },
 
     {
@@ -1749,7 +1961,129 @@ void test_op_dependencies(void)
               )
           ),
           NULL
-      )
+      ),
+
+      newop_program(&A,
+          newop_proc(&A,
+            opsplit, 2, 1, 2,
+
+            oplabel, "entry",
+            newop_instr(&A, JVST_OP_TOKEN),
+            newop_cmp(&A, JVST_OP_IEQ, oparg_tt(), oparg_tok(SJP_OBJECT_BEG)),
+            newop_br(&A, JVST_OP_CBT, "L_1"),
+
+            oplabel, "L_5",
+            newop_cmp(&A, JVST_OP_IEQ, oparg_tt(), oparg_tok(SJP_OBJECT_END)),
+            newop_br(&A, JVST_OP_CBT, "invalid_1"),
+
+            oplabel, "L_8",
+            newop_cmp(&A, JVST_OP_IEQ, oparg_tt(), oparg_tok(SJP_ARRAY_END)),
+            newop_br(&A, JVST_OP_CBT, "invalid_1"),
+
+            oplabel, "valid",
+            newop_instr(&A, JVST_OP_VALID),
+
+            oplabel, "invalid_1",
+            newop_invalid(&A, 1),
+
+            oplabel, "L_1",
+            newop_instr2(&A, JVST_OP_SPLIT, oparg_lit(0), oparg_itmp(0)),
+            newop_load(&A, JVST_OP_ILOAD, oparg_itmp(1), oparg_lit(1)),
+            newop_cmp(&A, JVST_OP_IGE, oparg_itmp(0), oparg_itmp(1)),
+            newop_br(&A, JVST_OP_CBT, "valid"),
+
+            oplabel, "invalid_7",
+            newop_invalid(&A, 7),
+            NULL
+          ),
+
+          newop_proc(&A,
+            opdfa, 1,
+
+            oplabel, "loop_0",
+            newop_instr(&A, JVST_OP_TOKEN),
+            newop_cmp(&A, JVST_OP_IEQ, oparg_tt(), oparg_tok(SJP_OBJECT_END)),
+            newop_br(&A, JVST_OP_CBT, "valid"),
+
+            oplabel, "L_4",
+            newop_match(&A, 0),
+            newop_cmp(&A, JVST_OP_IEQ, oparg_m(), oparg_lit(0)),
+            newop_br(&A, JVST_OP_CBT, "M_6"),
+
+            newop_cmp(&A, JVST_OP_IEQ, oparg_m(), oparg_lit(1)),
+
+            oplabel, "invalid_8",
+            newop_invalid(&A, 8),
+
+            oplabel, "M_6",
+            newop_instr(&A, JVST_OP_CONSUME),
+            newop_br(&A, JVST_OP_BR, "loop_0"),
+
+            oplabel, "valid",
+            newop_instr(&A, JVST_OP_VALID),
+
+            NULL
+          ),
+
+          newop_proc(&A,
+            opslots, 1,
+            opdfa, 1,
+
+            oplabel, "loop_0",
+            newop_instr(&A, JVST_OP_TOKEN),
+            newop_cmp(&A, JVST_OP_IEQ, oparg_tt(), oparg_tok(SJP_OBJECT_END)),
+            newop_br(&A, JVST_OP_CBT, "loop_end_0"),
+
+            oplabel, "L_4",
+            newop_match(&A, 0),
+            newop_cmp(&A, JVST_OP_IEQ, oparg_m(), oparg_lit(0)),
+            newop_br(&A, JVST_OP_CBT, "M_6"),
+
+            newop_cmp(&A, JVST_OP_IEQ, oparg_m(), oparg_lit(1)),
+            newop_br(&A, JVST_OP_CBT, "M_7"),
+
+            newop_cmp(&A, JVST_OP_IEQ, oparg_m(), oparg_lit(2)),
+            newop_br(&A, JVST_OP_CBT, "M_8"),
+
+            newop_cmp(&A, JVST_OP_IEQ, oparg_m(), oparg_lit(3)),
+
+            oplabel, "M_9",
+            newop_bitop(&A, JVST_OP_BSET, 0, 0),
+            newop_instr(&A, JVST_OP_CONSUME),
+            newop_br(&A, JVST_OP_BR, "loop_0"),
+
+            oplabel, "M_8",
+            newop_bitop(&A, JVST_OP_BSET, 0, 1),
+            newop_instr(&A, JVST_OP_CONSUME),
+            newop_br(&A, JVST_OP_BR, "loop_0"),
+
+            oplabel, "M_7",
+            newop_bitop(&A, JVST_OP_BSET, 0, 2),
+            newop_instr(&A, JVST_OP_CONSUME),
+            newop_br(&A, JVST_OP_BR, "loop_0"),
+
+            oplabel, "M_6",
+            newop_instr(&A, JVST_OP_CONSUME),
+            newop_br(&A, JVST_OP_BR, "loop_0"),
+
+            oplabel, "loop_end_0",
+            newop_load(&A, JVST_OP_ILOAD, oparg_itmp(0), oparg_slot(0)),
+            newop_instr2(&A, JVST_OP_BAND, oparg_itmp(0), oparg_lit(7)),
+            newop_cmp(&A, JVST_OP_IEQ, oparg_itmp(0), oparg_lit(7)),
+            newop_br(&A, JVST_OP_CBT, "valid"),
+
+            oplabel, "invalid_6",
+            newop_invalid(&A, 6),
+
+            oplabel, "valid",
+            newop_instr(&A, JVST_OP_VALID),
+
+            NULL
+          ),
+              
+          NULL
+      ),
+
     },
 
     {
@@ -1991,13 +2325,235 @@ void test_op_dependencies(void)
               )
           ),
           NULL
-      )
+      ),
+
+      newop_program(&A,
+          newop_proc(&A,
+            opsplit, 4, 1, 2, 3, 4,
+            opslots, 1,
+
+            oplabel, "entry",
+            newop_instr(&A, JVST_OP_TOKEN),
+            newop_cmp(&A, JVST_OP_IEQ, oparg_tt(), oparg_tok(SJP_OBJECT_BEG)),
+            newop_br(&A, JVST_OP_CBT, "L_1"),
+
+            oplabel, "L_8",
+            newop_cmp(&A, JVST_OP_IEQ, oparg_tt(), oparg_tok(SJP_OBJECT_END)),
+            newop_br(&A, JVST_OP_CBT, "invalid_1"),
+
+            oplabel, "L_11",
+            newop_cmp(&A, JVST_OP_IEQ, oparg_tt(), oparg_tok(SJP_ARRAY_END)),
+            newop_br(&A, JVST_OP_CBT, "invalid_1"),
+
+            oplabel, "valid",
+            newop_instr(&A, JVST_OP_VALID),
+
+            oplabel, "invalid_1",
+            newop_invalid(&A, 1),
+
+            oplabel, "L_1",
+            newop_instr2(&A, JVST_OP_SPLITV, oparg_lit(0), oparg_slot(0)),
+            newop_load(&A, JVST_OP_ILOAD, oparg_itmp(0), oparg_slot(0)),
+            newop_instr2(&A, JVST_OP_BAND, oparg_itmp(0), oparg_lit(1)),
+            newop_cmp(&A, JVST_OP_INEQ, oparg_itmp(0), oparg_lit(0)),
+            newop_br(&A, JVST_OP_CBT, "and_true_5"),
+
+            oplabel, "or_false_6",
+            newop_load(&A, JVST_OP_ILOAD, oparg_itmp(1), oparg_slot(0)),
+            newop_instr2(&A, JVST_OP_BAND, oparg_itmp(1), oparg_lit(2)),
+            newop_cmp(&A, JVST_OP_IEQ, oparg_itmp(1), oparg_lit(2)),
+            newop_br(&A, JVST_OP_CBT, "and_true_5"),
+
+            oplabel, "invalid_7",
+            newop_invalid(&A, 7),
+
+            oplabel, "and_true_5",
+            newop_load(&A, JVST_OP_ILOAD, oparg_itmp(2), oparg_slot(0)),
+            newop_instr2(&A, JVST_OP_BAND, oparg_itmp(2), oparg_lit(4)),
+            newop_cmp(&A, JVST_OP_INEQ, oparg_itmp(2), oparg_lit(0)),
+            newop_br(&A, JVST_OP_CBT, "valid"),
+
+            oplabel, "or_false_7",
+            newop_load(&A, JVST_OP_ILOAD, oparg_itmp(3), oparg_slot(0)),
+            newop_instr2(&A, JVST_OP_BAND, oparg_itmp(3), oparg_lit(8)),
+            newop_cmp(&A, JVST_OP_IEQ, oparg_itmp(3), oparg_lit(8)),
+            newop_br(&A, JVST_OP_CBT, "valid"),
+            newop_br(&A, JVST_OP_BR, "invalid_7"),
+
+            NULL
+          ),
+
+          newop_proc(&A,
+            opdfa, 1,
+
+            oplabel, "loop_0",
+            newop_instr(&A, JVST_OP_TOKEN),
+            newop_cmp(&A, JVST_OP_IEQ, oparg_tt(), oparg_tok(SJP_OBJECT_END)),
+            newop_br(&A, JVST_OP_CBT, "valid"),
+
+            oplabel, "L_4",
+            newop_match(&A, 0),
+            newop_cmp(&A, JVST_OP_IEQ, oparg_m(), oparg_lit(0)),
+            newop_br(&A, JVST_OP_CBT, "M_6"),
+
+            newop_cmp(&A, JVST_OP_IEQ, oparg_m(), oparg_lit(1)),
+
+            oplabel, "invalid_8",
+            newop_invalid(&A, 8),
+
+            oplabel, "M_6",
+            newop_instr(&A, JVST_OP_CONSUME),
+            newop_br(&A, JVST_OP_BR, "loop_0"),
+
+            oplabel, "valid",
+            newop_instr(&A, JVST_OP_VALID),
+
+            NULL
+          ),
+
+          newop_proc(&A,
+            opslots, 1,
+            opdfa, 1,
+
+            oplabel, "loop_0",
+            newop_instr(&A, JVST_OP_TOKEN),
+            newop_cmp(&A, JVST_OP_IEQ, oparg_tt(), oparg_tok(SJP_OBJECT_END)),
+            newop_br(&A, JVST_OP_CBT, "loop_end_0"),
+
+            oplabel, "L_4",
+            newop_match(&A, 0),
+            newop_cmp(&A, JVST_OP_IEQ, oparg_m(), oparg_lit(0)),
+            newop_br(&A, JVST_OP_CBT, "M_6"),
+
+            newop_cmp(&A, JVST_OP_IEQ, oparg_m(), oparg_lit(1)),
+            newop_br(&A, JVST_OP_CBT, "M_7"),
+
+            newop_cmp(&A, JVST_OP_IEQ, oparg_m(), oparg_lit(2)),
+            newop_br(&A, JVST_OP_CBT, "M_8"),
+
+            newop_cmp(&A, JVST_OP_IEQ, oparg_m(), oparg_lit(3)),
+
+            oplabel, "M_9",
+            newop_bitop(&A, JVST_OP_BSET, 0, 0),
+            newop_instr(&A, JVST_OP_CONSUME),
+            newop_br(&A, JVST_OP_BR, "loop_0"),
+
+            oplabel, "M_8",
+            newop_bitop(&A, JVST_OP_BSET, 0, 1),
+            newop_instr(&A, JVST_OP_CONSUME),
+            newop_br(&A, JVST_OP_BR, "loop_0"),
+
+            oplabel, "M_7",
+            newop_bitop(&A, JVST_OP_BSET, 0, 2),
+            newop_instr(&A, JVST_OP_CONSUME),
+            newop_br(&A, JVST_OP_BR, "loop_0"),
+
+            oplabel, "M_6",
+            newop_instr(&A, JVST_OP_CONSUME),
+            newop_br(&A, JVST_OP_BR, "loop_0"),
+
+            oplabel, "loop_end_0",
+            newop_load(&A, JVST_OP_ILOAD, oparg_itmp(0), oparg_slot(0)),
+            newop_instr2(&A, JVST_OP_BAND, oparg_itmp(0), oparg_lit(7)),
+            newop_cmp(&A, JVST_OP_IEQ, oparg_itmp(0), oparg_lit(7)),
+            newop_br(&A, JVST_OP_CBT, "valid"),
+
+            oplabel, "invalid_6",
+            newop_invalid(&A, 6),
+
+            oplabel, "valid",
+            newop_instr(&A, JVST_OP_VALID),
+
+            NULL
+          ),
+              
+          newop_proc(&A,
+            opdfa, 1,
+
+            oplabel, "loop_0",
+            newop_instr(&A, JVST_OP_TOKEN),
+            newop_cmp(&A, JVST_OP_IEQ, oparg_tt(), oparg_tok(SJP_OBJECT_END)),
+            newop_br(&A, JVST_OP_CBT, "valid"),
+
+            oplabel, "L_4",
+            newop_match(&A, 0),
+            newop_cmp(&A, JVST_OP_IEQ, oparg_m(), oparg_lit(0)),
+            newop_br(&A, JVST_OP_CBT, "M_6"),
+
+            newop_cmp(&A, JVST_OP_IEQ, oparg_m(), oparg_lit(1)),
+
+            oplabel, "invalid_8",
+            newop_invalid(&A, 8),
+
+            oplabel, "M_6",
+            newop_instr(&A, JVST_OP_CONSUME),
+            newop_br(&A, JVST_OP_BR, "loop_0"),
+
+            oplabel, "valid",
+            newop_instr(&A, JVST_OP_VALID),
+
+            NULL
+          ),
+
+          newop_proc(&A,
+            opslots, 1,
+            opdfa, 1,
+
+            oplabel, "loop_0",
+            newop_instr(&A, JVST_OP_TOKEN),
+            newop_cmp(&A, JVST_OP_IEQ, oparg_tt(), oparg_tok(SJP_OBJECT_END)),
+            newop_br(&A, JVST_OP_CBT, "loop_end_0"),
+
+            oplabel, "L_4",
+            newop_match(&A, 0),
+            newop_cmp(&A, JVST_OP_IEQ, oparg_m(), oparg_lit(0)),
+            newop_br(&A, JVST_OP_CBT, "M_6"),
+
+            newop_cmp(&A, JVST_OP_IEQ, oparg_m(), oparg_lit(1)),
+            newop_br(&A, JVST_OP_CBT, "M_7"),
+
+            newop_cmp(&A, JVST_OP_IEQ, oparg_m(), oparg_lit(2)),
+
+            oplabel, "M_8",
+            newop_bitop(&A, JVST_OP_BSET, 0, 0),
+            newop_instr(&A, JVST_OP_CONSUME),
+            newop_br(&A, JVST_OP_BR, "loop_0"),
+
+            oplabel, "M_7",
+            newop_bitop(&A, JVST_OP_BSET, 0, 1),
+            newop_instr(&A, JVST_OP_CONSUME),
+            newop_br(&A, JVST_OP_BR, "loop_0"),
+
+            oplabel, "M_6",
+            newop_instr(&A, JVST_OP_CONSUME),
+            newop_br(&A, JVST_OP_BR, "loop_0"),
+
+            oplabel, "loop_end_0",
+            newop_load(&A, JVST_OP_ILOAD, oparg_itmp(0), oparg_slot(0)),
+            newop_instr2(&A, JVST_OP_BAND, oparg_itmp(0), oparg_lit(3)),
+            newop_cmp(&A, JVST_OP_IEQ, oparg_itmp(0), oparg_lit(3)),
+            newop_br(&A, JVST_OP_CBT, "valid"),
+
+            oplabel, "invalid_6",
+            newop_invalid(&A, 6),
+
+            oplabel, "valid",
+            newop_instr(&A, JVST_OP_VALID),
+
+            NULL
+          ),
+              
+          NULL
+      ),
+
     },
+#if 0
+#endif /* 0 */
 
     { NULL },
   };
 
-  const struct ir_test unfinished_tests[] = {
+  const struct op_test unfinished_tests[] = {
     {
       // schema: {
       //   "dependencies": {
@@ -2046,6 +2602,7 @@ void test_op_dependencies(void)
     { NULL },
   };
 
+  (void)unfinished_tests;
   RUNTESTS(tests);
 }
 
@@ -2060,7 +2617,6 @@ static void test_op_anyof_2(void);
 
 static void test_op_simplify_ands(void);
 static void test_op_simplify_ored_schema(void);
-#endif /* 0 */
 
 int main(void)
 {
@@ -2075,7 +2631,6 @@ int main(void)
   test_op_minmax_properties_1();
   test_op_minproperties_2();
 
-#if 0 
   test_op_required();
 
   test_op_dependencies();
@@ -2091,12 +2646,10 @@ int main(void)
 
   test_op_simplify_ands();
   test_op_simplify_ored_schema();
-#endif /* 0 */
 
   return report_tests();
 }
 
-#if 0
 /* incomplete tests... placeholders for conversion from cnode tests */
 void test_op_minproperties_3(void)
 {
@@ -2113,7 +2666,7 @@ void test_op_minproperties_3(void)
 
   // initial schema is not reduced (additional constraints are ANDed
   // together).  Reduction will occur on a later pass.
-  const struct ir_test tests[] = {
+  const struct op_test tests[] = {
     {
       newcnode_switch(&A, 1,
         SJP_OBJECT_BEG, newcnode_bool(&A,JVST_CNODE_AND,
@@ -2153,7 +2706,7 @@ void test_op_maxproperties_1(void)
 
   // initial schema is not reduced (additional constraints are ANDed
   // together).  Reduction will occur on a later pass.
-  const struct ir_test tests[] = {
+  const struct op_test tests[] = {
     {
       newcnode_switch(&A, 1,
         SJP_OBJECT_BEG, newcnode_bool(&A,JVST_CNODE_AND,
@@ -2186,7 +2739,7 @@ void test_op_maxproperties_2(void)
 
   // initial schema is not reduced (additional constraints are ANDed
   // together).  Reduction will occur on a later pass.
-  const struct ir_test tests[] = {
+  const struct op_test tests[] = {
     {
       newcnode_switch(&A, 1,
         SJP_OBJECT_BEG, newcnode_bool(&A,JVST_CNODE_AND,
@@ -2234,7 +2787,7 @@ void test_op_minmax_properties_2(void)
 
   // initial schema is not reduced (additional constraints are ANDed
   // together).  Reduction will occur on a later pass.
-  const struct ir_test tests[] = {
+  const struct op_test tests[] = {
     {
       newcnode_switch(&A, 1,
         SJP_OBJECT_BEG, newcnode_bool(&A,JVST_CNODE_AND,
@@ -2269,7 +2822,7 @@ void test_op_anyof_allof_oneof_1(void)
 {
   struct arena_info A = {0};
 
-  const struct ir_test tests[] = {
+  const struct op_test tests[] = {
     {
       newcnode_bool(&A, JVST_CNODE_AND,
         newcnode_bool(&A, JVST_CNODE_OR,
@@ -2337,7 +2890,7 @@ void test_op_anyof_2(void)
 {
   struct arena_info A = {0};
 
-  const struct ir_test tests[] = {
+  const struct op_test tests[] = {
     {
       newcnode_bool(&A, JVST_CNODE_AND,
           newcnode_bool(&A, JVST_CNODE_OR,
@@ -2380,7 +2933,7 @@ static void test_op_simplify_ands(void)
 {
   struct arena_info A = {0};
 
-  const struct ir_test tests[] = {
+  const struct op_test tests[] = {
     // handle AND with only one level...
     {
       newcnode_switch(&A, 1,
@@ -2424,7 +2977,7 @@ static void test_op_simplify_ands(void)
 void test_op_simplify_ored_schema(void)
 {
   struct arena_info A = {0};
-  const struct ir_test tests[] = {
+  const struct op_test tests[] = {
     {
         newcnode_switch(&A, 0,
           SJP_OBJECT_BEG, newcnode_bool(&A, JVST_CNODE_OR,
@@ -2476,6 +3029,4 @@ void test_op_simplify_ored_schema(void)
 
   UNIMPLEMENTED(tests);
 }
-
-#endif /* 0 */
 

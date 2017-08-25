@@ -10,7 +10,9 @@ TEST_SRC += tests/test_validation.c
 TEST_SRC += tests/test_constraints.c
 TEST_SRC += tests/test_ir.c
 TEST_SRC += tests/test_op.c
+
 TEST_SRC += tests/validate_testing.c
+TEST_SRC += tests/ir_testing.c
 
 SRC += ${TEST_SRC}
 

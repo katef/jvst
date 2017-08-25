@@ -47,6 +47,8 @@ static struct jvst_op_proc ar_op_proc[NUM_TEST_THINGS];
 static struct jvst_op_instr ar_op_instr[NUM_TEST_THINGS];
 
 static double ar_op_float[NUM_TEST_THINGS];
+static int64_t ar_op_iconst[NUM_TEST_THINGS];
+static struct jvst_op_proc *ar_op_splits[NUM_TEST_THINGS];
 
 // Returns a constant empty schema
 struct ast_schema *
@@ -660,6 +662,11 @@ newir_expr(struct arena_info *A, enum jvst_ir_expr_type type)
 	return expr;
 }
 
+struct jvst_ir_stmt v_frameindex;
+struct jvst_ir_stmt v_splitlist;
+const struct jvst_ir_stmt *const frameindex = &v_frameindex;
+const struct jvst_ir_stmt *const splitlist = &v_splitlist;
+
 struct jvst_ir_stmt *
 newir_stmt(struct arena_info *A, enum jvst_ir_stmt_type type)
 {
@@ -705,54 +712,97 @@ static void ir_stmt_list(struct jvst_ir_stmt **spp, va_list args)
 struct jvst_ir_stmt *
 newir_frame(struct arena_info *A, ...)
 {
-	struct jvst_ir_stmt *fr, **spp, **mpp, **cpp, **bvpp;
+	struct jvst_ir_stmt *fr, **spp, **cpp, **mpp, **bvpp, **slpp;
 	va_list args;
 
 	fr = newir_stmt(A,JVST_IR_STMT_FRAME);
 	va_start(args, A);
-	ir_stmt_list(&fr->u.frame.stmts, args);
-	va_end(args);
+	spp = &fr->u.frame.stmts;
+	*spp = NULL;
 
-	// filter out initial counters and matchers
 	cpp = &fr->u.frame.counters;
 	mpp = &fr->u.frame.matchers;
 	bvpp = &fr->u.frame.bitvecs;
-	spp = &fr->u.frame.stmts;
+	slpp = &fr->u.frame.splits;
 
-	while (*spp != NULL) {
-		switch ((*spp)->type) {
+	for (;;) {
+		struct jvst_ir_stmt *stmt;
+
+		stmt = va_arg(args, struct jvst_ir_stmt *);
+		if (stmt == NULL) {
+			goto end_loop;
+		}
+
+		if (stmt == frameindex) {
+			fr->u.frame.frame_ind = (size_t)va_arg(args, int);
+			continue;
+		}
+
+		switch (stmt->type) {
 		case JVST_IR_STMT_COUNTER:
-			*cpp = *spp;
-			(*spp)->u.counter.frame = fr;
-			*spp = (*spp)->next;
-
-			cpp = &(*cpp)->next;
-			*cpp = NULL;
+			fr->u.frame.ncounters++;
+			*cpp = stmt;
+			cpp = &stmt->next;
 			break;
 
 		case JVST_IR_STMT_MATCHER:
-			*mpp = *spp;
-			*spp = (*spp)->next;
-
-			mpp = &(*mpp)->next;
-			*mpp = NULL;
+			fr->u.frame.nmatchers++;
+			*mpp = stmt;
+			mpp = &stmt->next;
 			break;
 
 		case JVST_IR_STMT_BITVECTOR:
-			*bvpp = *spp;
-			*spp = (*spp)->next;
+			fr->u.frame.nbitvecs++;
+			*bvpp = stmt;
+			bvpp = &stmt->next;
+			break;
 
-			bvpp = &(*bvpp)->next;
-			*bvpp = NULL;
+		case JVST_IR_STMT_SPLITLIST:
+			fr->u.frame.nsplits++;
+			*slpp = stmt;
+			slpp = &stmt->next;
 			break;
 
 		default:
-			return fr;
+			*spp = stmt;
+			spp = &stmt->next;
+			break;
 		}
 	}
 
+end_loop:
+	va_end(args);
+
 	assert(fr->u.frame.stmts != NULL);
 	return fr;
+}
+
+struct jvst_ir_stmt *
+newir_program(struct arena_info *A, ...)
+{
+	struct jvst_ir_stmt *prog, **fpp;
+	va_list args;
+
+	prog = newir_stmt(A,JVST_IR_STMT_PROGRAM);
+	fpp = &prog->u.program.frames;
+
+	va_start(args, A);
+	for(;;) {
+		struct jvst_ir_stmt *fr;
+
+		fr = va_arg(args, struct jvst_ir_stmt *);
+		if (fr == NULL) {
+			break;
+		}
+
+		assert(fr->type == JVST_IR_STMT_FRAME);
+		*fpp = fr;
+		fpp = &fr->next;
+	}
+	va_end(args);
+
+	assert(prog->u.program.frames != NULL);
+	return prog;
 }
 
 struct jvst_ir_stmt *
@@ -767,6 +817,62 @@ newir_seq(struct arena_info *A, ...)
 	va_end(args);
 
 	return seq;
+}
+
+struct jvst_ir_stmt *
+newir_block(struct arena_info *A, size_t lind, const char *prefix, ...)
+{
+	struct jvst_ir_stmt *blk;
+	va_list args;
+
+	blk = newir_stmt(A,JVST_IR_STMT_BLOCK);
+	blk->u.block.lindex  = lind;
+	blk->u.block.prefix = prefix;
+
+	va_start(args, prefix);
+	ir_stmt_list(&blk->u.block.stmts, args);
+	va_end(args);
+
+	return blk;
+}
+
+struct jvst_ir_stmt *
+newir_branch(struct arena_info *A, size_t lind, const char *prefix)
+{
+	struct jvst_ir_stmt *br, *blk;
+
+	blk = newir_stmt(A,JVST_IR_STMT_BLOCK);
+	blk->u.block.lindex  = lind;
+	blk->u.block.prefix = prefix;
+
+	br = newir_stmt(A,JVST_IR_STMT_BRANCH);
+	br->u.branch = blk;
+
+	return br;
+}
+
+struct jvst_ir_stmt *
+newir_cbranch(struct arena_info *A,
+	struct jvst_ir_expr *cond,
+	size_t li_true, const char *pfx_true,
+	size_t li_false, const char *pfx_false)
+{
+	struct jvst_ir_stmt *cbr, *t_blk, *f_blk;
+
+	t_blk = newir_stmt(A,JVST_IR_STMT_BLOCK);
+	t_blk->u.block.lindex  = li_true;
+	t_blk->u.block.prefix = pfx_true;
+
+	f_blk = newir_stmt(A,JVST_IR_STMT_BLOCK);
+	f_blk->u.block.lindex  = li_false;
+	f_blk->u.block.prefix = pfx_false;
+
+	cbr = newir_stmt(A,JVST_IR_STMT_CBRANCH);
+	cbr->u.cbranch.cond = cond;
+	cbr->u.cbranch.br_true = t_blk;
+	cbr->u.cbranch.br_false = f_blk;
+
+	return cbr;
 }
 
 struct jvst_ir_stmt *
@@ -882,25 +988,78 @@ newir_match(struct arena_info *A, size_t ind, ...)
 }
 
 struct jvst_ir_stmt *
+newir_splitlist(struct arena_info *A, size_t ind, size_t n, ...)
+{
+	size_t i;
+	va_list args;
+	struct jvst_ir_stmt *sl, **fpp;
+
+	sl = newir_stmt(A,JVST_IR_STMT_SPLITLIST);
+	sl->u.split_list.ind = ind;
+	sl->u.split_list.nframes = n;
+	fpp = &sl->u.split_list.frames;
+
+	if (n == 0) {
+		return sl;
+	}
+
+	va_start(args, n);
+	for (i=0; i < n; i++) {
+		size_t ind;
+		struct jvst_ir_stmt *fr;
+
+		ind = va_arg(args, int);
+
+		// cheesy, but avoids requiring us to wire things up for
+		// a test comparison
+		fr = newir_stmt(A,JVST_IR_STMT_FRAME);
+		fr->u.frame.frame_ind = ind;
+		*fpp = fr;
+		fpp = &fr->u.frame.split_next;
+	}
+	va_end(args);
+
+	*fpp = NULL;
+
+	return sl;
+}
+
+struct jvst_ir_stmt *
 newir_splitvec(struct arena_info *A, size_t ind, const char *label, ...)
 {
-	struct jvst_ir_stmt *stmt, **spp, *fr;
+	struct jvst_ir_stmt *stmt, **spp, *fr, *bv;
 	va_list args;
 
 	stmt = newir_stmt(A,JVST_IR_STMT_SPLITVEC);
-	stmt->u.splitvec.label = label;
-	stmt->u.splitvec.ind = ind;
+	bv = newir_stmt(A, JVST_IR_STMT_BITVECTOR);
+	bv->u.bitvec.label = label;
+	bv->u.bitvec.ind = ind;
+
+	stmt->u.splitvec.bitvec = bv;
 
 	spp = &stmt->u.splitvec.split_frames;
 
 	va_start(args, label);
 	while (fr = va_arg(args, struct jvst_ir_stmt *), fr != NULL) {
+		if (fr == splitlist) {
+			struct jvst_ir_stmt *sl;
+			size_t ind;
+
+			assert(stmt->u.splitvec.split_frames == NULL);
+
+			ind = va_arg(args, int);
+			assert(ind >= 0);
+			stmt->u.splitvec.split_list = newir_splitlist(A, (size_t)ind, 0);
+			goto end;
+		}
+
 		assert(fr->type == JVST_IR_STMT_FRAME);
 		*spp = fr;
 		spp = &(*spp)->next;
 	}
-	va_end(args);
 
+end:
+	va_end(args);
 	return stmt;
 }
 
@@ -919,14 +1078,50 @@ newir_incr(struct arena_info *A, size_t ind, const char *label)
 struct jvst_ir_stmt *
 newir_bitop(struct arena_info *A, enum jvst_ir_stmt_type op, size_t ind, const char *label, size_t bit)
 {
-	struct jvst_ir_stmt *stmt;
+	struct jvst_ir_stmt *stmt, *bv;
 
 	assert((op == JVST_IR_STMT_BSET) || (op == JVST_IR_STMT_BCLEAR));
 
+	// should really link this up, but we currently cheese it...
+	bv = newir_stmt(A,JVST_IR_STMT_BITVECTOR);
+	bv->u.bitvec.label = label;
+	bv->u.bitvec.ind = ind;
+
 	stmt = newir_stmt(A,op);
-	stmt->u.bitop.label = label;
-	stmt->u.bitop.ind = ind;
+	stmt->u.bitop.bitvec = bv;
 	stmt->u.bitop.bit = bit;
+
+	return stmt;
+}
+
+struct jvst_ir_stmt *
+newir_move(struct arena_info *A, struct jvst_ir_expr *tmp, struct jvst_ir_expr *expr)
+{
+	struct jvst_ir_stmt *mv;
+
+	assert(tmp->type == JVST_IR_EXPR_FTEMP || tmp->type == JVST_IR_EXPR_ITEMP);
+
+	// should really link this up, but we currently cheese it...
+	mv = newir_stmt(A,JVST_IR_STMT_MOVE);
+	mv->u.move.dst = tmp;
+	mv->u.move.src = expr;
+
+	return mv;
+}
+
+struct jvst_ir_stmt *
+newir_call(struct arena_info *A, size_t frame_ind)
+{
+	struct jvst_ir_stmt *stmt, *fr;
+
+	assert(frame_ind > 0);
+
+	// should really link this up, but we currently cheese it...
+	fr = newir_stmt(A,JVST_IR_STMT_FRAME);
+	fr->u.frame.frame_ind = frame_ind;
+
+	stmt = newir_stmt(A,JVST_IR_STMT_CALL);
+	stmt->u.call.frame = fr;
 
 	return stmt;
 }
@@ -1003,9 +1198,15 @@ struct jvst_ir_expr *
 newir_btest(struct arena_info *A, size_t ind, const char *label, size_t b)
 {
 	struct jvst_ir_expr *expr;
+	struct jvst_ir_stmt *bv;
+
+	// should really link this up, but we currently cheese it...
+	bv = newir_stmt(A,JVST_IR_STMT_BITVECTOR);
+	bv->u.bitvec.label = label;
+	bv->u.bitvec.ind = ind;
+
 	expr = newir_expr(A,JVST_IR_EXPR_BTEST);
-	expr->u.btest.label = label;
-	expr->u.btest.ind = ind;
+	expr->u.btest.bitvec = bv;
 	expr->u.btest.b0 = b;
 	expr->u.btest.b1 = b;
 	return expr;
@@ -1015,9 +1216,15 @@ struct jvst_ir_expr *
 newir_btestall(struct arena_info *A, size_t ind, const char *label, size_t b0, size_t b1)
 {
 	struct jvst_ir_expr *expr;
+	struct jvst_ir_stmt *bv;
+
+	// should really link this up, but we currently cheese it...
+	bv = newir_stmt(A,JVST_IR_STMT_BITVECTOR);
+	bv->u.bitvec.label = label;
+	bv->u.bitvec.ind = ind;
+
 	expr = newir_expr(A,JVST_IR_EXPR_BTESTALL);
-	expr->u.btest.label = label;
-	expr->u.btest.ind = ind;
+	expr->u.btest.bitvec = bv;
 	expr->u.btest.b0 = b0;
 	expr->u.btest.b1 = b1;
 	return expr;
@@ -1027,9 +1234,15 @@ struct jvst_ir_expr *
 newir_btestany(struct arena_info *A, size_t ind, const char *label, size_t b0, size_t b1)
 {
 	struct jvst_ir_expr *expr;
+	struct jvst_ir_stmt *bv;
+
+	// should really link this up, but we currently cheese it...
+	bv = newir_stmt(A,JVST_IR_STMT_BITVECTOR);
+	bv->u.bitvec.label = label;
+	bv->u.bitvec.ind = ind;
+
 	expr = newir_expr(A,JVST_IR_EXPR_BTESTANY);
-	expr->u.btest.label = label;
-	expr->u.btest.ind = ind;
+	expr->u.btest.bitvec = bv;
 	expr->u.btest.b0 = b0;
 	expr->u.btest.b1 = b1;
 	return expr;
@@ -1047,13 +1260,82 @@ newir_split(struct arena_info *A, ...)
 
 	va_start(args, A);
 	while (fr = va_arg(args, struct jvst_ir_stmt *), fr != NULL) {
+		if (fr == splitlist) {
+			struct jvst_ir_stmt *sl;
+			size_t ind;
+
+			assert(expr->u.split.frames == NULL);
+
+			ind = va_arg(args, int);
+			assert(ind >= 0);
+			expr->u.split.split_list = newir_splitlist(A, (size_t)ind, 0);
+			goto end;
+		}
+
 		assert(fr->type == JVST_IR_STMT_FRAME);
 		*spp = fr;
 		spp = &(*spp)->next;
 	}
+
+end:
 	va_end(args);
+	return expr;
+}
+
+struct jvst_ir_expr *
+newir_itemp(struct arena_info *A, size_t ind)
+{
+	struct jvst_ir_expr *expr;
+
+	expr = newir_expr(A,JVST_IR_EXPR_ITEMP);
+	expr->u.temp.ind = ind;
 
 	return expr;
+}
+
+struct jvst_ir_expr *
+newir_ftemp(struct arena_info *A, size_t ind)
+{
+	struct jvst_ir_expr *expr;
+
+	expr = newir_expr(A,JVST_IR_EXPR_FTEMP);
+	expr->u.temp.ind = ind;
+
+	return expr;
+}
+
+struct jvst_ir_expr *
+newir_slot(struct arena_info *A, size_t ind)
+{
+	struct jvst_ir_expr *expr;
+
+	expr = newir_expr(A,JVST_IR_EXPR_SLOT);
+	expr->u.slot.ind = ind;
+
+	return expr;
+}
+
+struct jvst_ir_expr *
+newir_eseq(struct arena_info *A, struct jvst_ir_stmt *stmt, struct jvst_ir_expr *expr)
+{
+	struct jvst_ir_expr *eseq;
+
+	eseq = newir_expr(A,JVST_IR_EXPR_SEQ);
+	eseq->u.seq.stmt = stmt;
+	eseq->u.seq.expr = expr;
+
+	return eseq;
+}
+
+struct jvst_ir_expr *
+newir_ematch(struct arena_info *A, size_t mind)
+{
+	struct jvst_ir_expr *ematch;
+
+	ematch = newir_expr(A,JVST_IR_EXPR_MATCH);
+	ematch->u.match.ind = mind;
+
+	return ematch;
 }
 
 struct jvst_ir_expr *
@@ -1084,6 +1366,7 @@ newir_op(struct arena_info *A, enum jvst_ir_expr_type op,
 
 	case JVST_IR_EXPR_NONE:
 	case JVST_IR_EXPR_NUM:
+	case JVST_IR_EXPR_INT:
 	case JVST_IR_EXPR_SIZE:
 	case JVST_IR_EXPR_BOOL:
 	case JVST_IR_EXPR_TOK_TYPE:
@@ -1100,6 +1383,11 @@ newir_op(struct arena_info *A, enum jvst_ir_expr_type op,
 	case JVST_IR_EXPR_ISINT:
 	case JVST_IR_EXPR_NOT:
 	case JVST_IR_EXPR_SPLIT:
+	case JVST_IR_EXPR_SLOT:
+	case JVST_IR_EXPR_ITEMP:
+	case JVST_IR_EXPR_FTEMP:
+	case JVST_IR_EXPR_SEQ:
+	case JVST_IR_EXPR_MATCH:
 		fprintf(stderr, "invalid OP type: %s\n", jvst_ir_expr_type_name(op));
 		abort();
 	}
@@ -1110,11 +1398,16 @@ newir_op(struct arena_info *A, enum jvst_ir_expr_type op,
 struct jvst_op_instr v_oplabel;
 struct jvst_op_instr v_opslots;
 struct jvst_op_instr v_opfloat;
+struct jvst_op_instr v_opconst;
 struct jvst_op_instr v_opdfa;
+struct jvst_op_instr v_opsplit;
+
 const struct jvst_op_instr *const oplabel = &v_oplabel;
 const struct jvst_op_instr *const opslots = &v_opslots;
 const struct jvst_op_instr *const opfloat = &v_opfloat;
+const struct jvst_op_instr *const opconst = &v_opconst;
 const struct jvst_op_instr *const opdfa   = &v_opdfa;
+const struct jvst_op_instr *const opsplit = &v_opsplit;
 
 struct jvst_op_program *
 newop_program(struct arena_info *A, ...)
@@ -1174,6 +1467,52 @@ newfloats(struct arena_info *A, double *fv, size_t n)
 	return flts;
 }
 
+static int64_t *
+newconsts(struct arena_info *A, int64_t *cv, size_t n)
+{
+	size_t i,off,max;
+	int64_t *iconsts;
+
+	max = ARRAYLEN(ar_op_iconst);
+	if (A->nconst + n > max) {
+		fprintf(stderr, "%s:%d (%s) too many integer constants (%zu max)\n",
+			__FILE__, __LINE__, __func__, max);
+	}
+
+	off = A->nconst;
+	A->nconst += n;
+
+	iconsts = &ar_op_iconst[off];
+	for (i=0; i < n; i++) {
+		iconsts[i] = cv[i];
+	}
+
+	return iconsts;
+}
+
+static struct jvst_op_proc **
+newsplits(struct arena_info *A, struct jvst_op_proc **sv, size_t n)
+{
+	size_t i,off,max;
+	struct jvst_op_proc **splits;
+
+	max = ARRAYLEN(ar_op_splits);
+	if (A->nsplit + n > max) {
+		fprintf(stderr, "%s:%d (%s) too many splits (%zu max)\n",
+			__FILE__, __LINE__, __func__, max);
+	}
+
+	off = A->nsplit;
+	A->nsplit += n;
+
+	splits = &ar_op_splits[off];
+	for (i=0; i < n; i++) {
+		splits[i] = sv[i];
+	}
+
+	return splits;
+}
+
 struct jvst_op_proc *
 newop_proc(struct arena_info *A, ...)
 {
@@ -1181,7 +1520,11 @@ newop_proc(struct arena_info *A, ...)
 	struct jvst_op_proc *proc;
 	struct jvst_op_instr **ipp;
 	size_t nfloat = 0;
+	size_t nconst = 0;
+	size_t nsplit = 0;
 	double flt[16] = { 0.0 };
+	int64_t iconsts[16] = { 0 };
+	struct jvst_op_proc *splits[16] = { NULL };
 	va_list args;
 
 
@@ -1225,6 +1568,49 @@ fetch:
 			continue;
 		}
 
+		if (instr == opconst) {
+			int ind;
+
+			ind = nconst++;
+			if (nconst >= ARRAYLEN(iconsts)) {
+				fprintf(stderr, "%s:%d (%s) too many integer constants! (max is %zu)\n",
+					__FILE__, __LINE__, __func__, ARRAYLEN(iconsts));
+				abort();
+			}
+			iconsts[ind] = va_arg(args, int64_t);
+			continue;
+		}
+
+		if (instr == opsplit) {
+			int ind;
+			int j,n;
+			struct jvst_op_proc *spl, **splpp;
+
+			ind = nsplit++;
+			if (nsplit>= ARRAYLEN(splits)) {
+				fprintf(stderr, "%s:%d (%s) too many splits ! (max is %zu)\n",
+					__FILE__, __LINE__, __func__, ARRAYLEN(splits));
+				abort();
+			}
+
+			splpp = &splits[ind];
+
+			n = va_arg(args, int);
+			for (j=0; j < n; j++) {
+				int pind;
+				pind = va_arg(args, int);
+
+				*splpp = newop_proc(A, NULL);
+				(*splpp)->proc_index = pind;
+				(*splpp)->next = NULL;
+				(*splpp)->split_next = NULL;
+
+				splpp = &(*splpp)->split_next;
+			}
+
+			continue;
+		}
+
 		if (instr == opdfa) {
 			int ndfa;
 
@@ -1253,6 +1639,16 @@ fetch:
 	if (nfloat > 0) {
 		proc->fdata = newfloats(A, flt, nfloat);
 		proc->nfloat = nfloat;
+	}
+
+	if (nconst > 0) {
+		proc->cdata = newconsts(A, iconsts, nconst);
+		proc->nconst = nconst;
+	}
+
+	if (nsplit > 0) {
+		proc->splits = newsplits(A, splits, nsplit);
+		proc->nsplit = nsplit;
 	}
 
 	return proc;
@@ -1306,7 +1702,7 @@ newop_cmp(struct arena_info *A, enum jvst_vm_op op,
 		return instr;
 
 	case JVST_OP_NOP:
-	case JVST_OP_FRAME:
+	case JVST_OP_PROC:
 	case JVST_OP_BR:
 	case JVST_OP_CBT:
 	case JVST_OP_CBF:
@@ -1331,6 +1727,29 @@ newop_cmp(struct arena_info *A, enum jvst_vm_op op,
 
 	fprintf(stderr, "Unknown OP %d\n", op);
 	abort();
+}
+
+struct jvst_op_instr *
+newop_bitop(struct arena_info *A, enum jvst_vm_op op, int frame_off, int bit)
+{
+	struct jvst_op_instr *instr;
+
+	instr = newop_instr(A, op);
+	instr->u.args[0] = oparg_slot(frame_off);
+	instr->u.args[1] = oparg_lit(bit);
+	return instr;
+}
+
+struct jvst_op_instr *
+newop_instr2(struct arena_info *A, enum jvst_vm_op op,
+	struct jvst_op_arg arg1, struct jvst_op_arg arg2)
+{
+	struct jvst_op_instr *instr;
+
+	instr = newop_instr(A, op);
+	instr->u.args[0] = arg1;
+	instr->u.args[1] = arg2;
+	return instr;
 }
 
 enum { ARG_NONE, ARG_BOOL, ARG_INT, ARG_FLOAT };
@@ -1420,7 +1839,7 @@ newop_load(struct arena_info *A, enum jvst_vm_op op,
 	case JVST_OP_FNEQ:
 	case JVST_OP_FINT:
 	case JVST_OP_NOP:
-	case JVST_OP_FRAME:
+	case JVST_OP_PROC:
 	case JVST_OP_BR:
 	case JVST_OP_CBT:
 	case JVST_OP_CBF:
@@ -1478,7 +1897,7 @@ newop_br(struct arena_info *A, enum jvst_vm_op op, const char *label)
 	case JVST_OP_FNEQ:
 	case JVST_OP_FINT:
 	case JVST_OP_NOP:
-	case JVST_OP_FRAME:
+	case JVST_OP_PROC:
 	case JVST_OP_CALL:
 	case JVST_OP_SPLIT:
 	case JVST_OP_SPLITV:
