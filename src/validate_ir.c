@@ -2885,22 +2885,11 @@ addr_fixup_add_inner(struct addr_fixup_list *l, struct jvst_ir_stmt **addrp, str
 	size_t i;
 
 	if (l->len >= l->cap) {
-		size_t newsz = l->cap;
-		if (newsz < 4) {
-			newsz = 4;
-		} else if (newsz < 1024) {
-			newsz *= 2;
-		} else {
-			newsz += newsz/4;
-		}
-
-		assert(newsz > l->cap+1);
-		l->fixups = xrealloc(l->fixups, newsz * sizeof l->fixups[0]);
-		l->cap = newsz;
+		l->fixups = xenlargevec(l->fixups, &l->cap, 1, sizeof l->fixups[0]);
 	}
 
 	i = l->len++;
-	assert(l->len <= l->cap);
+	assert(i < l->cap);
 
 	l->fixups[i].addrp = addrp;
 	l->fixups[i].orig_value = v;
