@@ -13,6 +13,14 @@ enum jvst_result {
 	JVST_NEXT = 2,
 };
 
+// For use internally.  This indicates that a variable of enum
+// jvst_result has not yet been set to a valid state.
+//
+// FIXME: This isn't ideal, but internally we need some way to indicate
+// that we don't yet have a result, ideally without an additional
+// boolean variable.
+#define JVST_INDETERMINATE SCHAR_MIN
+
 #define JVST_IS_INVALID(x) ((x) < 0)
 
 struct ast_schema;

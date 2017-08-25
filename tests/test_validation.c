@@ -712,9 +712,7 @@ int main(void)
   test_required();
 
   test_anyof_1();
-#if PROTOTYPE
   test_anyof_2();
-#endif /* 0 */
 
   return report_tests();
 }

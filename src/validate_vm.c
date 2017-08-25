@@ -184,16 +184,18 @@ vm_dump(struct sbuf *buf, const struct jvst_vm_program *prog, int indent)
 
 	if (prog->nsplit > 0) {
 		for (i=0; i < prog->nsplit; i++) {
-			uint32_t si,si0,si1,c;
+			uint32_t si,si0,si1,c, soff;
 			si0 = prog->sdata[i];
 			si1 = prog->sdata[i+1];
+
+			soff = prog->nsplit+1;
 
 			sbuf_indent(buf, indent+2);
 			sbuf_snprintf(buf, "SPLIT(%" PRIu32 ")\t", i);
 			for (c=0, si = si0; si < si1; c++, si++) {
 				uint32_t off,pinstr;
 
-				off = prog->sdata[si];
+				off = prog->sdata[soff+si];
 				sbuf_snprintf(buf, " %" PRIu32, off);
 
 				if (c >= 6 && i < prog->nsplit-1) {
@@ -857,19 +859,34 @@ vm_match(struct jvst_vm *vm, const struct jvst_vm_dfa *dfa)
 	return SJP_OK;
 }
 
-#if 0
+static enum jvst_result
+vm_run_next(struct jvst_vm *vm, enum SJP_RESULT pret, struct sjp_event *evt);
+
 static int
 vm_split(struct jvst_vm *vm, int split, union jvst_vm_stackval *slot)
 {
-	uint32_t proc0, proc1, nproc, i;
-	int has_more, has_valid, nvalid;
+	uint32_t proc0, proc1, nproc, i, ndone;
+	int endstate;
 
 	proc0 = vm->prog->sdata[split+0];
 	proc1 = vm->prog->sdata[split+1];
 	nproc = proc1-proc0;
 
 	if (vm->nsplit == 0) {
-		// setup split
+		uint32_t i, off;
+
+		if (nproc > vm->maxsplit) {
+			size_t incr = vm->maxsplit - nproc;
+			vm->splits = xenlargevec(vm->splits, &vm->maxsplit, incr, sizeof vm->splits[0]);
+		}
+
+		off = vm->prog->nsplit + 1 + proc0;
+		for (i=0; i < nproc; i++) {
+			jvst_vm_init_defaults(&vm->splits[i], vm->prog);
+			vm->splits[i].r_pc = vm->prog->sdata[off + i];
+		}
+
+		vm->nsplit = nproc;
 	}
 
 	if (vm->nsplit != nproc) {
@@ -877,45 +894,77 @@ vm_split(struct jvst_vm *vm, int split, union jvst_vm_stackval *slot)
 		PANIC(vm, -1, "SPLIT count and current split do not agree");
 	}
 
-	has_more = 0;
-	has_valid = 0;
+	endstate = JVST_INDETERMINATE;
+	ndone = 0;
 	for (i=0; i < nproc; i++) {
 		enum jvst_result ret;
 
 		if (vm->splits[i].prog == NULL) {
+			ndone++;
 			continue;
 		}
 
-		// update parser state...
-
-
 		// run vm code
-		ret = vm_run(&vm->splits[i]);
+		ret = vm_run_next(&vm->splits[i], vm->pret, &vm->evt);
 
 		switch (ret) {
+		case JVST_VALID:
+			assert(vm->splits[i].error == 0);
+			vm->splits[i].prog = NULL;
+
+			/* fallthrough */
+
 		case JVST_MORE:
-			has_more = 1;
+		case JVST_NEXT:
+			if (endstate != JVST_INDETERMINATE && ret != endstate) {
+				PANIC(vm, -1, "internal error: split return of two end states");
+			}
+
+			endstate = ret;
 			break;
 
 		case JVST_INVALID:
+			/* only case where we don't assign an endstate...
+			 * splits can return invalid at any time.
+			 *
+			 * NB: if all splits return invalid, the parsing
+			 * stream not reach a consistent place.
+			 *
+			 * FIXME: This could be a problem with NOT
+			 * conditions.  When generating the cnode tree
+			 * (or IR?), we need to ensure that there's a
+			 * way for the token stream to end up in the
+			 * place we expect. This could be either
+			 * explicitly coded (ie: finish consuming
+			 * string/object/array) or done with a dummy
+			 * split whose result we ignore.
+			 */
 			assert(vm->splits[i].error != 0);
 			vm->splits[i].prog = NULL;
 			break;
+		}
 
-		case JVST_VALID:
-			has_valid = 1;
-			assert(vm->splits[i].error == 0);
-			vm->splits[i].prog = NULL;
-			break;
+		if (vm->splits[i].prog == NULL) {
+			ndone++;
 		}
 	}
 
-	if (has_more && has_valid) {
-		PANIC(vm, -1, "internal error: split return of both JVST_MORE and JVST_VALID");
+	if (ndone < nproc) {
+		if (endstate == JVST_INDETERMINATE) {
+			PANIC(vm, -1, "internal error: split not finished, but endstate is INDETERMINATE");
+		}
+
+		if (endstate == JVST_VALID) {
+			PANIC(vm, -1, "internal error: split not finished, but endstate is VALID");
+		}
+
+		return endstate;
 	}
 
-	if (has_more) {
-		return JVST_MORE;
+	// all splits have finished, endstate should either be
+	// INDETERMINATE or VALID.
+	if (endstate != JVST_INDETERMINATE && endstate != JVST_VALID) {
+			PANIC(vm, -1, "internal error: split finished, endstate is not INDETERMINATE or VALID");
 	}
 
 	// all splits have finished... count number of valid splits
@@ -930,10 +979,9 @@ vm_split(struct jvst_vm *vm, int split, union jvst_vm_stackval *slot)
 		jvst_vm_finalize(&vm->splits[i]);
 	}
 
-	vm->nsplits = 0;
+	vm->nsplit = 0;
 	return JVST_VALID;
 }
-#endif /* 0 */
 
 #if DEBUG_OPCODES
 #  define DEBUG_OP(vm,pc,opcode) debug_op((vm),(pc),(opcode))
@@ -1324,7 +1372,6 @@ loop:
 		NEXT;
 
 	case JVST_OP_SPLIT:
-#if 0
 		{
 			uint32_t a0,a1;
 			int split;
@@ -1338,8 +1385,8 @@ loop:
 			}
 
 			split = vm_ival(vm, fp, a0);
-			slot = vm_slotptr(vm, fp, a0);
-			if (split < 0 || split >= vm->prog->nsplit) {
+			slot = vm_slotptr(vm, fp, a1);
+			if (split < 0 || (size_t)split >= vm->prog->nsplit) {
 				PANIC(vm, -1, "SPLIT op with bad split index");
 			}
 
@@ -1349,7 +1396,6 @@ loop:
 			}
 		}
 		NEXT;
-#endif /* 0 */
 
 	case JVST_OP_SPLITV:
 		fprintf(stderr, "%s:%d (%s) op %s not yet implemented\n",
