@@ -2212,6 +2212,7 @@ jvst_op_encode(struct jvst_op_program *prog)
 	vmprog = xmalloc(sizeof *vmprog);
 	memset(vmprog, 0, sizeof *vmprog);
 
+	// encode floating point constants
 	if (prog->nfloat > 0) {
 		size_t nb = prog->nfloat * sizeof vmprog->fdata[0];
 		vmprog->fdata = xmalloc(nb);
@@ -2219,6 +2220,15 @@ jvst_op_encode(struct jvst_op_program *prog)
 		memcpy(vmprog->fdata, prog->fdata, nb);
 	}
 
+	// encode large integer constants
+	if (prog->nconst > 0) {
+		size_t nb = prog->nconst * sizeof vmprog->cdata[0];
+		vmprog->cdata = xmalloc(nb);
+		vmprog->nconst = prog->nconst;
+		memcpy(vmprog->cdata, prog->cdata, nb);
+	}
+
+	// encode dfa tables
 	if (prog->ndfa > 0) {
 		size_t i,n,nb;
 
@@ -2232,8 +2242,6 @@ jvst_op_encode(struct jvst_op_program *prog)
 			jvst_vm_dfa_copy(&vmprog->dfas[i], &prog->dfas[i]);
 		}
 	}
-
-	// XXX - encode splits, dfas!
 
 	encoder_init(&enc);
 
@@ -2253,6 +2261,31 @@ jvst_op_encode(struct jvst_op_program *prog)
 	for (proc = prog->procs; proc != NULL; proc = proc->next) {
 		assert(proc->ilist != NULL);
 		encode_pass2(&enc, proc->ilist);
+	}
+
+	// encode splits last, after proc indexes have been generated
+	if (prog->nsplit > 0) {
+		size_t i, nentries, nsdata, off;
+		uint32_t *sdata;
+
+		nentries = prog->splitmax[prog->nsplit-1];
+		nsdata = prog->nsplit + 1 + nentries;
+
+		sdata = xmalloc(nsdata * sizeof *sdata);
+
+		sdata[0] = 0;
+		for (i=0; i < prog->nsplit; i++) {
+			sdata[i+1] = prog->splitmax[i];
+		}
+
+		off = prog->nsplit+1;
+		for (i=0; i < nentries; i++) {
+			assert(prog->splits[i] != NULL);
+			sdata[off+i] = prog->splits[i]->code_off;
+		}
+
+		vmprog->nsplit = prog->nsplit;
+		vmprog->sdata  = sdata;
 	}
 
 	vmprog->ncode = enc.len;

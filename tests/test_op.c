@@ -2902,6 +2902,372 @@ void test_op_dependencies(void)
     },
 
     {
+      ENCODE,
+      // schema: { "dependencies": {"bar": ["foo"]} }
+      newcnode_switch(&A, 1,
+        SJP_OBJECT_BEG, newcnode_bool(&A, JVST_CNODE_OR,
+                          newcnode_required(&A, stringset(&A, "bar", "foo", NULL)),
+                          newcnode_propset(&A,
+                            newcnode_prop_match(&A, RE_LITERAL, "bar", newcnode_invalid()),
+                            NULL),
+                          NULL),
+        SJP_NONE),
+
+      newir_frame(&A,
+          newir_stmt(&A, JVST_IR_STMT_TOKEN),
+          newir_if(&A, newir_istok(&A, SJP_OBJECT_BEG),
+              newir_if(&A,
+                newir_op(&A, JVST_IR_EXPR_GE, 
+                  newir_split(&A,
+                    newir_frame(&A,
+                      newir_matcher(&A, 0, "dfa"),
+                      newir_seq(&A,
+                        newir_loop(&A, "L_OBJ", 0,
+                          newir_stmt(&A, JVST_IR_STMT_TOKEN),
+                          newir_if(&A, newir_istok(&A, SJP_OBJECT_END),
+                            newir_break(&A, "L_OBJ", 0),
+                            newir_seq(&A,                                 // unnecessary SEQ should be removed in the future
+                              newir_match(&A, 0,
+                                // no match
+                                newir_case(&A, 0, 
+                                  NULL,
+                                  newir_stmt(&A, JVST_IR_STMT_CONSUME)
+                                ),
+
+                                // match "bar"
+                                newir_case(&A, 1,
+                                  newmatchset(&A, RE_LITERAL,  "bar", -1),
+                                  newir_invalid(&A, JVST_INVALID_BAD_PROPERTY_NAME, "bad property name")
+                                ),
+
+                                NULL
+                              ),
+                              NULL
+                            )
+                          ),
+                          NULL
+                        ),
+                        newir_stmt(&A, JVST_IR_STMT_VALID),
+                        NULL
+                      ),
+                      NULL
+                    ),
+
+                    newir_frame(&A,
+                      newir_bitvec(&A, 0, "reqmask", 2),
+                      newir_matcher(&A, 0, "dfa"),
+                      newir_seq(&A,
+                        newir_loop(&A, "L_OBJ", 0,
+                          newir_stmt(&A, JVST_IR_STMT_TOKEN),
+                          newir_if(&A, newir_istok(&A, SJP_OBJECT_END),
+                            newir_break(&A, "L_OBJ", 0),
+                            newir_seq(&A,
+                              newir_match(&A, 0,
+                                // no match
+                                newir_case(&A, 0, 
+                                  NULL,
+                                  newir_stmt(&A, JVST_IR_STMT_CONSUME)
+                                ),
+
+                                // match "foo"
+                                newir_case(&A, 1,
+                                  newmatchset(&A, RE_LITERAL,  "foo", -1),
+                                  newir_seq(&A,
+                                    newir_bitop(&A, JVST_IR_STMT_BSET, 0, "reqmask", 1),
+                                    newir_stmt(&A, JVST_IR_STMT_CONSUME),
+                                    NULL
+                                  )
+                                ),
+
+                                // match "bar"
+                                newir_case(&A, 2,
+                                  newmatchset(&A, RE_LITERAL,  "bar", -1),
+                                  newir_seq(&A,
+                                    newir_bitop(&A, JVST_IR_STMT_BSET, 0, "reqmask", 0),
+                                    newir_stmt(&A, JVST_IR_STMT_CONSUME),
+                                    NULL
+                                  )
+                                ),
+
+                                NULL
+                              ),
+                              NULL
+                            )
+                          ),
+                          NULL
+                        ),
+                        newir_if(&A,
+                            newir_btestall(&A, 0, "reqmask", 0, -1),
+                            newir_stmt(&A, JVST_IR_STMT_VALID),
+                            newir_invalid(&A, JVST_INVALID_MISSING_REQUIRED_PROPERTIES,
+                              "missing required properties")
+                        ),
+                        NULL
+                      ),
+                      NULL
+                    ),
+
+                    NULL
+                  ),
+                  newir_size(&A, 1)
+                ),
+                newir_stmt(&A, JVST_IR_STMT_VALID),
+                newir_invalid(&A, JVST_INVALID_SPLIT_CONDITION, "invalid split condition")
+              ),
+              newir_if(&A, newir_istok(&A, SJP_OBJECT_END),
+                newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token"),
+                newir_if(&A, newir_istok(&A, SJP_ARRAY_END),
+                  newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token"),
+                  newir_stmt(&A, JVST_IR_STMT_VALID)
+                )
+              )
+          ),
+          NULL
+      ),
+
+      newop_program(&A,
+          opsplit, 2, 1, 2,
+          opdfa, 2,
+
+          newop_proc(&A,
+            opslots, 4,
+
+            oplabel, "entry_0",
+            newop_instr(&A, JVST_OP_TOKEN),
+            newop_cmp(&A, JVST_OP_IEQ, oparg_tt(), oparg_tok(SJP_OBJECT_BEG)),
+            newop_br(&A, JVST_OP_CBT, "true_2"),
+
+            oplabel, "false_8",
+            newop_cmp(&A, JVST_OP_IEQ, oparg_tt(), oparg_tok(SJP_OBJECT_END)),
+            newop_br(&A, JVST_OP_CBT, "invalid_1_11"),
+
+            oplabel, "false_12",
+            newop_cmp(&A, JVST_OP_IEQ, oparg_tt(), oparg_tok(SJP_ARRAY_END)),
+            newop_br(&A, JVST_OP_CBT, "invalid_1_11"),
+
+            oplabel, "valid_5",
+            newop_instr(&A, JVST_OP_VALID),
+
+            oplabel, "true_2",
+            newop_instr2(&A, JVST_OP_SPLIT, oparg_lit(0), oparg_slot(3)),
+            newop_load(&A, JVST_OP_MOVE, oparg_slot(0), oparg_slot(3)),
+            newop_load(&A, JVST_OP_MOVE, oparg_slot(2), oparg_slot(0)),
+            newop_load(&A, JVST_OP_MOVE, oparg_slot(1), oparg_lit(1)),
+            newop_cmp(&A, JVST_OP_IGE, oparg_slot(2), oparg_slot(1)),
+            newop_br(&A, JVST_OP_CBT, "valid_5"),
+
+            oplabel, "invalid_7_7",
+            newop_invalid(&A, 7),
+
+            oplabel, "invalid_1_11",
+            newop_invalid(&A, 1),
+
+            NULL
+          ),
+
+          newop_proc(&A,
+            opslots, 1,
+
+            oplabel, "loop_2",
+            newop_instr(&A, JVST_OP_TOKEN),
+            newop_cmp(&A, JVST_OP_IEQ, oparg_tt(), oparg_tok(SJP_OBJECT_END)),
+            newop_br(&A, JVST_OP_CBT, "valid_12"),
+
+            oplabel, "false_5",
+            newop_match(&A, 0),
+            newop_load(&A, JVST_OP_MOVE, oparg_slot(0), oparg_m()),
+            newop_cmp(&A, JVST_OP_IEQ, oparg_slot(0), oparg_lit(0)),
+            newop_br(&A, JVST_OP_CBT, "M_7"),
+
+            oplabel, "M_next_8",
+            newop_cmp(&A, JVST_OP_IEQ, oparg_slot(0), oparg_lit(1)),
+            newop_br(&A, JVST_OP_CBT, "invalid_8_10"),
+
+            oplabel, "invalid_9_11",
+            newop_invalid(&A, 9),
+
+            oplabel, "M_7",
+            newop_instr(&A, JVST_OP_CONSUME),
+            newop_br(&A, JVST_OP_BR, "loop_2"),
+
+            oplabel, "valid_12",
+            newop_instr(&A, JVST_OP_VALID),
+
+            oplabel, "invalid_8_10",
+            newop_invalid(&A, 8),
+
+            NULL
+          ),
+
+          newop_proc(&A,
+            opslots, 3,
+
+            oplabel, "loop_2",
+            newop_instr(&A, JVST_OP_TOKEN),
+            newop_cmp(&A, JVST_OP_IEQ, oparg_tt(), oparg_tok(SJP_OBJECT_END)),
+            newop_br(&A, JVST_OP_CBT, "loop_end_1"),
+
+            oplabel, "false_5",
+            newop_match(&A, 1),
+            newop_load(&A, JVST_OP_MOVE, oparg_slot(1), oparg_m()),
+            newop_cmp(&A, JVST_OP_IEQ, oparg_slot(1), oparg_lit(0)),
+            newop_br(&A, JVST_OP_CBT, "M_7"),
+
+            oplabel, "M_next_8",
+            newop_cmp(&A, JVST_OP_IEQ, oparg_slot(1), oparg_lit(1)),
+            newop_br(&A, JVST_OP_CBT, "M_9"),
+
+            oplabel, "M_next_10",
+            newop_cmp(&A, JVST_OP_IEQ, oparg_slot(1), oparg_lit(2)),
+            newop_br(&A, JVST_OP_CBT, "M_11"),
+
+            oplabel, "invalid_9_12",
+            newop_invalid(&A, 9),
+
+            oplabel, "M_7",
+            newop_instr(&A, JVST_OP_CONSUME),
+            newop_br(&A, JVST_OP_BR, "loop_2"),
+
+            oplabel, "M_9",
+            newop_bitop(&A, JVST_OP_BSET, 0, 0),
+            newop_instr(&A, JVST_OP_CONSUME),
+            newop_br(&A, JVST_OP_BR, "loop_2"),
+
+            oplabel, "M_11",
+            newop_bitop(&A, JVST_OP_BSET, 0, 1),
+            newop_instr(&A, JVST_OP_CONSUME),
+            newop_br(&A, JVST_OP_BR, "loop_2"),
+
+            oplabel, "loop_end_1",
+            newop_load(&A, JVST_OP_MOVE, oparg_slot(2), oparg_slot(0)),
+            newop_instr2(&A, JVST_OP_BAND, oparg_slot(2), oparg_lit(3)),
+            newop_cmp(&A, JVST_OP_IEQ, oparg_slot(2), oparg_lit(3)),
+            newop_br(&A, JVST_OP_CBT, "valid_15"),
+
+            oplabel, "invalid_6_17",
+            newop_invalid(&A, 6),
+
+            oplabel, "valid_15",
+            newop_instr(&A, JVST_OP_VALID),
+
+            NULL
+          ),
+              
+          NULL
+      ),
+
+      newvm_program(&A,
+          VM_SPLIT, 2, 2,3,
+          VM_DFA, 2,
+
+          JVST_OP_PROC, VMLIT(4), VMLIT(0),
+          JVST_OP_TOKEN, 0, 0,
+          JVST_OP_IEQ, VMREG(JVST_VM_TT), VMLIT(SJP_OBJECT_BEG),
+          JVST_OP_CBT, "true_2",
+
+          JVST_OP_IEQ, VMREG(JVST_VM_TT), VMLIT(SJP_OBJECT_END),
+          JVST_OP_CBT, "invalid_1_11",
+          JVST_OP_IEQ, VMREG(JVST_VM_TT), VMLIT(SJP_ARRAY_END),
+          JVST_OP_CBT, "invalid_1_11",
+
+          VM_LABEL, "valid_5",
+          JVST_OP_VALID, 0, 0,
+
+          VM_LABEL, "true_2",
+          JVST_OP_SPLIT, VMLIT(0), VMSLOT(3),
+          JVST_OP_MOVE, VMSLOT(0), VMSLOT(3),
+          JVST_OP_MOVE, VMSLOT(2), VMSLOT(0),
+          JVST_OP_MOVE, VMSLOT(1), VMLIT(1),
+          JVST_OP_IGE, VMSLOT(2), VMSLOT(1),
+          JVST_OP_CBT, "valid_5",
+
+          VM_LABEL, "invalid_7_7",
+          JVST_OP_INVALID, VMLIT(7), 0,
+
+          VM_LABEL, "invalid_1_11",
+          JVST_OP_INVALID, VMLIT(1), 0,
+
+
+          JVST_OP_PROC, VMLIT(1), VMLIT(0),
+          VM_LABEL, "loop_2",
+          JVST_OP_TOKEN, 0, 0,
+          JVST_OP_IEQ, VMREG(JVST_VM_TT), VMLIT(SJP_OBJECT_END),
+          JVST_OP_CBT, "valid_12",
+
+          VM_LABEL, "false_5",
+          JVST_OP_MATCH, VMLIT(0), VMLIT(0),
+          JVST_OP_MOVE, VMSLOT(0), VMREG(JVST_VM_M),
+          JVST_OP_IEQ, VMSLOT(0), VMLIT(0),
+          JVST_OP_CBT, "M_7",
+
+          JVST_OP_IEQ, VMSLOT(0), VMLIT(1),
+          JVST_OP_CBT, "invalid_8_10",
+
+          VM_LABEL, "invalid_9_11",
+          JVST_OP_INVALID, VMLIT(9), 0,
+
+          VM_LABEL, "M_7",
+          JVST_OP_CONSUME, VMLIT(0), VMLIT(0),
+          JVST_OP_BR, "loop_2",
+
+          VM_LABEL, "valid_12",
+          JVST_OP_VALID, VMLIT(0), VMLIT(0),
+
+          VM_LABEL, "invalid_8_10",
+          JVST_OP_INVALID, VMLIT(8), 0,
+
+
+          JVST_OP_PROC, VMLIT(3), VMLIT(0),
+          VM_LABEL, "loop_2b",
+          JVST_OP_TOKEN, 0, 0,
+          JVST_OP_IEQ, VMREG(JVST_VM_TT), VMLIT(SJP_OBJECT_END),
+          JVST_OP_CBT, "loop_end_1",
+
+          VM_LABEL, "false_5",
+          JVST_OP_MATCH, VMLIT(1), VMLIT(0),
+          JVST_OP_MOVE, VMSLOT(1), VMREG(JVST_VM_M),
+          JVST_OP_IEQ, VMSLOT(1), VMLIT(0),
+          JVST_OP_CBT, "M_7b",
+
+          JVST_OP_IEQ, VMSLOT(1), VMLIT(1),
+          JVST_OP_CBT, "M_9b",
+
+          JVST_OP_IEQ, VMSLOT(1), VMLIT(2),
+          JVST_OP_CBT, "M_11b",
+
+          VM_LABEL, "invalid_9_12",
+          JVST_OP_INVALID, VMLIT(9), 0,
+
+          VM_LABEL, "M_7b",
+          JVST_OP_CONSUME, VMLIT(0), VMLIT(0),
+          JVST_OP_BR, "loop_2b",
+
+          VM_LABEL, "M_9b",
+          JVST_OP_BSET, VMSLOT(0), VMLIT(0),
+          JVST_OP_CONSUME, VMLIT(0), VMLIT(0),
+          JVST_OP_BR, "loop_2b",
+
+          VM_LABEL, "M_11b",
+          JVST_OP_BSET, VMSLOT(0), VMLIT(1),
+          JVST_OP_CONSUME, VMLIT(0), VMLIT(0),
+          JVST_OP_BR, "loop_2b",
+
+          VM_LABEL, "loop_end_1",
+          JVST_OP_MOVE, VMSLOT(2), VMSLOT(0),
+          JVST_OP_BAND, VMSLOT(2), VMLIT(3),
+          JVST_OP_IEQ, VMSLOT(2), VMLIT(3),
+          JVST_OP_CBT, "valid_15",
+
+          VM_LABEL, "invalid_6_17",
+          JVST_OP_INVALID, VMLIT(6), 0,
+
+          VM_LABEL, "valid_15",
+          JVST_OP_VALID, VMLIT(0), VMLIT(0),
+
+          VM_END)
+    },
+
+    {
       ASSEMBLE,
       // schema: { "dependencies": {"quux": ["foo", "bar"]} }
       newcnode_switch(&A, 1,

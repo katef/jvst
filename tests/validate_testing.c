@@ -2030,19 +2030,37 @@ newop_invalid(struct arena_info *A, enum jvst_invalid_code ecode)
 	return instr;
 }
 
+struct label {
+	const char *name;
+	uint32_t off;
+};
+
+static int
+findlbl(const struct label labels[], int nlbl, const char *lbl)
+{
+	int i;
+
+	// dumb linear scan... should be fine
+	// for testing purposes
+	for (i=0; i < nlbl; i++) {
+		if (strcmp(lbl, labels[i].name) == 0) {
+			return i;
+		}
+	}
+
+	return -1;
+}
+
 struct jvst_vm_program *
 newvm_program(struct arena_info *A, ...)
 {
 	struct jvst_vm_program *prog;
 	va_list args;
-	size_t ind,max,nlbl,nproc,off;
+	size_t ind,max,nlbl,nproc,off,nsplit;
 	uint32_t pc;
 
-	struct {
-		const char *name;
-		uint32_t off;
-	} labels[64];
-
+	struct label labels[64];
+	uint32_t soff[16]  = { 0 };
 	uint32_t procs[16] = { 0 };
 	uint32_t code[256] = { 0 };
 
@@ -2062,6 +2080,7 @@ newvm_program(struct arena_info *A, ...)
 	va_start(args, A);
 	nlbl = 0;
 	nproc = 0;
+	nsplit = 0;
 	pc = 0;
 	for (;;) {
 		int op = va_arg(args, int);
@@ -2108,6 +2127,26 @@ newvm_program(struct arena_info *A, ...)
 			}
 			break;
 
+		case VM_SPLIT: 
+			{
+				int ind, off, i, n;
+				if (nsplit >= ARRAYLEN(soff)) {
+					fprintf(stderr, "too many splits: %zu max\n",
+							ARRAYLEN(soff));
+					abort();
+				}
+
+				n = va_arg(args, int);
+
+				off = (nsplit>0) ? soff[nsplit-1] : 0;
+				soff[nsplit++] = off+n;
+
+				// skip proc indices for now...
+				for (i=0; i < n; i++) {
+					(void) va_arg(args, int);
+				}
+			}
+			break;
 
 		default:
 			if (op == JVST_OP_PROC) {
@@ -2148,9 +2187,35 @@ newvm_program(struct arena_info *A, ...)
 end_label_scan:
 	va_end(args);
 
+	/* allocate split storage */
+	if (nsplit > 0) {
+		int off, nentries;
+		size_t i;
+
+		nentries = nsplit + 1 + soff[nsplit-1];
+		max = ARRAYLEN(ar_vm_code);
+		off = A->nvmcode;
+
+		assert(nentries >= 0 && max >= (size_t)nentries);
+		if ((size_t)off + nentries >= max) {
+			fprintf(stderr, "splits require too much data: %zu max\n", max);
+			abort();
+		}
+
+		A->nvmcode += nentries;
+		prog->sdata = &ar_vm_code[off];
+		prog->nsplit = nsplit;
+
+		prog->sdata[0] = 0;
+		for (i=0; i < nsplit; i++) {
+			prog->sdata[i+1] = soff[i];
+		}
+	}
+
 	/* second pass, all labels are already set */
 	va_start(args, A);
 	pc = 0;
+	nsplit = 0;
 	for (;;) {
 		int op = va_arg(args, int);
 
@@ -2167,6 +2232,28 @@ end_label_scan:
 			}
 			continue;
 
+		case VM_SPLIT: 
+			{
+				int ind, off, i,n;
+
+				ind = nsplit++;
+				assert(nsplit <= prog->nsplit);
+
+				n = va_arg(args, int);
+				assert(prog->sdata[ind+1] == prog->sdata[ind] + n);
+				off = prog->sdata[prog->nsplit] + prog->sdata[ind];
+
+				for (i=0; i < n; i++) {
+					int proc_ind;
+
+					proc_ind = va_arg(args, int);
+					assert(proc_ind >= 1 && (size_t)proc_ind <= nproc);
+
+					prog->sdata[off+i] = procs[proc_ind-1];
+				}
+			}
+			break;
+
 		case VM_DFA:
 			(void)va_arg(args, int);
 			continue;
@@ -2181,20 +2268,12 @@ end_label_scan:
 		case JVST_OP_CBF:
 			{
 				const char *lbl;
-				size_t i;
+				int i;
 				int32_t delta;
 
 				lbl = va_arg(args, const char *);
-
-				// dumb linear scan... should be fine
-				// for testing purposes
-				for (i=0; i < nlbl; i++) {
-					if (strcmp(lbl, labels[i].name) == 0) {
-						break;
-					}
-				}
-
-				if (i >= nlbl) {
+				i = findlbl(labels, nlbl, lbl);
+				if (i < 0 || (size_t)i >= nlbl) {
 					fprintf(stderr, "%s:%d (%s) could not find label %s\n",
 						__FILE__, __LINE__, __func__, lbl);
 					abort();
