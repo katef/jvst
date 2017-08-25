@@ -22,7 +22,8 @@
 // XXX - replace with something better at some point
 //       (maybe a longjmp to an error handler?)
 #define PANIC(vm, ecode, errmsg) \
-	do { fprintf(stderr, "PANIC (code=%d): %s\n", (ecode), (errmsg)); \
+	do { fprintf(stderr, "%s:%d (%s) PANIC (code=%d): %s\n",  \
+		__FILE__, __LINE__, __func__, (ecode), (errmsg)); \
 		jvst_vm_dumpstate(vm); abort(); } while(0)
 
 const char *
@@ -1414,8 +1415,8 @@ jvst_vm_more(struct jvst_vm *vm, char *data, size_t n)
 				memcpy(&txt[n], "...", 4);
 			}
 
-			fprintf(stderr, "[%-8s] %-16s %s\n", ret2name(pret), evt2name(evt.type),
-				txt);
+			fprintf(stderr, "<TOKEN> ret=%s event=%s %s\n",
+				ret2name(pret), evt2name(evt.type), txt);
 		}
 #endif /* DEBUG_TOKENS */
 
