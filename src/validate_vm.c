@@ -14,7 +14,10 @@
 #include "sjp_testing.h"
 #include "validate_ir.h"  // XXX - this is for INVALID codes, which should be moved!
 
-#define DEBUG_OPCODES 1		// displays opcodes and the current frame's stack
+#define DEBUG_OPCODES 0		// displays opcodes and the current frame's stack
+#define DEBUG_STEP    0		// instruction-by-instruction execution of the VM
+#define DEBUG_TOKENS  0		// displays tokens as they're read
+#define DEBUG_BSEARCH 0		// debugs DFA binary search
 
 // XXX - replace with something better at some point
 //       (maybe a longjmp to an error handler?)
@@ -303,14 +306,18 @@ jvst_vm_dfa_finalize(struct jvst_vm_dfa *dfa)
 static int
 twoint_binary_search(const int *restrict list, int i0, int i1, int key)
 {
+#if DEBUG_BSEARCH
 	fprintf(stderr, "binary search in range [%d,%d] for %d (%c)\n",
 		i0,i1,key,isprint(key) ? key : ' ');
+#endif
 	while (i0 <= i1) {
 		int mid,mkey;
 		mid = (i0 + i1)/2;
 		mkey = list[2*mid];
+#if DEBUG_BSEARCH
 		fprintf(stderr, "  i0 = %d, i1 = %d, mid = %d, mkey = %d (%c)\n",
 			i0,i1,mid,mkey, isprint(mkey) ? mkey : ' ');
+#endif
 		if (mkey == key) {
 			return mid;
 		}
@@ -320,7 +327,9 @@ twoint_binary_search(const int *restrict list, int i0, int i1, int key)
 		} else {
 			i1 = mid-1;
 		}
+#if DEBUG_BSEARCH
 		fprintf(stderr, "  new: i0 = %d, i1 = %d\n", i0,i1);
+#endif
 	}
 
 	return -1;
@@ -626,29 +635,36 @@ fopdiff(struct jvst_vm *vm, uint32_t fp, uint32_t opcode)
 static inline int
 has_partial_token(struct jvst_vm *vm)
 {
-	return (sjp_parser_state(&vm->parser) == SJP_PARSER_PARTIAL);
+	return (vm->pret != SJP_OK);
+}
+
+static void
+setup_next_token(struct jvst_vm *vm, uint32_t fp)
+{
+	int ret;
+
+	assert(vm->r_fp == fp);
+	assert(vm->r_sp >= fp + JVST_VM_NUMREG);
+
+	if (has_partial_token(vm)) {
+		PANIC(vm, -1, "TOKEN called before previous token fully read");
+	}
 }
 
 static int
-next_token(struct jvst_vm *vm)
+next_token(struct jvst_vm *vm, uint32_t fp)
 {
-	uint32_t fp = vm->r_fp;
-	int ret;
-
-	assert(vm->r_sp >= fp + JVST_VM_NUMREG);
-
-	if (!has_partial_token(vm)) {
-		vm->stack[fp+JVST_VM_TT  ].i = 0;
-		vm->stack[fp+JVST_VM_TNUM].f = 0.0;
-		vm->stack[fp+JVST_VM_TLEN].i = 0;
+	if (vm->nexttok == 0) {
+		vm->nexttok = 1;
+		setup_next_token(vm, fp);
+		return 1;
 	}
 
-	ret = sjp_parser_next(&vm->parser, &vm->evt);
-	if (SJP_ERROR(ret)) {
-		return ret;
-	}
+	vm->nexttok = 0;
 
-	vm->consumed = 0;
+	vm->stack[fp+JVST_VM_TT  ].i = 0;
+	vm->stack[fp+JVST_VM_TNUM].f = 0.0;
+	vm->stack[fp+JVST_VM_TLEN].i = 0;
 
 	vm->stack[fp+JVST_VM_TT].i = vm->evt.type;
 	vm->stack[fp+JVST_VM_TLEN].i += vm->evt.n;
@@ -656,21 +672,9 @@ next_token(struct jvst_vm *vm)
 		vm->stack[fp+JVST_VM_TNUM].f = vm->evt.d;
 	}
 
-	return ret;
-}
+	vm->consumed = 0;
 
-static int
-consume_partial_token(struct jvst_vm *vm)
-{
-	int ret;
-
-retry:
-	ret = sjp_parser_next(&vm->parser, &vm->evt);
-	if (ret == SJP_PARTIAL) {
-		goto retry;
-	}
-
-	return ret;
+	return 0;
 }
 
 static int
@@ -678,49 +682,83 @@ consume_current_value(struct jvst_vm *vm)
 {
 	int ret;
 
+	if (vm->nobj > 0 || vm->narr > 0) {
+		goto eating_object_or_array;
+	}
+
+	// consume current value:
+	//
+	// if nobj == 0 && narr == 0:
+	//   1. value is consumed:
+	//      set consumed=false, return JVST_NEXT to obtain a new value
+	//   2. value is partial:     return JVST_MORE to get more of the
+	//                            value
+	//
+	//   3. value is not partial: if token type is OBJECT_BEG or
+	//                            ARRAY_BEG, incr nobj or narr,
+	//                            respectively
+	//
+	//   4. if nobj==0 and narr==0, set consumed to be true and
+	//      return JVST_VALID, other continue on to ...
+	//
+	// if nobj > 0 || narr > 0:
+	//   1. if value is partial, return JVST_MORE to get more of it
+	//
+	//   2. otherwise, if value is:
+	//      OBJECT_BEG, nobj++
+	//      OBJECT_END, nobj--
+	//      ARRAY_BEG,  narr++
+	//      ARRAY_END,  narr--
+	//
+	//   3. if nobj == 0 && narr == 0, return JVST_VALID
+	//
+	//   4. otherwise return JVST_NEXT
+
 	if (vm->consumed) {
-		return SJP_OK;
+		vm->consumed = 0;
+		return JVST_NEXT;
 	}
 
 	if (has_partial_token(vm)) {
-		ret = consume_partial_token(vm);
-
-		if (ret != SJP_OK) {
-			return ret;
-		}
+		return JVST_MORE;
 	}
 
-	for (;;) {
-		if (vm->nobj == 0 && vm->narr == 0) {
-			vm->consumed = 1;
-			return SJP_OK;
-		}
-
-		for(;;) {
-			ret = sjp_parser_next(&vm->parser, &vm->evt);
-			if (ret != SJP_PARTIAL) {
-				break;
-			}
-		}
-
-		if (ret != SJP_OK) {
-			return ret;
-		}
-
-		switch (vm->evt.type) {
-		case SJP_NONE:
-		case SJP_NULL:
-		case SJP_TRUE:
-		case SJP_FALSE:
-		case SJP_STRING:
-		case SJP_NUMBER: break;
-
-		case SJP_OBJECT_BEG: vm->nobj++; break;
-		case SJP_OBJECT_END: vm->nobj--; break;
-		case SJP_ARRAY_BEG:  vm->narr++; break; 
-		case SJP_ARRAY_END:  vm->narr--; break;
-		}
+	if (vm->evt.type == SJP_OBJECT_BEG) {
+		vm->nobj++;
+		return JVST_NEXT;
+	} else if (vm->evt.type == SJP_ARRAY_BEG) {
+		vm->narr++;
+		return JVST_NEXT;
 	}
+
+	vm->consumed = 1;
+	return JVST_VALID;
+
+eating_object_or_array:
+
+	if (has_partial_token(vm)) {
+		return JVST_MORE;
+	}
+
+	switch (vm->evt.type) {
+	case SJP_NONE:
+	case SJP_NULL:
+	case SJP_TRUE:
+	case SJP_FALSE:
+	case SJP_STRING:
+	case SJP_NUMBER: break;
+
+	case SJP_OBJECT_BEG: vm->nobj++; break;
+	case SJP_OBJECT_END: vm->nobj--; break;
+	case SJP_ARRAY_BEG:  vm->narr++; break; 
+	case SJP_ARRAY_END:  vm->narr--; break;
+	}
+
+	if (vm->nobj == 0 && vm->narr == 0) {
+		return JVST_VALID;
+	}
+
+	return JVST_NEXT;
 }
 
 static void
@@ -765,6 +803,8 @@ debug_op(struct jvst_vm *vm, uint32_t pc, uint32_t opcode)
 	vm_dumpregs(&buf, vm);
 	fprintf(stderr, "REGS > %s", buf.buf);
 	vm_dumpstack(stderr, vm);
+	fprintf(stderr, "STATE> nobj=%zu, narr=%zu, consumed=%d, nexttok=%d, error=%d, dfa_st=%d\n",
+		vm->nobj, vm->narr, vm->consumed, vm->nexttok, vm->error, vm->dfa_st);
 }
 
 /* MATCH semantics:
@@ -784,30 +824,17 @@ vm_match(struct jvst_vm *vm, const struct jvst_vm_dfa *dfa)
 	int ret, st, result;
 
 	if (vm->evt.type != SJP_STRING) {
-		PANIC(vm, -1, "MATCH called on a non-string token");
+		PANIC(vm, -1, "MATCH op on a non-string token");
 	}
 
 	if (vm->consumed) {
-		PANIC(vm, -1, "MATCH called on a consumed token");
+		PANIC(vm, -1, "MATCH op on a consumed token");
 	}
 
 	ret = SJP_OK;
-	st = vm->dfa_st;
-	for(;;) {
-		st = jvst_vm_dfa_run(dfa, st, vm->evt.text, vm->evt.n);
-		if (!has_partial_token(vm)) {
-			break;
-		}
-
-		ret = sjp_parser_next(&vm->parser, &vm->evt);
-		if (SJP_ERROR(ret)) {
-			vm->error = ret;
-			return JVST_INVALID;
-		}
-
-		if (vm->evt.n == 0) {
-			break;
-		}
+	st = jvst_vm_dfa_run(dfa, vm->dfa_st, vm->evt.text, vm->evt.n);
+	if (has_partial_token(vm)) {
+		return JVST_MORE;
 	}
 
 	if (ret != SJP_OK) {
@@ -829,16 +856,94 @@ vm_match(struct jvst_vm *vm, const struct jvst_vm_dfa *dfa)
 	return SJP_OK;
 }
 
+#if 0
+static int
+vm_split(struct jvst_vm *vm, int split, union jvst_vm_stackval *slot)
+{
+	uint32_t proc0, proc1, nproc, i;
+	int has_more, has_valid, nvalid;
+
+	proc0 = vm->prog->sdata[split+0];
+	proc1 = vm->prog->sdata[split+1];
+	nproc = proc1-proc0;
+
+	if (vm->nsplit == 0) {
+		// setup split
+	}
+
+	if (vm->nsplit != nproc) {
+		// XXX - fixme: better error message!
+		PANIC(vm, -1, "SPLIT count and current split do not agree");
+	}
+
+	has_more = 0;
+	has_valid = 0;
+	for (i=0; i < nproc; i++) {
+		enum jvst_result ret;
+
+		if (vm->splits[i].prog == NULL) {
+			continue;
+		}
+
+		// update parser state...
+
+
+		// run vm code
+		ret = vm_run(&vm->splits[i]);
+
+		switch (ret) {
+		case JVST_MORE:
+			has_more = 1;
+			break;
+
+		case JVST_INVALID:
+			assert(vm->splits[i].error != 0);
+			vm->splits[i].prog = NULL;
+			break;
+
+		case JVST_VALID:
+			has_valid = 1;
+			assert(vm->splits[i].error == 0);
+			vm->splits[i].prog = NULL;
+			break;
+		}
+	}
+
+	if (has_more && has_valid) {
+		PANIC(vm, -1, "internal error: split return of both JVST_MORE and JVST_VALID");
+	}
+
+	if (has_more) {
+		return JVST_MORE;
+	}
+
+	// all splits have finished... count number of valid splits
+	// and clean up split resources
+	slot->i = 0;
+	for (i=0; i < nproc; i++) {
+		assert(vm->splits[i].prog == NULL);
+
+		if (vm->splits[i].error == 0) {
+			slot->i++;
+		}
+		jvst_vm_finalize(&vm->splits[i]);
+	}
+
+	vm->nsplits = 0;
+	return JVST_VALID;
+}
+#endif /* 0 */
+
 #if DEBUG_OPCODES
 #  define DEBUG_OP(vm,pc,opcode) debug_op((vm),(pc),(opcode))
 #else
 #  define DEBUG_OP(vm,pc,opcode) do{}while(0)
-#endif /* DEBUG */
+#endif /* DEBUG_OPCODES */
 
 #define NEXT do{ vm->r_pc = ++pc; goto loop; } while(0)
 #define BRANCH(newpc) do { pc += (newpc); vm->r_pc = pc; goto loop; } while(0)
 static enum jvst_result
-vm_run(struct jvst_vm *vm)
+vm_run_next(struct jvst_vm *vm, enum SJP_RESULT pret, struct sjp_event *evt)
 {
 	uint32_t opcode, pc, fp, sp;
 	int64_t flag;
@@ -847,6 +952,9 @@ vm_run(struct jvst_vm *vm)
 
 	enum jvst_vm_op op;
 	int ret;
+
+	vm->evt = *evt;
+	vm->pret = pret;
 
 	code  = vm->prog->code;
 	ncode = vm->prog->ncode;
@@ -871,12 +979,12 @@ loop:
 	opcode = code[pc];
 	op = jvst_vm_decode_op(opcode);
 	DEBUG_OP(vm, pc, opcode);
-#if 0
+#if DEBUG_STEP
 	{
 		static char buf[256];
 		fgets(buf, sizeof buf, stdin);
 	}
-#endif /* 0 */
+#endif
 
 	switch (op) {
 	case JVST_OP_NOP:
@@ -995,16 +1103,10 @@ loop:
 		}
 
 	case JVST_OP_TOKEN:
-		// read entire token, set the various token values
-		ret = next_token(vm);
-		if (SJP_ERROR(ret)) {
-			vm->error = ret;
-			ret = JVST_INVALID;
-			goto finish;
-		}
-		if (ret == SJP_MORE && vm->evt.type == SJP_NONE) {
-			ret = JVST_MORE;
-			goto finish;
+		// read next token, set the various token values
+
+		if (next_token(vm,fp)) {
+			return JVST_NEXT;
 		}
 		NEXT;
 
@@ -1013,61 +1115,34 @@ loop:
 			int ret;
 
 			if (vm->consumed) {
-				ret = next_token(vm);
-				if (SJP_ERROR(ret)) {
-					vm->error = ret;
-					ret = JVST_INVALID;
-					goto finish;
+				if (next_token(vm, fp)) {
+					return JVST_NEXT;
 				}
 
-				if (ret == SJP_OK) {
-					if (vm->evt.type == SJP_OBJECT_BEG) {
-						vm ->nobj++;
-					} else if (vm->evt.type == SJP_ARRAY_BEG) {
-						vm ->narr++;
-					}
+				if (vm->evt.type == SJP_OBJECT_BEG) {
+					vm ->nobj++;
+				} else if (vm->evt.type == SJP_ARRAY_BEG) {
+					vm ->narr++;
 				}
 			}
 
 			ret = consume_current_value(vm);
-			if (SJP_ERROR(ret)) {
-				vm->error = ret;
-				ret = JVST_INVALID;
-				goto finish;
-			}
-
-			if (ret == SJP_MORE) {
+			if (ret != JVST_VALID) {
 				return ret;
 			}
 		}
 		NEXT;
 
 	case JVST_OP_VALID:
-		// if not already eating an object/array, and current
-		// value is an OBJECT_BEG or ARRAY_BEG, eat the
-		// object/array
-		if (vm->nobj == 0 && vm->narr == 0) {
-			if (vm->evt.type == SJP_OBJECT_BEG) {
-				vm->nobj++;
-			} else if (vm->evt.type == SJP_ARRAY_BEG) {
-				vm->narr++;
-			}
-		}
-
 		// consume token, then return to previous frame or, if top of
 		// stack, return JVST_VALID
 		ret = consume_current_value(vm);
-		if (ret == SJP_MORE) {
-			ret = JVST_MORE;
-			goto finish;
-		}
-		if (ret != SJP_OK) {
-			ret = JVST_INVALID;
-			vm->error = ret;	// sjp errors are negative
-			goto finish;
+		if (ret != JVST_VALID) {
+			return ret;
 		}
 
-		// top of stack!
+		// value consumed... return to previous frame or finish
+		// if we're at the top of the stack
 		if (fp == 0) {
 			vm->r_pc = pc = 0;
 			ret = JVST_VALID;
@@ -1173,7 +1248,7 @@ loop:
 			dfa_ind = vm_ival(vm, fp, a0);
 
 			if (dfa_ind < 0 || (size_t)dfa_ind >= vm->prog->ndfa) {
-				PANIC(vm, -1, "MATCH called with invalid DFA");
+				PANIC(vm, -1, "MATCH op with invalid DFA");
 			}
 
 			dfa = &vm->prog->dfas[dfa_ind];
@@ -1222,7 +1297,7 @@ loop:
 			bit = vm_ival(vm, fp, a1);
 
 			if (bit < 0 || bit >= 64) {
-				PANIC(vm, -1, "BSET called with invalid bit");
+				PANIC(vm, -1, "BSET op with invalid bit");
 			}
 
 			slot->u |= (1<<bit);
@@ -1248,6 +1323,33 @@ loop:
 		NEXT;
 
 	case JVST_OP_SPLIT:
+#if 0
+		{
+			uint32_t a0,a1;
+			int split;
+			union jvst_vm_stackval *slot;
+
+			a0 = jvst_vm_decode_arg0(opcode);
+			a1 = jvst_vm_decode_arg1(opcode);
+
+			if (!jvst_vm_arg_isslot(a1)) {
+				PANIC(vm, -1, "SPLIT op with non-slot second argument");
+			}
+
+			split = vm_ival(vm, fp, a0);
+			slot = vm_slotptr(vm, fp, a0);
+			if (split < 0 || split >= vm->prog->nsplit) {
+				PANIC(vm, -1, "SPLIT op with bad split index");
+			}
+
+			ret = vm_split(vm,split,slot);
+			if (ret != JVST_VALID) {
+				goto finish;
+			}
+		}
+		NEXT;
+#endif /* 0 */
+
 	case JVST_OP_SPLITV:
 		fprintf(stderr, "%s:%d (%s) op %s not yet implemented\n",
 			__FILE__, __LINE__, __func__, jvst_op_name(op));
@@ -1271,12 +1373,80 @@ finish:
 enum jvst_result
 jvst_vm_more(struct jvst_vm *vm, char *data, size_t n)
 {
+	static struct sjp_event evt_zero = {0};
+	struct sjp_event evt = {0};
+	enum SJP_RESULT pret;
+	int first;
+
 	if (vm->error) {
 		return JVST_INVALID;
 	}
 
 	sjp_parser_more(&vm->parser, data, n);
-	return vm_run(vm);
+
+	pret = SJP_OK;
+	evt.type = SJP_NONE;
+
+	if (!vm->needtok) {
+		enum jvst_result ret;
+
+		ret = vm_run_next(vm, pret, &evt);
+		if (ret != JVST_NEXT) {
+			return ret;
+		}
+		vm->needtok = 1;
+	}
+
+	for (;;) {
+		enum jvst_result ret;
+
+		pret = sjp_parser_next(&vm->parser, &evt);
+#if DEBUG_TOKENS
+		{
+			char txt[256];
+			size_t n = evt.n;
+			if (n < sizeof txt) {
+				memcpy(txt, evt.text, n);
+				txt[n] = '\0';
+			} else {
+				n = sizeof txt - 4;
+				memcpy(txt, evt.text, n);
+				memcpy(&txt[n], "...", 4);
+			}
+
+			fprintf(stderr, "[%-8s] %-16s %s\n", ret2name(pret), evt2name(evt.type),
+				txt);
+		}
+#endif /* DEBUG_TOKENS */
+
+		if (SJP_ERROR(pret)) {
+			vm->error = pret;
+			return JVST_INVALID;
+		}
+
+		// XXX - handle EOS here?
+		// FIXME: handle pret == SJP_PARTIAL!
+
+		if (pret == SJP_MORE && evt.type == SJP_TOK_NONE) {
+			// need more...
+			return JVST_MORE;
+		}
+
+		if (pret == SJP_OK && evt.type == SJP_TOK_NONE) {
+			// stream has closed
+			if (vm->r_pc == 0 && vm->r_fp == 0) {
+				return JVST_VALID;
+			}
+			return JVST_INVALID;
+		}
+
+		vm->needtok = 0;
+		ret = vm_run_next(vm, pret, &evt);
+		if (ret != JVST_NEXT) {
+			return ret;
+		}
+		vm->needtok = 1;
+	}
 }
 
 enum jvst_result
