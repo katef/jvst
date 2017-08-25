@@ -181,12 +181,12 @@ jvst_cnode_type_name(enum jvst_cnode_type type);
 // Translates the AST into a contraint tree, first simplifying and
 // canonifying the constraint tree
 struct jvst_cnode *
-jvst_cnode_from_ast(struct ast_schema *ast);
+jvst_cnode_from_ast(const struct ast_schema *ast);
 
 // Just do a raw translation without doing any optimization of the
 // constraint tree
 struct jvst_cnode *
-jvst_cnode_translate_ast(struct ast_schema *ast);
+jvst_cnode_translate_ast(const struct ast_schema *ast);
 
 // Simplfies the cnode tree.  Returns a new tree.
 struct jvst_cnode *

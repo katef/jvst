@@ -3545,13 +3545,14 @@ int main(void)
 
   test_ir_dependencies();
 
+  test_ir_anyof_allof_oneof_1();
+
   /* incomplete tests... placeholders for conversion from cnode tests */
   test_ir_minproperties_3();
   test_ir_maxproperties_1();
   test_ir_maxproperties_2();
   test_ir_minmax_properties_2();
 
-  test_ir_anyof_allof_oneof_1();
   test_ir_anyof_2();
 
   test_ir_simplify_ands();
@@ -3739,44 +3740,256 @@ void test_ir_anyof_allof_oneof_1(void)
   const struct ir_test tests[] = {
     {
       TRANSLATE,
-      newcnode_bool(&A, JVST_CNODE_AND,
-        newcnode_bool(&A, JVST_CNODE_OR,
-          newcnode_switch(&A, 0,
-            SJP_NUMBER, newcnode(&A,JVST_CNODE_NUM_INTEGER),
-            SJP_NONE),
-          newcnode_switch(&A, 1,
-            SJP_NUMBER, newcnode_bool(&A, JVST_CNODE_AND,
-                          newcnode_range(&A, JVST_CNODE_RANGE_MIN, 2.0, 0.0),
-                          newcnode_valid(),
-                          NULL),
-            SJP_NONE),
+      newcnode_switch(&A, 1,
+        SJP_NUMBER, newcnode_bool(&A, JVST_CNODE_OR,
+          newcnode(&A,JVST_CNODE_NUM_INTEGER),
+          newcnode_range(&A, JVST_CNODE_RANGE_MIN, 2.0, 0.0),
           NULL),
-        newcnode_switch(&A, 1, SJP_NONE),
-        NULL),
+        SJP_NONE),
 
-      NULL
+      newir_frame(&A,
+          newir_stmt(&A, JVST_IR_STMT_TOKEN),
+          newir_if(&A, newir_istok(&A, SJP_NUMBER),
+            newir_if(&A,
+              newir_op(&A, JVST_IR_EXPR_OR, 
+                newir_isint(&A, newir_expr(&A, JVST_IR_EXPR_TOK_NUM)),
+                newir_op(&A, JVST_IR_EXPR_GE, 
+                  newir_expr(&A, JVST_IR_EXPR_TOK_NUM),
+                  newir_num(&A, 2.0)
+                )
+              ),
+              newir_stmt(&A, JVST_IR_STMT_VALID),
+              newir_invalid(&A, JVST_INVALID_NUMBER, "number not valid")),
+            newir_if(&A, newir_istok(&A, SJP_OBJECT_END),
+              newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token"),
+              newir_if(&A, newir_istok(&A, SJP_ARRAY_END),
+                newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token"),
+                newir_stmt(&A, JVST_IR_STMT_VALID)
+              )
+            )
+          ),
+          NULL
+      )
+    },
+
+    {
+      LINEARIZE,
+      newcnode_switch(&A, 1,
+        SJP_NUMBER, newcnode_bool(&A, JVST_CNODE_OR,
+          newcnode(&A,JVST_CNODE_NUM_INTEGER),
+          newcnode_range(&A, JVST_CNODE_RANGE_MIN, 2.0, 0.0),
+          NULL),
+        SJP_NONE),
+
+      newir_frame(&A,
+          newir_stmt(&A, JVST_IR_STMT_TOKEN),
+          newir_if(&A, newir_istok(&A, SJP_NUMBER),
+            newir_if(&A,
+              newir_op(&A, JVST_IR_EXPR_OR, 
+                newir_isint(&A, newir_expr(&A, JVST_IR_EXPR_TOK_NUM)),
+                newir_op(&A, JVST_IR_EXPR_GE, 
+                  newir_expr(&A, JVST_IR_EXPR_TOK_NUM),
+                  newir_num(&A, 2.0)
+                )
+              ),
+              newir_stmt(&A, JVST_IR_STMT_VALID),
+              newir_invalid(&A, JVST_INVALID_NUMBER, "number not valid")),
+            newir_if(&A, newir_istok(&A, SJP_OBJECT_END),
+              newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token"),
+              newir_if(&A, newir_istok(&A, SJP_ARRAY_END),
+                newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token"),
+                newir_stmt(&A, JVST_IR_STMT_VALID)
+              )
+            )
+          ),
+          NULL
+      ),
+
+      newir_program(&A,
+          newir_frame(&A, frameindex, 1,
+            newir_block(&A, 0, "entry",
+              newir_stmt(&A, JVST_IR_STMT_TOKEN),
+              newir_cbranch(&A, newir_istok(&A, SJP_NUMBER),
+                2, "true",
+                9, "false"
+              ),
+              NULL
+            ),
+
+            newir_block(&A, 9, "false",
+              newir_cbranch(&A, newir_istok(&A, SJP_OBJECT_END),
+                12, "invalid_1",
+                13, "false"
+              ),
+              NULL
+            ),
+
+            newir_block(&A, 13, "false",
+              newir_cbranch(&A, newir_istok(&A, SJP_ARRAY_END),
+                12, "invalid_1",
+                5, "valid"
+              ),
+              NULL
+            ),
+
+            newir_block(&A, 5, "valid",
+              newir_stmt(&A, JVST_IR_STMT_VALID),
+              NULL
+            ),
+
+            newir_block(&A, 2, "true",
+              newir_cbranch(&A, newir_isint(&A, newir_expr(&A, JVST_IR_EXPR_TOK_NUM)),
+                5, "valid",
+                8, "or_false"
+              ),
+              NULL
+            ),
+
+            newir_block(&A, 8, "or_false",
+            newir_move(&A, newir_ftemp(&A, 1), newir_expr(&A, JVST_IR_EXPR_TOK_NUM)),
+            newir_move(&A, newir_ftemp(&A, 0), newir_num(&A, 2.0)),
+            newir_cbranch(&A,
+              newir_op(&A, JVST_IR_EXPR_GE, 
+                newir_ftemp(&A, 1),
+                newir_ftemp(&A, 0)
+              ),
+                5, "valid",
+                7, "invalid_3"
+              ),
+              NULL
+            ),
+
+            newir_block(&A, 7, "invalid_3",
+              newir_invalid(&A, JVST_INVALID_NUMBER, "number not valid"),
+              NULL
+            ),
+
+            newir_block(&A, 12, "invalid_1",
+              newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token"),
+              NULL
+            ),
+
+            NULL
+          ),
+
+          NULL
+      )
     },
 
     {
       TRANSLATE,
-      newcnode_bool(&A, JVST_CNODE_AND,
-        newcnode_bool(&A, JVST_CNODE_AND,
-          newcnode_switch(&A, 0,
-            SJP_NUMBER, newcnode(&A,JVST_CNODE_NUM_INTEGER),
-            SJP_NONE),
-          newcnode_switch(&A, 1,
-            SJP_NUMBER, newcnode_bool(&A, JVST_CNODE_AND,
-                          newcnode_range(&A, JVST_CNODE_RANGE_MIN, 2.0, 0.0),
-                          newcnode_valid(),
-                          NULL),
-            SJP_NONE),
+      newcnode_switch(&A, 0,
+        SJP_NUMBER, newcnode_bool(&A, JVST_CNODE_AND,
+          newcnode(&A,JVST_CNODE_NUM_INTEGER),
+          newcnode_range(&A, JVST_CNODE_RANGE_MIN, 2.0, 0.0),
           NULL),
-        newcnode_switch(&A, 1, SJP_NONE),
-        NULL),
+        SJP_NONE),
 
-      NULL
+      newir_frame(&A,
+          newir_stmt(&A, JVST_IR_STMT_TOKEN),
+          newir_if(&A, newir_istok(&A, SJP_NUMBER),
+            newir_if(&A,
+              newir_op(&A, JVST_IR_EXPR_AND, 
+                newir_isint(&A, newir_expr(&A, JVST_IR_EXPR_TOK_NUM)),
+                newir_op(&A, JVST_IR_EXPR_GE, 
+                  newir_expr(&A, JVST_IR_EXPR_TOK_NUM),
+                  newir_num(&A, 2.0)
+                )
+              ),
+              newir_stmt(&A, JVST_IR_STMT_VALID),
+              newir_invalid(&A, JVST_INVALID_NUMBER, "number not valid")),
+            newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token")
+          ),
+          NULL
+      )
     },
 
+    {
+      LINEARIZE,
+      newcnode_switch(&A, 0,
+        SJP_NUMBER, newcnode_bool(&A, JVST_CNODE_AND,
+          newcnode(&A,JVST_CNODE_NUM_INTEGER),
+          newcnode_range(&A, JVST_CNODE_RANGE_MIN, 2.0, 0.0),
+          NULL),
+        SJP_NONE),
+
+      newir_frame(&A,
+          newir_stmt(&A, JVST_IR_STMT_TOKEN),
+          newir_if(&A, newir_istok(&A, SJP_NUMBER),
+            newir_if(&A,
+              newir_op(&A, JVST_IR_EXPR_OR, 
+                newir_isint(&A, newir_expr(&A, JVST_IR_EXPR_TOK_NUM)),
+                newir_op(&A, JVST_IR_EXPR_GE, 
+                  newir_expr(&A, JVST_IR_EXPR_TOK_NUM),
+                  newir_num(&A, 2.0)
+                )
+              ),
+              newir_stmt(&A, JVST_IR_STMT_VALID),
+              newir_invalid(&A, JVST_INVALID_NUMBER, "number not valid")),
+            newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token")
+          ),
+          NULL
+      ),
+
+      newir_program(&A,
+          newir_frame(&A, frameindex, 1,
+            newir_block(&A, 0, "entry",
+              newir_stmt(&A, JVST_IR_STMT_TOKEN),
+              newir_cbranch(&A, newir_istok(&A, SJP_NUMBER),
+                2, "true",
+                10, "invalid_1"
+              ),
+              NULL
+            ),
+
+            newir_block(&A, 10, "invalid_1",
+              newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token"),
+              NULL
+            ),
+
+            newir_block(&A, 2, "true",
+              newir_cbranch(&A, newir_isint(&A, newir_expr(&A, JVST_IR_EXPR_TOK_NUM)),
+                8, "and_true",
+                7, "invalid_3"
+              ),
+              NULL
+            ),
+
+            newir_block(&A, 7, "invalid_3",
+              newir_invalid(&A, JVST_INVALID_NUMBER, "number not valid"),
+              NULL
+            ),
+
+            newir_block(&A, 8, "and_true",
+            newir_move(&A, newir_ftemp(&A, 1), newir_expr(&A, JVST_IR_EXPR_TOK_NUM)),
+            newir_move(&A, newir_ftemp(&A, 0), newir_num(&A, 2.0)),
+            newir_cbranch(&A,
+              newir_op(&A, JVST_IR_EXPR_GE, 
+                newir_ftemp(&A, 1),
+                newir_ftemp(&A, 0)
+              ),
+                5, "valid",
+                7, "invalid_3"
+              ),
+              NULL
+            ),
+
+            newir_block(&A, 5, "valid",
+              newir_stmt(&A, JVST_IR_STMT_VALID),
+              NULL
+            ),
+
+            NULL
+          ),
+
+          NULL
+      )
+    },
+
+    { STOP },
+  };
+
+  const struct ir_test unimplemented_tests[] = {
     {
       TRANSLATE,
       newcnode_bool(&A, JVST_CNODE_AND,
@@ -3797,10 +4010,11 @@ void test_ir_anyof_allof_oneof_1(void)
       NULL
     },
 
-    { STOP },
+    { STOP }
   };
 
-  UNIMPLEMENTED(tests);
+  RUNTESTS(tests);
+  UNIMPLEMENTED(unimplemented_tests);
 }
 
 void test_ir_anyof_2(void)

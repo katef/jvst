@@ -41,6 +41,9 @@ struct arena_info {
 	size_t nconst;
 	size_t nsplit;
 	size_t nsplitmax;
+
+	size_t nvmprog;
+	size_t nvmcode;
 };
 
 struct ast_schema *
@@ -316,6 +319,16 @@ oparg_tok(enum SJP_EVENT evt) { return oparg_make(JVST_VM_ARG_TOKTYPE,evt); }
 
 static inline struct jvst_op_arg 
 oparg_slot(int n) { return oparg_make(JVST_VM_ARG_SLOT,n); }
+
+enum {
+	VM_END    = -1,
+	VM_LABEL  = -2,
+	VM_FLOATS = -3,
+	VM_DFA    = -4,
+};
+
+struct jvst_vm_program *
+newvm_program(struct arena_info *A, ...);
 
 const char *
 jvst_ret2name(int ret);

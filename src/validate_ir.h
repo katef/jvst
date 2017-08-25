@@ -119,6 +119,13 @@ enum jvst_invalid_code {
 	JVST_INVALID_SPLIT_CONDITION  = 0x0007,
 	JVST_INVALID_BAD_PROPERTY_NAME = 0x0008,
 	JVST_INVALID_MATCH_CASE       = 0x0009,
+
+	JVST_INVALID_JSON             = 0x000A,
+
+	JVST_INVALID_VM_BAD_PC		= 0xBAD0,
+	JVST_INVALID_VM_STACK_OVERFLOW	= 0xBAD1,
+	JVST_INVALID_VM_INVALID_ARG	= 0xBAD2,
+	JVST_INVALID_VM_INVALID_OP	= 0xBAD3,
 };
 
 const char *
@@ -373,6 +380,10 @@ jvst_ir_linearize(struct jvst_ir_stmt *ir);
  */
 struct jvst_ir_stmt *
 jvst_ir_flatten(struct jvst_ir_stmt *);
+
+/* Returns a linearized and flattened IR from a canonical cnode tree */
+struct jvst_ir_stmt *
+jvst_ir_from_cnode(struct jvst_cnode *ctree);
 
 int
 jvst_ir_dump(struct jvst_ir_stmt *ir, char *buf, size_t nb);

@@ -315,16 +315,15 @@ op_instr_dump(struct sbuf *buf, struct jvst_op_instr *instr)
 		return;
 
 	case JVST_OP_MATCH:
-	case JVST_OP_INCR:
 		sbuf_snprintf(buf, "%s ", jvst_op_name(instr->op));
 		op_arg_dump(buf, instr->args[0]);
 		return;
 
+	case JVST_OP_INCR:
 	case JVST_OP_SPLITV:
 	case JVST_OP_SPLIT:
 	case JVST_OP_FLOAD:
 	case JVST_OP_ILOAD:
-
 	case JVST_OP_MOVE:
 		sbuf_snprintf(buf, "%s ", jvst_op_name(instr->op));
 		op_arg_dump(buf, instr->args[0]);
@@ -352,10 +351,6 @@ op_instr_dump(struct sbuf *buf, struct jvst_op_instr *instr)
 		op_arg_dump(buf, instr->args[1]);
 		return;
 
-	case JVST_OP_BTEST:
-		fprintf(stderr, "%s:%d (%s) OP %s not yet implemented\n",
-			__FILE__, __LINE__, __func__, jvst_op_name(instr->op));
-		abort();
 	}
 
 	fprintf(stderr, "%s:%d (%s) Unknown OP arg type %02x\n",
@@ -441,6 +436,7 @@ jvst_op_dump_inner(struct sbuf *buf, struct jvst_op_program *prog, int indent)
 				sbuf_snprintf(buf, "\n");
 				sbuf_indent(buf, indent+2);
 				sbuf_snprintf(buf, "\t\t");
+				c = 0;
 			}
 		}
 
@@ -470,49 +466,6 @@ jvst_op_dump_inner(struct sbuf *buf, struct jvst_op_program *prog, int indent)
 		sbuf_snprintf(buf, "\n");
 	}
 
-}
-
-const char *
-jvst_op_name(enum jvst_vm_op op)
-{
-	switch (op) {
-	case JVST_OP_NOP:	return "NOP";
-	case JVST_OP_PROC:	return "PROC";
-	case JVST_OP_ILT:       return "ILT";
-	case JVST_OP_ILE:       return "ILE";
-	case JVST_OP_IEQ:       return "IEQ";
-	case JVST_OP_IGE:       return "IGE";
-	case JVST_OP_IGT:       return "IGT";
-	case JVST_OP_INEQ:      return "INEQ";
-	case JVST_OP_FLT:       return "FLT";
-	case JVST_OP_FLE:       return "FLE";
-	case JVST_OP_FEQ:       return "FEQ";
-	case JVST_OP_FGE:       return "FGE";
-	case JVST_OP_FGT:       return "FGT";
-	case JVST_OP_FNEQ:      return "FNEQ";
-	case JVST_OP_FINT:      return "FINT";
-	case JVST_OP_BR:        return "BR";
-	case JVST_OP_CBT:       return "CBT";
-	case JVST_OP_CBF:      	return "CBF";
-	case JVST_OP_CALL:      return "CALL";
-	case JVST_OP_SPLIT:     return "SPLIT";
-	case JVST_OP_SPLITV:    return "SPLITV";
-	case JVST_OP_TOKEN:     return "TOKEN";
-	case JVST_OP_CONSUME:   return "CONSUME";
-	case JVST_OP_MATCH:     return "MATCH";
-	case JVST_OP_FLOAD:     return "FLOAD";
-	case JVST_OP_ILOAD:     return "ILOAD";
-	case JVST_OP_MOVE: 	return "MOVE";
-	case JVST_OP_INCR:      return "INCR";
-	case JVST_OP_BSET:      return "BSET";
-	case JVST_OP_BTEST:     return "BTEST";
-	case JVST_OP_BAND:      return "BAND";
-	case JVST_OP_VALID:     return "VALID";
-	case JVST_OP_INVALID:   return "INVALID";
-	}
-
-	fprintf(stderr, "Unknown OP %d\n", op);
-	abort();
 }
 
 int
@@ -662,7 +615,6 @@ asm_fixup_addr(struct asm_addr_fixup *fix)
 	case JVST_OP_ILOAD:
 	case JVST_OP_INCR:
 	case JVST_OP_BSET:
-	case JVST_OP_BTEST:
 	case JVST_OP_BAND:
 	case JVST_OP_VALID:
 	case JVST_OP_INVALID:
@@ -964,8 +916,9 @@ proc_add_dfa(struct op_assembler *opasm, struct fsm *fsm)
 
 	assert(ind < opasm->maxdfa);
 
+	jvst_op_build_vm_dfa(fsm, &prog->dfas[ind]);
 	if (DEBUG_DFA) {
-		jvst_op_build_vm_dfa(fsm, &prog->dfas[ind]);
+		jvst_vm_dfa_debug(&prog->dfas[ind]);
 	}
 
 	return (int64_t)ind;
@@ -1035,7 +988,6 @@ emit_cond(struct op_assembler *opasm, enum jvst_vm_op op,
 	case JVST_OP_ILOAD:
 	case JVST_OP_INCR:
 	case JVST_OP_BSET:
-	case JVST_OP_BTEST:
 	case JVST_OP_BAND:
 	case JVST_OP_VALID:
 	case JVST_OP_INVALID:
@@ -1118,15 +1070,6 @@ op_assemble_frame(struct op_assembler *opasm, struct jvst_ir_stmt *top)
 	frame_opasm.nlbl = 0;
 	frame_opasm.ntmp = 0;
 
-	frame_opasm.fdata = NULL;
-	frame_opasm.maxfloat = 0;
-
-	frame_opasm.cdata = NULL;
-	frame_opasm.maxconst = 0;
-
-	frame_opasm.splits = NULL;
-	frame_opasm.maxsplit = 0;
-
 	frame_opasm.currproc = proc;
 	frame_opasm.ipp = &proc->ilist;
 
@@ -1134,6 +1077,18 @@ op_assemble_frame(struct op_assembler *opasm, struct jvst_ir_stmt *top)
 	op_assemble_seq(&frame_opasm, top->u.frame.stmts);
 
 	opasm->procpp = frame_opasm.procpp;
+
+	opasm->fdata    = frame_opasm.fdata;
+	opasm->maxfloat = frame_opasm.maxfloat;
+
+	opasm->cdata    = frame_opasm.cdata;
+	opasm->maxconst = frame_opasm.maxconst;
+
+	opasm->splits   = frame_opasm.splits;
+	opasm->maxsplit = frame_opasm.maxsplit;
+
+	opasm->dfas     = frame_opasm.dfas;
+	opasm->maxdfa   = frame_opasm.maxdfa;
 
 	return proc;
 }
@@ -1734,7 +1689,7 @@ op_assemble(struct op_assembler *opasm, struct jvst_ir_stmt *stmt)
 
 			instr = op_instr_new(JVST_OP_INCR);
 			instr->args[0] = arg_slot(counter->u.counter.frame_off);
-			instr->args[1] = arg_none();
+			instr->args[1] = arg_const(1);
 			emit_instr(opasm, instr);
 		}
 		return;
@@ -1874,7 +1829,8 @@ op_assemble(struct op_assembler *opasm, struct jvst_ir_stmt *stmt)
 		abort();
 	}
 
-	fprintf(stderr, "unknown IR statement %d\n", stmt->type);
+	fprintf(stderr, "%s:%d (%s) unknown IR statement %d\n",
+		__FILE__, __LINE__, __func__, stmt->type);
 	abort();
 }
 
@@ -2029,17 +1985,9 @@ jvst_op_build_vm_dfa(struct fsm *fsm, struct jvst_vm_dfa *dfa)
 	nedges  = fsm_countedges(fsm);
 	nends   = fsm_count(fsm, fsm_isend);
 
-	nelts = (nstates+1) + 2*nedges + 2*nends;
-	elts = xmalloc(nelts * sizeof *elts);
+	(void) jvst_vm_dfa_init(dfa, nstates, nedges, nends);
 	tbl = xmalloc(nstates * sizeof *tbl);
 
-	dfa->nstates = nstates;
-	dfa->nedges  = nedges;
-	dfa->nends   = nends;
-
-	dfa->offs = elts;
-	dfa->transitions = dfa->offs + (nstates+1);
-	dfa->endstates = dfa->transitions  + 2*nedges;
 	for (i=0; i < nstates+1; i++) {
 		dfa->offs[i] = 0;
 	}
@@ -2088,5 +2036,253 @@ jvst_vm_dfa_debug(struct jvst_vm_dfa *dfa)
 	for (i=0; i < n; i++) {
 		fprintf(stderr, "%5d %5d\n", dfa->endstates[2*i+0], dfa->endstates[2*i+1]);
 	}
+}
+
+struct op_encoder {
+	size_t len;
+	size_t cap;
+	uint32_t *code;
+};
+
+static void
+encoder_init(struct op_encoder *enc)
+{
+	enc->len = 0;
+	enc->cap = 8;
+	enc->code = xmalloc(enc->cap * sizeof enc->code[0]);
+}
+
+static uint32_t
+encoder_emit(struct op_encoder *enc, uint32_t code)
+{
+	size_t ind;
+	if (enc->len >= enc->cap) {
+		enc->code = enlarge_vec(enc->code, &enc->cap, 1, sizeof enc->code[0]);
+	}
+
+	ind = enc->len++;
+	assert(ind < enc->cap);
+
+	enc->code[ind] = code;
+
+	return ind;
+}
+
+static uint16_t
+encode_arg(struct jvst_op_arg arg)
+{
+	switch (arg.type) {
+	case JVST_VM_ARG_TT:
+		return VMREG(JVST_VM_TT);
+	case JVST_VM_ARG_TNUM:
+		return VMREG(JVST_VM_TNUM);
+	case JVST_VM_ARG_TLEN:
+		return VMREG(JVST_VM_TLEN);
+	case JVST_VM_ARG_M:
+		return VMREG(JVST_VM_M);
+
+	case JVST_VM_ARG_SLOT:
+	case JVST_VM_ARG_POOL:
+		return VMSLOT(arg.u.index);
+
+	case JVST_VM_ARG_TOKTYPE:
+	case JVST_VM_ARG_CONST:
+		return VMLIT(arg.u.index);
+
+	case JVST_VM_ARG_NONE:
+		return 0;
+
+	case JVST_VM_ARG_INSTR:
+	case JVST_VM_ARG_LABEL:
+	case JVST_VM_ARG_CALL:
+		fprintf(stderr, "%s:%d (%s) unexpected opcode argument type %d\n",
+				__FILE__, __LINE__, __func__, arg.type);
+		abort();
+
+	default:
+		fprintf(stderr, "%s:%d (%s) unknown opcode argument type %d\n",
+				__FILE__, __LINE__, __func__, arg.type);
+		abort();
+	}
+}
+
+static void
+encode_pass1(struct op_encoder *enc, struct jvst_op_instr *first)
+{
+	struct jvst_op_instr *instr;
+
+	for (instr = first; instr != NULL; instr = instr->next) {
+		uint32_t cp;
+		uint16_t a,b;
+
+		switch (instr->op) {
+		case JVST_OP_BR:
+		case JVST_OP_CBT:
+		case JVST_OP_CBF:
+			{
+				assert(instr->args[0].type == JVST_VM_ARG_INSTR);
+				assert(instr->args[0].u.dest != NULL);
+
+				cp = encoder_emit(enc, VMBR(instr->op, 0));
+				instr->code_off = cp;
+			}
+			break;
+
+		case JVST_OP_CALL:
+			{
+				assert(instr->args[0].type == JVST_VM_ARG_CALL);
+				assert(instr->args[0].u.dest != NULL);
+
+				cp = encoder_emit(enc, VMBR(instr->op, 0));
+				instr->code_off = cp;
+			}
+			break;
+
+		case JVST_OP_TOKEN:
+		case JVST_OP_CONSUME:
+		case JVST_OP_VALID:
+
+		case JVST_OP_NOP:
+		case JVST_OP_PROC:
+		case JVST_OP_ILT:
+		case JVST_OP_ILE:
+		case JVST_OP_IEQ:
+		case JVST_OP_IGE:
+		case JVST_OP_IGT:
+		case JVST_OP_INEQ:
+		case JVST_OP_FLT:
+		case JVST_OP_FLE:
+		case JVST_OP_FEQ:
+		case JVST_OP_FGE:
+		case JVST_OP_FGT:
+		case JVST_OP_FNEQ:
+		case JVST_OP_FINT:
+		case JVST_OP_SPLIT:
+		case JVST_OP_SPLITV:
+		case JVST_OP_MATCH:
+		case JVST_OP_FLOAD:
+		case JVST_OP_ILOAD:
+		case JVST_OP_MOVE:
+		case JVST_OP_INCR:
+		case JVST_OP_BSET:
+		case JVST_OP_BAND:
+		case JVST_OP_INVALID:
+			a = encode_arg(instr->args[0]);
+			b = encode_arg(instr->args[1]);
+
+			cp = encoder_emit(enc, VMOP(instr->op, a, b));
+			instr->code_off = cp;
+			break;
+
+		default:
+			fprintf(stderr, "%s:%d (%s) unknown opcode statement %d\n",
+					__FILE__, __LINE__, __func__, instr->op);
+			abort();
+		}
+	}
+}
+
+static void
+encode_pass2(struct op_encoder *enc, struct jvst_op_instr *first)
+{
+	struct jvst_op_instr *instr;
+
+	(void)enc;
+	for (instr = first; instr != NULL; instr = instr->next) {
+		uint32_t cp;
+		uint32_t br;
+		int64_t delta;
+
+		switch (instr->op) {
+		case JVST_OP_BR:
+		case JVST_OP_CBT:
+		case JVST_OP_CBF:
+		case JVST_OP_CALL:
+			assert(instr->args[0].type == JVST_VM_ARG_INSTR ||
+				instr->args[0].type == JVST_VM_ARG_CALL);
+			assert(instr->args[0].u.dest != NULL);
+
+			cp = instr->code_off;
+			br = (instr->op == JVST_OP_CALL)
+				? instr->args[0].u.proc->code_off
+				: instr->args[0].u.dest->code_off;
+
+			delta = (int64_t)br - (int64_t)cp;
+			if (delta < JVST_VM_BARG_MIN || delta > JVST_VM_BARG_MAX) {
+				// XXX - add in support for branch to a register
+				// destination
+				fprintf(stderr, "%s:%d (%s) unsupported branch distance %zd\n",
+					__FILE__, __LINE__, __func__, delta);
+				abort();
+			}
+
+			enc->code[cp] = VMBR(instr->op, (long)delta);
+			break;
+
+		default:
+			/* nop */
+			break;
+		}
+	}
+}
+
+struct jvst_vm_program *
+jvst_op_encode(struct jvst_op_program *prog)
+{
+	struct jvst_vm_program *vmprog;
+	struct jvst_op_proc *proc;
+
+	struct op_encoder enc = { 0 };
+
+	vmprog = xmalloc(sizeof *vmprog);
+	memset(vmprog, 0, sizeof *vmprog);
+
+	if (prog->nfloat > 0) {
+		size_t nb = prog->nfloat * sizeof vmprog->fdata[0];
+		vmprog->fdata = xmalloc(nb);
+		vmprog->nfloat = prog->nfloat;
+		memcpy(vmprog->fdata, prog->fdata, nb);
+	}
+
+	if (prog->ndfa > 0) {
+		size_t i,n,nb;
+
+		n = prog->ndfa;
+		nb = n * sizeof vmprog->dfas[0];
+
+		vmprog->dfas = xmalloc(nb);
+		vmprog->ndfa = n;
+
+		for (i=0; i < n; i++) {
+			jvst_vm_dfa_copy(&vmprog->dfas[i], &prog->dfas[i]);
+		}
+	}
+
+	// XXX - encode splits, dfas!
+
+	encoder_init(&enc);
+
+	// first pass, encode data, set branch dests to zero
+	for (proc = prog->procs; proc != NULL; proc = proc->next) {
+		struct jvst_op_instr *instr;
+		uint16_t a,b;
+
+		proc->code_off = encoder_emit(&enc,
+			VMOP(JVST_OP_PROC, VMLIT(proc->nslots), VMLIT(0)));
+
+		assert(proc->ilist != NULL);
+		encode_pass1(&enc, proc->ilist);
+	}
+
+	// second pass, set branch dests and calls to real location
+	for (proc = prog->procs; proc != NULL; proc = proc->next) {
+		assert(proc->ilist != NULL);
+		encode_pass2(&enc, proc->ilist);
+	}
+
+	vmprog->ncode = enc.len;
+	vmprog->code  = enc.code;
+
+	return vmprog;
 }
 /* vim: set tabstop=8 shiftwidth=8 noexpandtab: */

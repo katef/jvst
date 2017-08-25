@@ -2,10 +2,12 @@
 #define VALIDATE_VM_H
 
 #include <assert.h>
+#include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 
 #include "jvst_macros.h"
+#include "validate.h"
 #include "validate_sbuf.h"
 
 #include "sjp_parser.h"
@@ -13,19 +15,16 @@
 // Registers are just slots that are always allocated at the top of the stack framae
 enum jvst_vm_register {
 	// values used to return from a CALL
-	JVST_VM_PPC,		// previous program counter
-	JVST_VM_PFP,		// previous frame pointer
-
 	JVST_VM_TT,		// type of current token
 	JVST_VM_TNUM,		// floating point value of current token (if %TT is $NUMBER)
 	JVST_VM_TLEN,		// length of current token (if %TT is $STRING)
 	JVST_VM_M,		// Match case register
 };
+#define JVST_VM_NUMREG (JVST_VM_M+1)
 
 enum jvst_vm_op {
 	JVST_OP_NOP	= 0,
 	JVST_OP_PROC,		// FRAME N sets up a call frame and reserves N 64-bit slots on the call stack
-	// JVST_OP_PUSH,	// PUSH N -- reserve N 64-bit slots on the call stack
 
 	// Integer comparison operators.  CMP(slot, slot_or_const)
 	JVST_OP_ILT,
@@ -70,7 +69,6 @@ enum jvst_vm_op {
 	JVST_OP_INCR,		// Increments a slot: INCR(ind,reg_or_const)	slot[ind] = slot[ind] + reg_or_const
 
 	JVST_OP_BSET,		// Sets a bit. BSET(slotA,bit)
-	JVST_OP_BTEST,		// Tests a bit: BTEST(slotA,bit)
 
 	JVST_OP_BAND,		// Bitwise-AND: BAND(regA,reg_slotB)  regA = regA & reg_slotB
 
@@ -89,30 +87,27 @@ enum jvst_vm_op {
  * IIIIIAAAAAAAAAAAAABBBBBBBBBBBBBB
  *
  * I - instruction
- * A - first argument (13 bits, 14th bit is implicitly 0)
+ * A - first argument (13 bits)
  * B - second argument (14 bits)
  *
- * Arguments are 14-bits that specify registers with offsets, constant
- * pool values, or small literal integers
+ * Arguments are 13-bits that specify slots, small integer constants, or indexes into a
+ * constant pool
+ *
+ * For FLOAD and ILOAD, A must be a slot and B must be an index into the constant
+ * pool.
+ *
+ * For all other non-branching instructions, A and B can be either a slot or a constant
  *
  * 01234567890123
- * 000RRRRR000000	register R
- * 001SSSSSSSSSS0	slot S
- * 01IIIIIIIIIII0	const pool index I
- * 1VVVVVVVVVVVVS	literal value V, with sign bit S
+ * 0VVVVVVVVVVVVS	literal value V, with sign bit S
+ * 1LLLLLLLLLLLLL	slot offset L (used for slots or temporaries)
+ * 1IIIIIIIIIIIII	const pool index I
  *
  * Slots are positive and stored on the VM stack relative to %FP.
- * Currently 1024 slots are allowed in a single proc.
+ * Currently 4096 slots are allowed in a single proc.
  *
  * V  - bits associated with the value
- * F  - first flag bit
- * L  - second flag bit
  * S  - value "sign" bit (for constants)
- *
- * FF - 00 register
- * 	01 slot
- * 	10 literal
- * 	11 const pool
  *
  * Special encoding for branch instructions:
  *
@@ -123,10 +118,13 @@ enum jvst_vm_op {
  * number.
  */
 
+const char *
+jvst_op_name(enum jvst_vm_op op);
+
 static inline enum jvst_vm_op
 jvst_vm_decode_op(uint32_t op)
 {
-	STATIC_ASSERT(JVST_OP_MAX <= 0x20, opcodes_fit_in_five_bits);
+	STATIC_ASSERT(JVST_OP_MAX < 0x20, opcodes_fit_in_six_bits);
 	return (enum jvst_vm_op)(op & 0x1f);
 }
 
@@ -142,6 +140,12 @@ jvst_vm_decode_arg1(uint32_t op)
 	return (op >> 18) & 0x3fff;
 }
 
+#define VMLIT(x)      (jvst_vm_arg_lit((x)))
+#define VMSLOT(x)     (jvst_vm_arg_slot(JVST_VM_NUMREG + (x)))
+#define VMREG(x)      (jvst_vm_arg_slot((x)))
+#define VMOP(op,a,b)  (jvst_vm_encode2((op), (a), (b)))
+#define VMBR(op,addr) (jvst_vm_encodeb((op), (addr)))
+
 static inline uint32_t
 jvst_vm_decode_barg(uint32_t op)
 {
@@ -149,64 +153,45 @@ jvst_vm_decode_barg(uint32_t op)
 }
 
 static inline int
-jvst_vm_arg_isreg(uint32_t arg)
-{
-	return ((arg & 7) == 0) && ((arg >> 3) < 32);
-}
-
-static inline int
 jvst_vm_arg_isslot(uint32_t arg)
 {
-	return (arg & 7) == 4;
+	return (arg & 1);
 }
 
 static inline int
 jvst_vm_arg_ispool(uint32_t arg)
 {
-	return (arg & 3) == 2;
+	return (arg & 1);
 }
 
 static inline int
 jvst_vm_arg_islit(uint32_t arg)
 {
-	return (arg & 1) == 1;
-}
-
-static inline uint32_t
-jvst_vm_arg_reg(enum jvst_vm_register r)
-{
-	assert((int)r >= 0 && (int)r < 32);
-	return ((uint32_t)r) << 3;
-}
-
-static inline enum jvst_vm_register
-jvst_vm_arg_toreg(uint32_t arg)
-{
-	return (arg >> 3);
+	return (arg & 1) == 0;
 }
 
 static inline uint32_t
 jvst_vm_arg_slot(int sl)
 {
-	return ((uint32_t)sl << 3) | 0x4;
+	return ((uint32_t)sl << 1) | 1;
 }
 
 static inline int
 jvst_vm_arg_toslot(uint32_t arg)
 {
-	return (arg >> 3);
+	return (arg >> 1);
 }
 
 static inline uint32_t
 jvst_vm_arg_pool(int p)
 {
-	return ((uint32_t)p << 2) | 0x2;
+	return ((uint32_t)p << 1);
 }
 
 static inline int
 jvst_vm_arg_topool(uint32_t arg)
 {
-	return (arg >> 2);
+	return (arg >> 1);
 }
 
 enum {
@@ -225,7 +210,7 @@ jvst_vm_arg_lit(int p)
 	assert(p <= JVST_VM_MAXLIT);
 
 	raw = (uint32_t)p & JVST_VM_LITMASK;
-	return (raw<<1) | 1;
+	return (raw<<1);
 }
 
 static inline int
@@ -260,6 +245,18 @@ jvst_vm_tobarg(uint32_t arg)
 	return (v & JVST_VM_BARG_SIGN) ? -((v-1) ^ JVST_VM_BARG_MASK) : v;
 }
 
+static inline uint32_t
+jvst_vm_encodeb(enum jvst_vm_op op, long rel)
+{
+	return (uint32_t)op | (jvst_vm_barg(rel) << 5);
+}
+
+static inline uint32_t
+jvst_vm_encode2(enum jvst_vm_op op, uint16_t a, uint16_t b)
+{
+	return (uint32_t)op | ((uint32_t)a << 5) | ((uint32_t)b << 18);
+}
+
 struct jvst_vm_dfa {
 	size_t nstates;
 	size_t nedges;
@@ -270,19 +267,55 @@ struct jvst_vm_dfa {
 	int *endstates;
 };
 
+size_t
+jvst_vm_dfa_init(struct jvst_vm_dfa *dfa, size_t nstates, size_t nedges, size_t nends);
+
+void
+jvst_vm_dfa_copy(struct jvst_vm_dfa *dst, const struct jvst_vm_dfa *src);
+
+enum {
+	JVST_VM_DFA_START    =  0,
+	JVST_VM_DFA_NOMATCH  = -1,
+	JVST_VM_DFA_BADSTATE = -2,
+};
+
+/* Runs the DFA on the input in buf, starting with state st0.  Returns
+ * the DFA state after consuming all input in buf, or
+ * JVST_VM_DFA_NOMATCH if the DFA cannot match the input.
+ *
+ * The starting state is always zero.  st0 can be passed a value of
+ * JVST_VM_DFA_NOMATCH as well, in which case the function will just
+ * return.  If st0 is not a valid state or JVST_VM_DFA_NOMATCH, then
+ * JVST_VM_DFA_BADSTATE will be returned.
+ */
+int
+jvst_vm_dfa_run(const struct jvst_vm_dfa *dfa, int st0, const char *buf, size_t n);
+
+
+/* Returns if st1 is a valid end state of the DFA.  If st1 is a valid
+ * end state and datap is not NULL, *datap is set to the value
+ * associated with the end state.
+ */
+bool
+jvst_vm_dfa_endstate(const struct jvst_vm_dfa *dfa, int st1, int *datap);
+
+void
+jvst_vm_dfa_finalize(struct jvst_vm_dfa *dfa);
+
 struct jvst_vm_program {
+	size_t ncode;
+
 	size_t nfloat;
 	size_t nconst;
-	size_t nsplits;
-	size_t ndfas;
+	size_t nsplit;
+	size_t ndfa;
 
 	double  *fdata;
 	int64_t *cdata;
 	uint32_t *sdata;
-
 	struct jvst_vm_dfa *dfas;
 
-	uint32_t code[];
+	uint32_t *code;
 };
 
 struct jvst_vm_program *
@@ -295,30 +328,79 @@ int
 jvst_vm_writefile(FILE *f, const struct jvst_vm_program *prog);
 
 int
-jvst_vm_writebuf(struct sbuf *buf, const struct jvst_vm_program *prog);
+jvst_vm_program_writebuf(struct sbuf *buf, const struct jvst_vm_program *prog);
 
 void
-jvst_vm_dump(FILE *f, const struct jvst_vm_program *prog);
+jvst_vm_program_print(FILE *f, const struct jvst_vm_program *prog);
+
+int
+jvst_vm_program_dump(const struct jvst_vm_program *prog, char *buf, size_t nb);
 
 void
-jvst_vm_print(const struct jvst_vm_program *prog);
+jvst_vm_program_debug(const struct jvst_vm_program *prog);
+
+void
+jvst_vm_program_free(struct jvst_vm_program *prog);
+
+
+enum {
+	JVST_VM_PARSER_STKSIZE = 4096,
+	JVST_VM_PARSER_BUFSIZE = 4096,
+};
+
+union jvst_vm_stackval {
+	int64_t  i;
+	uint64_t u;
+	double   f;
+};
 
 struct jvst_vm {
 	struct jvst_vm_program *prog;
-	size_t maxstack;
-	uint64_t *stack;
 
-	// builtin registers
-	uint32_t pc;
-	uint32_t m;
-	uint32_t fp;
-	uint32_t sp;
-	uint32_t ireg[8];
-	double   freg[8];
+	size_t maxstack;
+	union jvst_vm_stackval *stack;
+
+	size_t nsplit;
+	size_t maxsplit;
+	struct jvst_vm *splits;
+
+	// for consuming nested structures
+	size_t nobj;
+	size_t narr;
 
 	struct sjp_parser parser;
+	struct sjp_event evt;
+
+	// machine state registers, when active they aren't stored on
+	// the stack
+	int64_t  r_flag;
+	uint32_t r_pc;
+	uint32_t r_fp;
+	uint32_t r_sp;
+
+	int nbracket;
+	int error;
+	int dfa_st;
+	int consumed; // flag if a token has been consumed or not
+
+	char pstack[JVST_VM_PARSER_STKSIZE];
+	char pbuf[JVST_VM_PARSER_BUFSIZE];
 };
 
+void
+jvst_vm_init_defaults(struct jvst_vm *vm, struct jvst_vm_program *prog);
+
+enum jvst_result
+jvst_vm_more(struct jvst_vm *vm, char *data, size_t n);
+
+enum jvst_result
+jvst_vm_close(struct jvst_vm *vm);
+
+void
+jvst_vm_finalize(struct jvst_vm *vm);
+
+void
+jvst_vm_dumpstate(struct jvst_vm *vm);
 
 #endif /* VALIDATE_VM_H */
 
