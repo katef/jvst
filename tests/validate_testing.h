@@ -31,6 +31,7 @@ struct arena_info {
         size_t nstmt;
         size_t nexpr;
 	size_t nmcases;
+	size_t nsplitinds;
 
 	/* OP related */
 	size_t nprog;
@@ -39,6 +40,7 @@ struct arena_info {
 	size_t nfloat;
 	size_t nconst;
 	size_t nsplit;
+	size_t nsplitmax;
 };
 
 struct ast_schema *
@@ -263,7 +265,7 @@ struct jvst_op_instr *
 newop_match(struct arena_info *A, int64_t dfa);
 
 struct jvst_op_instr *
-newop_call(struct arena_info *A, size_t frame);
+newop_call(struct arena_info *A, struct jvst_op_arg dest);
 
 struct jvst_op_instr *
 newop_incr(struct arena_info *A, size_t slot);
@@ -280,16 +282,16 @@ newop_instr2(struct arena_info *A, enum jvst_vm_op op,
 
 extern const struct jvst_op_instr *const oplabel;
 extern const struct jvst_op_instr *const opslots;
-extern const struct jvst_op_instr *const opfloat;
-extern const struct jvst_op_instr *const opconst;
-extern const struct jvst_op_instr *const opsplit;
-extern const struct jvst_op_instr *const opdfa;
+extern const struct jvst_op_proc *const opfloat;
+extern const struct jvst_op_proc *const opconst;
+extern const struct jvst_op_proc *const opsplit;
+extern const struct jvst_op_proc *const opdfa;
 
 static inline struct jvst_op_arg 
 oparg_make(enum jvst_op_arg_type type, int64_t ind) {
 	struct jvst_op_arg arg = { 
 		.type = type,
-		.index = ind,
+		.u = { .index = ind },
 	};
 	return arg;
 }
@@ -311,12 +313,6 @@ oparg_lit(int64_t v) { return oparg_make(JVST_VM_ARG_CONST,v); }
 
 static inline struct jvst_op_arg 
 oparg_tok(enum SJP_EVENT evt) { return oparg_make(JVST_VM_ARG_TOKTYPE,evt); }
-
-static inline struct jvst_op_arg 
-oparg_ftmp(int n) { return oparg_make(JVST_VM_ARG_FLOAT,n); }
-
-static inline struct jvst_op_arg 
-oparg_itmp(int n) { return oparg_make(JVST_VM_ARG_INT,n); }
 
 static inline struct jvst_op_arg 
 oparg_slot(int n) { return oparg_make(JVST_VM_ARG_SLOT,n); }

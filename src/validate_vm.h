@@ -10,47 +10,24 @@
 
 #include "sjp_parser.h"
 
+// Registers are just slots that are always allocated at the top of the stack framae
 enum jvst_vm_register {
-	JVST_VM_NONE = 0,	// Empty/omitted value
-
-	JVST_VM_FLAG,		// Comparison flag
-	JVST_VM_PC,		// Program counter register (read-only)
-	JVST_VM_FP,		// stack frame pointer
-	JVST_VM_SP,		// current stack pointer
+	// values used to return from a CALL
+	JVST_VM_PPC,		// previous program counter
+	JVST_VM_PFP,		// previous frame pointer
 
 	JVST_VM_TT,		// type of current token
 	JVST_VM_TNUM,		// floating point value of current token (if %TT is $NUMBER)
 	JVST_VM_TLEN,		// length of current token (if %TT is $STRING)
-	JVST_VM_TCOMPLETE,	// 1 if the curernt token is complete, 0 if it is a partial token
-
 	JVST_VM_M,		// Match case register
-
-	JVST_VM_IREG0,		// integer registers
-	JVST_VM_IREG1,
-	JVST_VM_IREG2,
-	JVST_VM_IREG3,
-	JVST_VM_IREG4,
-	JVST_VM_IREG5,
-	JVST_VM_IREG6,
-	JVST_VM_IREG7,
-
-	JVST_VM_FREG0,		// floating point registers
-	JVST_VM_FREG1,
-	JVST_VM_FREG2,
-	JVST_VM_FREG3,
-	JVST_VM_FREG4,
-	JVST_VM_FREG5,
-	JVST_VM_FREG6,
-	JVST_VM_FREG7,
-
 };
 
 enum jvst_vm_op {
 	JVST_OP_NOP	= 0,
 	JVST_OP_PROC,		// FRAME N sets up a call frame and reserves N 64-bit slots on the call stack
-	// JVST_OP_PUSH,		// PUSH N -- reserve N 64-bit slots on the call stack
+	// JVST_OP_PUSH,	// PUSH N -- reserve N 64-bit slots on the call stack
 
-	// Integer comparison operators.  Args may be either integer registers or immediate constants
+	// Integer comparison operators.  CMP(slot, slot_or_const)
 	JVST_OP_ILT,
 	JVST_OP_ILE,
 	JVST_OP_IEQ,
@@ -58,7 +35,7 @@ enum jvst_vm_op {
 	JVST_OP_IGT,
 	JVST_OP_INEQ,
 
-	// Floating point comparison operators.  Args must be floating point registers
+	// Floating point comparison operators.  Args must be slots
 	JVST_OP_FLT,
 	JVST_OP_FLE,
 	JVST_OP_FEQ,
@@ -66,7 +43,8 @@ enum jvst_vm_op {
 	JVST_OP_FGT,
 	JVST_OP_FNEQ,
 
-	JVST_OP_FINT,		// Checks if a float is an integer.  args: reg.  result: isnormal(reg) && (reg == ceil(reg)).
+	JVST_OP_FINT,		// Checks if a float value in a slot is an integer.
+				// args: slot.  result: isnormal(reg) && (reg == ceil(reg)).
 
 	JVST_OP_BR,		// Unconditional branch
 	JVST_OP_CBT,		// Conditional branch on true
@@ -75,7 +53,7 @@ enum jvst_vm_op {
 	JVST_OP_CALL,		// Calls into another proc.  Control will continue at the next 
 				// instruction if the proc returns VALID.
 
-	JVST_OP_SPLIT,		// SPLIT(split_ind, iregO)
+	JVST_OP_SPLIT,		// SPLIT(split_ind, slot)
 	JVST_OP_SPLITV,		// SPLITV(split_ind, slot0)
 
 	JVST_OP_TOKEN,		// Loads the next token
@@ -85,7 +63,9 @@ enum jvst_vm_op {
 
 	// Loads proc constants into registers
 	JVST_OP_FLOAD,		// Loads a float: FLOAD(fregO,const_index)	fregO = fconsts[const_index]
-	JVST_OP_ILOAD,		// Loads a size/int: ILOAD(iregO,const_or_slot) iregO = slot[ind] or iregO = iconsts[ind]
+	JVST_OP_ILOAD,		// Loads a size/int: ILOAD(iregO,const_or_slot) slotO = iconsts[ind]
+
+	JVST_OP_MOVE,		// Moves a slot to another slot
 
 	JVST_OP_INCR,		// Increments a slot: INCR(ind,reg_or_const)	slot[ind] = slot[ind] + reg_or_const
 
@@ -282,6 +262,7 @@ jvst_vm_tobarg(uint32_t arg)
 
 struct jvst_vm_dfa {
 	size_t nstates;
+	size_t nedges;
 	size_t nends;
 
 	int *offs;

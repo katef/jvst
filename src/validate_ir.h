@@ -68,7 +68,6 @@ enum jvst_ir_expr_type {
 
 	JVST_IR_EXPR_TOK_TYPE,		// tok:  token type of the current token
 	JVST_IR_EXPR_TOK_NUM,		// num:  number value of the current token
-	JVST_IR_EXPR_TOK_COMPLETE,	// bool: is the token complete?
 	JVST_IR_EXPR_TOK_LEN,		// size: length of current token
 
 	JVST_IR_EXPR_COUNT, 		// counter value.  args: index; result: size
@@ -248,7 +247,7 @@ struct jvst_ir_stmt {
 		struct {
 			size_t ind;
 			size_t nframes;
-			struct jvst_ir_stmt *frames;
+			size_t *frame_indices;
 			bool fixed_up;
 		} split_list;
 

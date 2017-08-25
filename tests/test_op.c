@@ -23,7 +23,7 @@ static int
 run_test(const char *fname, const struct op_test *t)
 {
   struct jvst_cnode *simplified, *canonified;
-  struct jvst_ir_stmt *ir;
+  struct jvst_ir_stmt *translated, *linearized, *flattened;
   struct jvst_op_program *result;
   int ret;
 
@@ -35,10 +35,12 @@ run_test(const char *fname, const struct op_test *t)
 
   simplified = jvst_cnode_simplify(t->ctree);
   canonified = jvst_cnode_canonify(simplified);
-  ir = jvst_ir_translate(canonified);
+  translated = jvst_ir_translate(canonified);
+  linearized = jvst_ir_linearize(translated);
+  flattened  = jvst_ir_flatten(linearized);
 
   // jvst_ir_print(ir);
-  result = jvst_op_assemble(ir);
+  result = jvst_op_assemble(flattened);
 
   // fprintf(stderr, "\n");
   // jvst_op_print(result);
@@ -160,19 +162,19 @@ test_op_empty_schema(void)
 
       newop_program(&A,
           newop_proc(&A,
-            oplabel, "entry",
+            oplabel, "entry_0",
             newop_instr(&A, JVST_OP_TOKEN),
             newop_cmp(&A, JVST_OP_IEQ, oparg_tt(), oparg_tok(SJP_OBJECT_END)),
-            newop_br(&A, JVST_OP_CBT, "invalid_1"),
+            newop_br(&A, JVST_OP_CBT, "invalid_1_3"),
 
-            oplabel, "L_2",
+            oplabel, "false_4",
             newop_cmp(&A, JVST_OP_IEQ, oparg_tt(), oparg_tok(SJP_ARRAY_END)),
-            newop_br(&A, JVST_OP_CBT, "invalid_1"),
+            newop_br(&A, JVST_OP_CBT, "invalid_1_3"),
 
-            oplabel, "valid",
+            oplabel, "valid_8",
             newop_instr(&A, JVST_OP_VALID),
 
-            oplabel, "invalid_1",
+            oplabel, "invalid_1_3",
             newop_invalid(&A, 1),
 
             NULL
@@ -207,15 +209,15 @@ static void test_op_type_constraints(void)
 
       newop_program(&A,
           newop_proc(&A,
-            oplabel, "entry",
+            oplabel, "entry_0",
             newop_instr(&A, JVST_OP_TOKEN),
             newop_cmp(&A, JVST_OP_IEQ, oparg_tt(), oparg_tok(SJP_NUMBER)),
-            newop_br(&A, JVST_OP_CBT, "valid"),
+            newop_br(&A, JVST_OP_CBT, "valid_3"),
 
-            oplabel, "invalid_1",
+            oplabel, "invalid_1_5",
             newop_invalid(&A, 1),
 
-            oplabel, "valid",
+            oplabel, "valid_3",
             newop_instr(&A, JVST_OP_VALID),
 
             NULL
@@ -240,15 +242,15 @@ static void test_op_type_constraints(void)
 
       newop_program(&A,
           newop_proc(&A,
-            oplabel, "entry",
+            oplabel, "entry_0",
             newop_instr(&A, JVST_OP_TOKEN),
             newop_cmp(&A, JVST_OP_IEQ, oparg_tt(), oparg_tok(SJP_OBJECT_BEG)),
-            newop_br(&A, JVST_OP_CBT, "valid"),
+            newop_br(&A, JVST_OP_CBT, "valid_3"),
 
-            oplabel, "invalid_1",
+            oplabel, "invalid_1_5",
             newop_invalid(&A, 1),
 
-            oplabel, "valid",
+            oplabel, "valid_3",
             newop_instr(&A, JVST_OP_VALID),
 
             NULL
@@ -279,19 +281,19 @@ static void test_op_type_constraints(void)
 
       newop_program(&A,
           newop_proc(&A,
-            oplabel, "entry",
+            oplabel, "entry_0",
             newop_instr(&A, JVST_OP_TOKEN),
             newop_cmp(&A, JVST_OP_IEQ, oparg_tt(), oparg_tok(SJP_STRING)),
-            newop_br(&A, JVST_OP_CBT, "valid"),
+            newop_br(&A, JVST_OP_CBT, "valid_3"),
 
-            oplabel, "L_2",
+            oplabel, "false_4",
             newop_cmp(&A, JVST_OP_IEQ, oparg_tt(), oparg_tok(SJP_OBJECT_BEG)),
-            newop_br(&A, JVST_OP_CBT, "valid"),
+            newop_br(&A, JVST_OP_CBT, "valid_3"),
 
-            oplabel, "invalid_1",
+            oplabel, "invalid_1_8",
             newop_invalid(&A, 1),
 
-            oplabel, "valid",
+            oplabel, "valid_3",
             newop_instr(&A, JVST_OP_VALID),
 
             NULL
@@ -335,22 +337,22 @@ static void test_op_type_integer(void)
 
       newop_program(&A,
           newop_proc(&A,
-            oplabel, "entry",
+            oplabel, "entry_0",
             newop_instr(&A, JVST_OP_TOKEN),
             newop_cmp(&A, JVST_OP_IEQ, oparg_tt(), oparg_tok(SJP_NUMBER)),
-            newop_br(&A, JVST_OP_CBT, "L_1"),
+            newop_br(&A, JVST_OP_CBT, "true_2"),
 
-            oplabel, "invalid_1",
+            oplabel, "invalid_1_9",
             newop_invalid(&A, 1),
 
-            oplabel, "L_1",
+            oplabel, "true_2",
             newop_cmp(&A, JVST_OP_FINT, oparg_tnum(), oparg_none()),
-            newop_br(&A, JVST_OP_CBT, "valid"),
+            newop_br(&A, JVST_OP_CBT, "valid_5"),
 
-            oplabel, "invalid_2",
+            oplabel, "invalid_2_7",
             newop_invalid(&A, 2),
 
-            oplabel, "valid",
+            oplabel, "valid_5",
             newop_instr(&A, JVST_OP_VALID),
 
             NULL
@@ -395,26 +397,29 @@ void test_op_minimum(void)
       ),
 
       newop_program(&A,
-          newop_proc(&A,
-            opfloat, 1.1,
+          opfloat, 1.1,
 
-            oplabel, "entry",
+          newop_proc(&A,
+            opslots, 2,
+
+            oplabel, "entry_0",
             newop_instr(&A, JVST_OP_TOKEN),
             newop_cmp(&A, JVST_OP_IEQ, oparg_tt(), oparg_tok(SJP_NUMBER)),
-            newop_br(&A, JVST_OP_CBT, "L_1"),
+            newop_br(&A, JVST_OP_CBT, "true_2"),
 
-            oplabel, "invalid_1",
+            oplabel, "invalid_1_9",
             newop_invalid(&A, 1),
 
-            oplabel, "L_1",
-            newop_load(&A, JVST_OP_FLOAD, oparg_ftmp(0), oparg_lit(0)),
-            newop_cmp(&A, JVST_OP_FGE, oparg_tnum(), oparg_ftmp(0)),
-            newop_br(&A, JVST_OP_CBT, "valid"),
+            oplabel, "true_2",
+            newop_load(&A, JVST_OP_MOVE, oparg_slot(1), oparg_tnum()),
+            newop_load(&A, JVST_OP_FLOAD, oparg_slot(0), oparg_lit(0)),
+            newop_cmp(&A, JVST_OP_FGE, oparg_slot(1), oparg_slot(0)),
+            newop_br(&A, JVST_OP_CBT, "valid_5"),
 
-            oplabel, "invalid_3",
+            oplabel, "invalid_3_7",
             newop_invalid(&A, 3),
 
-            oplabel, "valid",
+            oplabel, "valid_5",
             newop_instr(&A, JVST_OP_VALID),
 
             NULL
@@ -514,83 +519,92 @@ void test_op_properties(void)
       ),
 
       newop_program(&A,
-          newop_proc(&A,
-            opdfa, 1,
+          opdfa, 1,
 
-            oplabel, "entry",
+          newop_proc(&A,
+            opslots, 1,
+
+            oplabel, "entry_0",
             newop_instr(&A, JVST_OP_TOKEN),
             newop_cmp(&A, JVST_OP_IEQ, oparg_tt(), oparg_tok(SJP_OBJECT_BEG)),
-            newop_br(&A, JVST_OP_CBT, "loop_2"),
+            newop_br(&A, JVST_OP_CBT, "loop_4"),
 
-            oplabel, "L_11",
+            oplabel, "false_16",
             newop_cmp(&A, JVST_OP_IEQ, oparg_tt(), oparg_tok(SJP_OBJECT_END)),
-            newop_br(&A, JVST_OP_CBT, "invalid_1"),
+            newop_br(&A, JVST_OP_CBT, "invalid_1_19"),
 
-            oplabel, "L_14",
+            oplabel, "false_20",
             newop_cmp(&A, JVST_OP_IEQ, oparg_tt(), oparg_tok(SJP_ARRAY_END)),
-            newop_br(&A, JVST_OP_CBT, "invalid_1"),
+            newop_br(&A, JVST_OP_CBT, "invalid_1_19"),
 
-            oplabel, "valid",
+            oplabel, "valid_15",
             newop_instr(&A, JVST_OP_VALID),
 
-            oplabel, "invalid_1",
-            newop_invalid(&A, 1),
-
-            oplabel, "loop_2",
+            oplabel, "loop_4",
             newop_instr(&A, JVST_OP_TOKEN),
             newop_cmp(&A, JVST_OP_IEQ, oparg_tt(), oparg_tok(SJP_OBJECT_END)),
-            newop_br(&A, JVST_OP_CBT, "valid"),
+            newop_br(&A, JVST_OP_CBT, "valid_15"),
 
-            oplabel, "L_6",
+            oplabel, "false_7",
             newop_match(&A, 0),
-            newop_cmp(&A, JVST_OP_IEQ, oparg_m(), oparg_lit(0)),
-            newop_br(&A, JVST_OP_CBT, "M_8"),
-
-            newop_cmp(&A, JVST_OP_IEQ, oparg_m(), oparg_lit(1)),
+            newop_load(&A, JVST_OP_MOVE, oparg_slot(0), oparg_m()),
+            newop_cmp(&A, JVST_OP_IEQ, oparg_slot(0), oparg_lit(0)),
             newop_br(&A, JVST_OP_CBT, "M_9"),
 
-            newop_cmp(&A, JVST_OP_IEQ, oparg_m(), oparg_lit(2)),
+            oplabel, "M_next_10",
+            newop_cmp(&A, JVST_OP_IEQ, oparg_slot(0), oparg_lit(1)),
+            newop_br(&A, JVST_OP_CBT, "M_11"),
 
-            oplabel, "M_10",
-            newop_call(&A, 2),
-            newop_br(&A, JVST_OP_BR, "loop_2"),
+            oplabel, "M_next_12",
+            newop_cmp(&A, JVST_OP_IEQ, oparg_slot(0), oparg_lit(2)),
+            newop_br(&A, JVST_OP_CBT, "M_13"),
+
+            oplabel, "invalid_9_14",
+            newop_invalid(&A, 9),
 
             oplabel, "M_9",
-            newop_call(&A, 1),
-            newop_br(&A, JVST_OP_BR, "loop_2"),
-
-            oplabel, "M_8",
             newop_instr(&A, JVST_OP_CONSUME),
-            newop_br(&A, JVST_OP_BR, "loop_2"),
+            newop_br(&A, JVST_OP_BR, "loop_4"),
+
+            oplabel, "M_11",
+            newop_call(&A, oparg_lit(1)),
+            newop_br(&A, JVST_OP_BR, "loop_4"),
+
+            oplabel, "M_13",
+            newop_call(&A, oparg_lit(2)),
+            newop_br(&A, JVST_OP_BR, "loop_4"),
+
+            oplabel, "invalid_1_19",
+            newop_invalid(&A, 1),
 
             NULL
           ),
 
           newop_proc(&A,
-            oplabel, "entry",
+            oplabel, "entry_0",
             newop_instr(&A, JVST_OP_TOKEN),
             newop_cmp(&A, JVST_OP_IEQ, oparg_tt(), oparg_tok(SJP_STRING)),
-            newop_br(&A, JVST_OP_CBT, "valid"),
+            newop_br(&A, JVST_OP_CBT, "valid_3"),
 
-            oplabel, "invalid_1",
+            oplabel, "invalid_1_5",
             newop_invalid(&A, 1),
 
-            oplabel, "valid",
+            oplabel, "valid_3",
             newop_instr(&A, JVST_OP_VALID),
 
             NULL
           ),
 
           newop_proc(&A,
-            oplabel, "entry",
+            oplabel, "entry_0",
             newop_instr(&A, JVST_OP_TOKEN),
             newop_cmp(&A, JVST_OP_IEQ, oparg_tt(), oparg_tok(SJP_NUMBER)),
-            newop_br(&A, JVST_OP_CBT, "valid"),
+            newop_br(&A, JVST_OP_CBT, "valid_3"),
 
-            oplabel, "invalid_1",
+            oplabel, "invalid_1_5",
             newop_invalid(&A, 1),
 
-            oplabel, "valid",
+            oplabel, "valid_3",
             newop_instr(&A, JVST_OP_VALID),
 
             NULL
@@ -674,78 +688,86 @@ void test_op_properties(void)
       ),
 
       newop_program(&A,
+          opdfa, 1,
           newop_proc(&A,
-            opdfa, 1,
+            opslots, 1,
 
-            oplabel, "entry",
+            oplabel, "entry_0",
             newop_instr(&A, JVST_OP_TOKEN),
             newop_cmp(&A, JVST_OP_IEQ, oparg_tt(), oparg_tok(SJP_OBJECT_BEG)),
-            newop_br(&A, JVST_OP_CBT, "loop_2"),
+            newop_br(&A, JVST_OP_CBT, "loop_4"),
 
-            oplabel, "L_11",
+            oplabel, "false_16",
             newop_cmp(&A, JVST_OP_IEQ, oparg_tt(), oparg_tok(SJP_OBJECT_END)),
-            newop_br(&A, JVST_OP_CBT, "invalid_1"),
+            newop_br(&A, JVST_OP_CBT, "invalid_1_19"),
 
-            oplabel, "L_14",
+            oplabel, "false_20",
             newop_cmp(&A, JVST_OP_IEQ, oparg_tt(), oparg_tok(SJP_ARRAY_END)),
-            newop_br(&A, JVST_OP_CBT, "invalid_1"),
+            newop_br(&A, JVST_OP_CBT, "invalid_1_19"),
 
-            oplabel, "valid",
+            oplabel, "valid_15",
             newop_instr(&A, JVST_OP_VALID),
 
-            oplabel, "invalid_1",
-            newop_invalid(&A, 1),
-
-            oplabel, "loop_2",
+            oplabel, "loop_4",
             newop_instr(&A, JVST_OP_TOKEN),
             newop_cmp(&A, JVST_OP_IEQ, oparg_tt(), oparg_tok(SJP_OBJECT_END)),
-            newop_br(&A, JVST_OP_CBT, "valid"),
+            newop_br(&A, JVST_OP_CBT, "valid_15"),
 
-            oplabel, "L_6",
+            oplabel, "false_7",
             newop_match(&A, 0),
-            newop_cmp(&A, JVST_OP_IEQ, oparg_m(), oparg_lit(0)),
-            newop_br(&A, JVST_OP_CBT, "M_8"),
-
-            newop_cmp(&A, JVST_OP_IEQ, oparg_m(), oparg_lit(1)),
+            newop_load(&A, JVST_OP_MOVE, oparg_slot(0), oparg_m()),
+            newop_cmp(&A, JVST_OP_IEQ, oparg_slot(0), oparg_lit(0)),
             newop_br(&A, JVST_OP_CBT, "M_9"),
 
-            newop_cmp(&A, JVST_OP_IEQ, oparg_m(), oparg_lit(2)),
+            oplabel, "M_next_10",
+            newop_cmp(&A, JVST_OP_IEQ, oparg_slot(0), oparg_lit(1)),
+            newop_br(&A, JVST_OP_CBT, "M_11"),
 
-            oplabel, "M_10",
-            newop_call(&A, 2),
-            newop_br(&A, JVST_OP_BR, "loop_2"),
+            oplabel, "M_next_12",
+            newop_cmp(&A, JVST_OP_IEQ, oparg_slot(0), oparg_lit(2)),
+            newop_br(&A, JVST_OP_CBT, "M_13"),
+
+            oplabel, "invalid_9_14",
+            newop_invalid(&A, 9),
 
             oplabel, "M_9",
-            newop_call(&A, 1),
-            newop_br(&A, JVST_OP_BR, "loop_2"),
-
-            oplabel, "M_8",
             newop_instr(&A, JVST_OP_CONSUME),
-            newop_br(&A, JVST_OP_BR, "loop_2"),
+            newop_br(&A, JVST_OP_BR, "loop_4"),
 
-            NULL
-          ),
+            oplabel, "M_11",
+            newop_call(&A, oparg_lit(1)),
+            newop_br(&A, JVST_OP_BR, "loop_4"),
 
-          newop_proc(&A,
-            oplabel, "entry",
-            newop_instr(&A, JVST_OP_TOKEN),
+            oplabel, "M_13",
+            newop_call(&A, oparg_lit(2)),
+            newop_br(&A, JVST_OP_BR, "loop_4"),
 
-            oplabel, "invalid_1",
+            oplabel, "invalid_1_19",
             newop_invalid(&A, 1),
 
             NULL
           ),
 
           newop_proc(&A,
-            oplabel, "entry",
+            oplabel, "entry_0",
+            newop_instr(&A, JVST_OP_TOKEN),
+
+            oplabel, "invalid_1_1",
+            newop_invalid(&A, 1),
+
+            NULL
+          ),
+
+          newop_proc(&A,
+            oplabel, "entry_0",
             newop_instr(&A, JVST_OP_TOKEN),
             newop_cmp(&A, JVST_OP_IEQ, oparg_tt(), oparg_tok(SJP_NUMBER)),
-            newop_br(&A, JVST_OP_CBT, "valid"),
+            newop_br(&A, JVST_OP_CBT, "valid_3"),
 
-            oplabel, "invalid_1",
+            oplabel, "invalid_1_5",
             newop_invalid(&A, 1),
 
-            oplabel, "valid",
+            oplabel, "valid_3",
             newop_instr(&A, JVST_OP_VALID),
 
             NULL
@@ -853,52 +875,47 @@ void test_op_minmax_properties_1(void)
 
       newop_program(&A,
           newop_proc(&A,
-            opslots, 1,
-            opdfa, 1,
+            opslots, 4,
 
-            oplabel, "entry",
+            oplabel, "entry_0",
             newop_instr(&A, JVST_OP_TOKEN),
             newop_cmp(&A, JVST_OP_IEQ, oparg_tt(), oparg_tok(SJP_OBJECT_BEG)),
-            newop_br(&A, JVST_OP_CBT, "loop_2"),
+            newop_br(&A, JVST_OP_CBT, "loop_4"),
 
-            oplabel, "L_12",
+            oplabel, "false_13",
             newop_cmp(&A, JVST_OP_IEQ, oparg_tt(), oparg_tok(SJP_OBJECT_END)),
-            newop_br(&A, JVST_OP_CBT, "invalid_1"),
+            newop_br(&A, JVST_OP_CBT, "invalid_1_16"),
 
-            oplabel, "L_15",
+            oplabel, "false_17",
             newop_cmp(&A, JVST_OP_IEQ, oparg_tt(), oparg_tok(SJP_ARRAY_END)),
-            newop_br(&A, JVST_OP_CBT, "invalid_1"),
+            newop_br(&A, JVST_OP_CBT, "invalid_1_16"),
 
-            oplabel, "valid",
+            oplabel, "valid_10",
             newop_instr(&A, JVST_OP_VALID),
 
-            oplabel, "invalid_1",
-            newop_invalid(&A, 1),
-
-            oplabel, "loop_2",
+            oplabel, "loop_4",
             newop_instr(&A, JVST_OP_TOKEN),
             newop_cmp(&A, JVST_OP_IEQ, oparg_tt(), oparg_tok(SJP_OBJECT_END)),
-            newop_br(&A, JVST_OP_CBT, "loop_end_2"),
+            newop_br(&A, JVST_OP_CBT, "loop_end_3"),
 
-            oplabel, "L_6",
-            newop_match(&A, 0),
-            newop_cmp(&A, JVST_OP_IEQ, oparg_m(), oparg_lit(0)),
-
-            oplabel, "M_8",
+            oplabel, "false_7",
             newop_instr(&A, JVST_OP_CONSUME),
-
-            oplabel, "match_join_7",
+            newop_instr(&A, JVST_OP_CONSUME),
             newop_incr(&A, 0),
-            newop_br(&A, JVST_OP_BR, "loop_2"),
+            newop_br(&A, JVST_OP_BR, "loop_4"),
 
-            oplabel, "loop_end_2",
-            newop_load(&A, JVST_OP_ILOAD, oparg_itmp(0), oparg_slot(0)),
-            newop_load(&A, JVST_OP_ILOAD, oparg_itmp(1), oparg_lit(1)),
-            newop_cmp(&A, JVST_OP_IGE, oparg_itmp(0), oparg_itmp(1)),
-            newop_br(&A, JVST_OP_CBT, "valid"),
+            oplabel, "loop_end_3",
+            newop_load(&A, JVST_OP_MOVE, oparg_slot(1), oparg_slot(0)),
+            newop_load(&A, JVST_OP_MOVE, oparg_slot(3), oparg_slot(1)),
+            newop_load(&A, JVST_OP_MOVE, oparg_slot(2), oparg_lit(1)),
+            newop_cmp(&A, JVST_OP_IGE, oparg_slot(3), oparg_slot(2)),
+            newop_br(&A, JVST_OP_CBT, "valid_10"),
 
-            oplabel, "invalid_4",
+            oplabel, "invalid_4_12",
             newop_invalid(&A, 4),
+
+            oplabel, "invalid_1_16",
+            newop_invalid(&A, 1),
 
             NULL
           ),
@@ -977,52 +994,47 @@ void test_op_minmax_properties_1(void)
 
       newop_program(&A,
           newop_proc(&A,
-            opslots, 1,
-            opdfa, 1,
+            opslots, 4,
 
-            oplabel, "entry",
+            oplabel, "entry_0",
             newop_instr(&A, JVST_OP_TOKEN),
             newop_cmp(&A, JVST_OP_IEQ, oparg_tt(), oparg_tok(SJP_OBJECT_BEG)),
-            newop_br(&A, JVST_OP_CBT, "loop_2"),
+            newop_br(&A, JVST_OP_CBT, "loop_4"),
 
-            oplabel, "L_12",
+            oplabel, "false_13",
             newop_cmp(&A, JVST_OP_IEQ, oparg_tt(), oparg_tok(SJP_OBJECT_END)),
-            newop_br(&A, JVST_OP_CBT, "invalid_1"),
+            newop_br(&A, JVST_OP_CBT, "invalid_1_16"),
 
-            oplabel, "L_15",
+            oplabel, "false_17",
             newop_cmp(&A, JVST_OP_IEQ, oparg_tt(), oparg_tok(SJP_ARRAY_END)),
-            newop_br(&A, JVST_OP_CBT, "invalid_1"),
+            newop_br(&A, JVST_OP_CBT, "invalid_1_16"),
 
-            oplabel, "valid",
+            oplabel, "valid_10",
             newop_instr(&A, JVST_OP_VALID),
 
-            oplabel, "invalid_1",
-            newop_invalid(&A, 1),
-
-            oplabel, "loop_2",
+            oplabel, "loop_4",
             newop_instr(&A, JVST_OP_TOKEN),
             newop_cmp(&A, JVST_OP_IEQ, oparg_tt(), oparg_tok(SJP_OBJECT_END)),
-            newop_br(&A, JVST_OP_CBT, "loop_end_2"),
+            newop_br(&A, JVST_OP_CBT, "loop_end_3"),
 
-            oplabel, "L_6",
-            newop_match(&A, 0),
-            newop_cmp(&A, JVST_OP_IEQ, oparg_m(), oparg_lit(0)),
-
-            oplabel, "M_8",
+            oplabel, "false_7",
             newop_instr(&A, JVST_OP_CONSUME),
-
-            oplabel, "match_join_7",
+            newop_instr(&A, JVST_OP_CONSUME),
             newop_incr(&A, 0),
-            newop_br(&A, JVST_OP_BR, "loop_2"),
+            newop_br(&A, JVST_OP_BR, "loop_4"),
 
-            oplabel, "loop_end_2",
-            newop_load(&A, JVST_OP_ILOAD, oparg_itmp(0), oparg_slot(0)),
-            newop_load(&A, JVST_OP_ILOAD, oparg_itmp(1), oparg_lit(2)),
-            newop_cmp(&A, JVST_OP_ILE, oparg_itmp(0), oparg_itmp(1)),
-            newop_br(&A, JVST_OP_CBT, "valid"),
+            oplabel, "loop_end_3",
+            newop_load(&A, JVST_OP_MOVE, oparg_slot(1), oparg_slot(0)),
+            newop_load(&A, JVST_OP_MOVE, oparg_slot(3), oparg_slot(1)),
+            newop_load(&A, JVST_OP_MOVE, oparg_slot(2), oparg_lit(2)),
+            newop_cmp(&A, JVST_OP_ILE, oparg_slot(3), oparg_slot(2)),
+            newop_br(&A, JVST_OP_CBT, "valid_10"),
 
-            oplabel, "invalid_5",
+            oplabel, "invalid_5_12",
             newop_invalid(&A, 5),
+
+            oplabel, "invalid_1_16",
+            newop_invalid(&A, 1),
 
             NULL
           ),
@@ -1101,61 +1113,57 @@ void test_op_minmax_properties_1(void)
 
       newop_program(&A,
           newop_proc(&A,
-            opslots, 1,
-            opdfa, 1,
+            opslots, 7,
 
-            oplabel, "entry",
+            oplabel, "entry_0",
             newop_instr(&A, JVST_OP_TOKEN),
             newop_cmp(&A, JVST_OP_IEQ, oparg_tt(), oparg_tok(SJP_OBJECT_BEG)),
-            newop_br(&A, JVST_OP_CBT, "loop_2"),
+            newop_br(&A, JVST_OP_CBT, "loop_4"),
 
-            oplabel, "L_15",
+            oplabel, "false_17",
             newop_cmp(&A, JVST_OP_IEQ, oparg_tt(), oparg_tok(SJP_OBJECT_END)),
-            newop_br(&A, JVST_OP_CBT, "invalid_1"),
+            newop_br(&A, JVST_OP_CBT, "invalid_1_20"),
 
-            oplabel, "L_18",
+            oplabel, "false_21",
             newop_cmp(&A, JVST_OP_IEQ, oparg_tt(), oparg_tok(SJP_ARRAY_END)),
-            newop_br(&A, JVST_OP_CBT, "invalid_1"),
+            newop_br(&A, JVST_OP_CBT, "invalid_1_20"),
 
-            oplabel, "valid",
+            oplabel, "valid_12",
             newop_instr(&A, JVST_OP_VALID),
 
-            oplabel, "invalid_1",
-            newop_invalid(&A, 1),
-
-            oplabel, "loop_2",
+            oplabel, "loop_4",
             newop_instr(&A, JVST_OP_TOKEN),
             newop_cmp(&A, JVST_OP_IEQ, oparg_tt(), oparg_tok(SJP_OBJECT_END)),
-            newop_br(&A, JVST_OP_CBT, "loop_end_2"),
+            newop_br(&A, JVST_OP_CBT, "loop_end_3"),
 
-            oplabel, "L_6",
-            newop_match(&A, 0),
-            newop_cmp(&A, JVST_OP_IEQ, oparg_m(), oparg_lit(0)),
-
-            oplabel, "M_8",
+            oplabel, "false_7",
             newop_instr(&A, JVST_OP_CONSUME),
-
-            oplabel, "match_join_7",
+            newop_instr(&A, JVST_OP_CONSUME),
             newop_incr(&A, 0),
-            newop_br(&A, JVST_OP_BR, "loop_2"),
+            newop_br(&A, JVST_OP_BR, "loop_4"),
 
-            oplabel, "loop_end_2",
-            newop_load(&A, JVST_OP_ILOAD, oparg_itmp(2), oparg_slot(0)),
-            newop_load(&A, JVST_OP_ILOAD, oparg_itmp(3), oparg_lit(2)),
-            newop_cmp(&A, JVST_OP_IGE, oparg_itmp(2), oparg_itmp(3)),
-            newop_br(&A, JVST_OP_CBT, "L_10"),
+            oplabel, "loop_end_3",
+            newop_load(&A, JVST_OP_MOVE, oparg_slot(4), oparg_slot(0)),
+            newop_load(&A, JVST_OP_MOVE, oparg_slot(6), oparg_slot(4)),
+            newop_load(&A, JVST_OP_MOVE, oparg_slot(5), oparg_lit(2)),
+            newop_cmp(&A, JVST_OP_IGE, oparg_slot(6), oparg_slot(5)),
+            newop_br(&A, JVST_OP_CBT, "true_9"),
 
-            oplabel, "invalid_4",
+            oplabel, "invalid_4_16",
             newop_invalid(&A, 4),
 
-            oplabel, "L_10",
-            newop_load(&A, JVST_OP_ILOAD, oparg_itmp(0), oparg_slot(0)),
-            newop_load(&A, JVST_OP_ILOAD, oparg_itmp(1), oparg_lit(5)),
-            newop_cmp(&A, JVST_OP_ILE, oparg_itmp(0), oparg_itmp(1)),
-            newop_br(&A, JVST_OP_CBT, "valid"),
+            oplabel, "true_9",
+            newop_load(&A, JVST_OP_MOVE, oparg_slot(1), oparg_slot(0)),
+            newop_load(&A, JVST_OP_MOVE, oparg_slot(3), oparg_slot(1)),
+            newop_load(&A, JVST_OP_MOVE, oparg_slot(2), oparg_lit(5)),
+            newop_cmp(&A, JVST_OP_ILE, oparg_slot(3), oparg_slot(2)),
+            newop_br(&A, JVST_OP_CBT, "valid_12"),
 
-            oplabel, "invalid_5",
+            oplabel, "invalid_5_14",
             newop_invalid(&A, 5),
+
+            oplabel, "invalid_1_20",
+            newop_invalid(&A, 1),
 
             NULL
           ),
@@ -1267,96 +1275,105 @@ void test_op_minproperties_2(void)
       ),
 
       newop_program(&A,
-          newop_proc(&A,
-            opslots, 1,
-            opdfa, 1,
+          opdfa, 1,
 
-            oplabel, "entry",
+          newop_proc(&A,
+            opslots, 5,
+
+            oplabel, "entry_0",
             newop_instr(&A, JVST_OP_TOKEN),
             newop_cmp(&A, JVST_OP_IEQ, oparg_tt(), oparg_tok(SJP_OBJECT_BEG)),
-            newop_br(&A, JVST_OP_CBT, "loop_2"),
+            newop_br(&A, JVST_OP_CBT, "loop_4"),
 
-            oplabel, "L_14",
+            oplabel, "false_20",
             newop_cmp(&A, JVST_OP_IEQ, oparg_tt(), oparg_tok(SJP_OBJECT_END)),
-            newop_br(&A, JVST_OP_CBT, "invalid_1"),
+            newop_br(&A, JVST_OP_CBT, "invalid_1_23"),
 
-            oplabel, "L_17",
+            oplabel, "false_24",
             newop_cmp(&A, JVST_OP_IEQ, oparg_tt(), oparg_tok(SJP_ARRAY_END)),
-            newop_br(&A, JVST_OP_CBT, "invalid_1"),
+            newop_br(&A, JVST_OP_CBT, "invalid_1_23"),
 
-            oplabel, "valid",
+            oplabel, "valid_17",
             newop_instr(&A, JVST_OP_VALID),
 
-            oplabel, "invalid_1",
-            newop_invalid(&A, 1),
-
-            oplabel, "loop_2",
+            oplabel, "loop_4",
             newop_instr(&A, JVST_OP_TOKEN),
             newop_cmp(&A, JVST_OP_IEQ, oparg_tt(), oparg_tok(SJP_OBJECT_END)),
-            newop_br(&A, JVST_OP_CBT, "loop_end_2"),
+            newop_br(&A, JVST_OP_CBT, "loop_end_3"),
 
-            oplabel, "L_6",
+            oplabel, "false_7",
             newop_match(&A, 0),
-            newop_cmp(&A, JVST_OP_IEQ, oparg_m(), oparg_lit(0)),
-            newop_br(&A, JVST_OP_CBT, "M_8"),
-
-            newop_cmp(&A, JVST_OP_IEQ, oparg_m(), oparg_lit(1)),
+            newop_load(&A, JVST_OP_MOVE, oparg_slot(1), oparg_m()),
+            newop_cmp(&A, JVST_OP_IEQ, oparg_slot(1), oparg_lit(0)),
             newop_br(&A, JVST_OP_CBT, "M_9"),
 
-            newop_cmp(&A, JVST_OP_IEQ, oparg_m(), oparg_lit(2)),
+            oplabel, "M_next_10",
+            newop_cmp(&A, JVST_OP_IEQ, oparg_slot(1), oparg_lit(1)),
+            newop_br(&A, JVST_OP_CBT, "M_11"),
 
-            oplabel, "M_10",
-            newop_call(&A, 2),
+            oplabel, "M_next_12",
+            newop_cmp(&A, JVST_OP_IEQ, oparg_slot(1), oparg_lit(2)),
+            newop_br(&A, JVST_OP_CBT, "M_13"),
 
-            oplabel, "match_join_7",
-            newop_incr(&A, 0),
-            newop_br(&A, JVST_OP_BR, "loop_2"),
+            oplabel, "invalid_9_14",
+            newop_invalid(&A, 9),
 
             oplabel, "M_9",
-            newop_call(&A, 1),
-            newop_br(&A, JVST_OP_BR, "match_join_7"),
-
-            oplabel, "M_8",
             newop_instr(&A, JVST_OP_CONSUME),
-            newop_br(&A, JVST_OP_BR, "match_join_7"),
 
-            oplabel, "loop_end_2",
-            newop_load(&A, JVST_OP_ILOAD, oparg_itmp(0), oparg_slot(0)),
-            newop_load(&A, JVST_OP_ILOAD, oparg_itmp(1), oparg_lit(1)),
-            newop_cmp(&A, JVST_OP_IGE, oparg_itmp(0), oparg_itmp(1)),
-            newop_br(&A, JVST_OP_CBT, "valid"),
+            oplabel, "M_join_8",
+            newop_incr(&A, 0),
+            newop_br(&A, JVST_OP_BR, "loop_4"),
 
-            oplabel, "invalid_4",
+            oplabel, "M_11",
+            newop_call(&A, oparg_lit(1)),
+            newop_br(&A, JVST_OP_BR, "M_join_8"),
+
+            oplabel, "M_13",
+            newop_call(&A, oparg_lit(2)),
+            newop_br(&A, JVST_OP_BR, "M_join_8"),
+
+            oplabel, "loop_end_3",
+            newop_load(&A, JVST_OP_MOVE, oparg_slot(2), oparg_slot(0)),
+            newop_load(&A, JVST_OP_MOVE, oparg_slot(4), oparg_slot(2)),
+            newop_load(&A, JVST_OP_MOVE, oparg_slot(3), oparg_lit(1)),
+            newop_cmp(&A, JVST_OP_IGE, oparg_slot(4), oparg_slot(3)),
+            newop_br(&A, JVST_OP_CBT, "valid_17"),
+
+            oplabel, "invalid_4_19",
             newop_invalid(&A, 4),
+
+            oplabel, "invalid_1_23",
+            newop_invalid(&A, 1),
 
             NULL
           ),
 
           newop_proc(&A,
-            oplabel, "entry",
+            oplabel, "entry_0",
             newop_instr(&A, JVST_OP_TOKEN),
             newop_cmp(&A, JVST_OP_IEQ, oparg_tt(), oparg_tok(SJP_STRING)),
-            newop_br(&A, JVST_OP_CBT, "valid"),
+            newop_br(&A, JVST_OP_CBT, "valid_3"),
 
-            oplabel, "invalid_1",
+            oplabel, "invalid_1_5",
             newop_invalid(&A, 1),
 
-            oplabel, "valid",
+            oplabel, "valid_3",
             newop_instr(&A, JVST_OP_VALID),
 
             NULL
           ),
 
           newop_proc(&A,
-            oplabel, "entry",
+            oplabel, "entry_0",
             newop_instr(&A, JVST_OP_TOKEN),
             newop_cmp(&A, JVST_OP_IEQ, oparg_tt(), oparg_tok(SJP_NUMBER)),
-            newop_br(&A, JVST_OP_CBT, "valid"),
+            newop_br(&A, JVST_OP_CBT, "valid_3"),
 
-            oplabel, "invalid_1",
+            oplabel, "invalid_1_5",
             newop_invalid(&A, 1),
 
-            oplabel, "valid",
+            oplabel, "valid_3",
             newop_instr(&A, JVST_OP_VALID),
 
             NULL
@@ -1481,94 +1498,102 @@ void test_op_required(void)
       ),
 
       newop_program(&A,
-          newop_proc(&A,
-            opslots, 1,
-            opdfa, 1,
+          opdfa, 1,
 
-            oplabel, "entry",
+          newop_proc(&A,
+            opslots, 3,
+
+            oplabel, "entry_0",
             newop_instr(&A, JVST_OP_TOKEN),
             newop_cmp(&A, JVST_OP_IEQ, oparg_tt(), oparg_tok(SJP_OBJECT_BEG)),
-            newop_br(&A, JVST_OP_CBT, "loop_2"),
+            newop_br(&A, JVST_OP_CBT, "loop_4"),
 
-            oplabel, "L_14",
+            oplabel, "false_20",
             newop_cmp(&A, JVST_OP_IEQ, oparg_tt(), oparg_tok(SJP_OBJECT_END)),
-            newop_br(&A, JVST_OP_CBT, "invalid_1"),
+            newop_br(&A, JVST_OP_CBT, "invalid_1_23"),
 
-            oplabel, "L_17",
+            oplabel, "false_24",
             newop_cmp(&A, JVST_OP_IEQ, oparg_tt(), oparg_tok(SJP_ARRAY_END)),
-            newop_br(&A, JVST_OP_CBT, "invalid_1"),
+            newop_br(&A, JVST_OP_CBT, "invalid_1_23"),
 
-            oplabel, "valid",
+            oplabel, "valid_17",
             newop_instr(&A, JVST_OP_VALID),
 
-            oplabel, "invalid_1",
-            newop_invalid(&A, 1),
-
-            oplabel, "loop_2",
+            oplabel, "loop_4",
             newop_instr(&A, JVST_OP_TOKEN),
             newop_cmp(&A, JVST_OP_IEQ, oparg_tt(), oparg_tok(SJP_OBJECT_END)),
-            newop_br(&A, JVST_OP_CBT, "loop_end_2"),
+            newop_br(&A, JVST_OP_CBT, "loop_end_3"),
 
-            oplabel, "L_6",
+            oplabel, "false_7",
             newop_match(&A, 0),
-            newop_cmp(&A, JVST_OP_IEQ, oparg_m(), oparg_lit(0)),
-            newop_br(&A, JVST_OP_CBT, "M_8"),
-
-            newop_cmp(&A, JVST_OP_IEQ, oparg_m(), oparg_lit(1)),
+            newop_load(&A, JVST_OP_MOVE, oparg_slot(1), oparg_m()),
+            newop_cmp(&A, JVST_OP_IEQ, oparg_slot(1), oparg_lit(0)),
             newop_br(&A, JVST_OP_CBT, "M_9"),
 
-            newop_cmp(&A, JVST_OP_IEQ, oparg_m(), oparg_lit(2)),
+            oplabel, "M_next_10",
+            newop_cmp(&A, JVST_OP_IEQ, oparg_slot(1), oparg_lit(1)),
+            newop_br(&A, JVST_OP_CBT, "M_11"),
 
-            oplabel, "M_10",
-            newop_call(&A, 2),
-            newop_bitop(&A, JVST_OP_BSET, 0, 0),
-            newop_br(&A, JVST_OP_BR, "loop_2"),
+            oplabel, "M_next_12",
+            newop_cmp(&A, JVST_OP_IEQ, oparg_slot(1), oparg_lit(2)),
+            newop_br(&A, JVST_OP_CBT, "M_13"),
+
+            oplabel, "invalid_9_14",
+            newop_invalid(&A, 9),
 
             oplabel, "M_9",
-            newop_call(&A, 1),
-            newop_br(&A, JVST_OP_BR, "loop_2"),
-
-            oplabel, "M_8",
             newop_instr(&A, JVST_OP_CONSUME),
-            newop_br(&A, JVST_OP_BR, "loop_2"),
+            newop_br(&A, JVST_OP_BR, "loop_4"),
 
-            oplabel, "loop_end_2",
-            newop_load(&A, JVST_OP_ILOAD, oparg_itmp(0), oparg_slot(0)),
-            newop_instr2(&A, JVST_OP_BAND, oparg_itmp(0), oparg_lit(1)),
-            newop_cmp(&A, JVST_OP_IEQ, oparg_itmp(0), oparg_lit(1)),
-            newop_br(&A, JVST_OP_CBT, "valid"),
+            oplabel, "M_11",
+            newop_call(&A, oparg_lit(1)),
+            newop_br(&A, JVST_OP_BR, "loop_4"),
 
-            oplabel, "invalid_6",
+            oplabel, "M_13",
+            newop_call(&A, oparg_lit(2)),
+            newop_bitop(&A, JVST_OP_BSET, 0, 0),
+            newop_br(&A, JVST_OP_BR, "loop_4"),
+
+            oplabel, "loop_end_3",
+            newop_load(&A, JVST_OP_MOVE, oparg_slot(2), oparg_slot(0)),
+            newop_instr2(&A, JVST_OP_BAND, oparg_slot(2), oparg_lit(1)),
+            newop_cmp(&A, JVST_OP_IEQ, oparg_slot(2), oparg_lit(1)),
+            newop_br(&A, JVST_OP_CBT, "valid_17"),
+
+            oplabel, "invalid_6_19",
             newop_invalid(&A, 6),
+
+            oplabel, "invalid_1_23",
+            newop_invalid(&A, 1),
 
             NULL
           ),
 
           newop_proc(&A,
-            oplabel, "entry",
+            oplabel, "entry_0",
             newop_instr(&A, JVST_OP_TOKEN),
             newop_cmp(&A, JVST_OP_IEQ, oparg_tt(), oparg_tok(SJP_STRING)),
-            newop_br(&A, JVST_OP_CBT, "valid"),
+            newop_br(&A, JVST_OP_CBT, "valid_3"),
 
-            oplabel, "invalid_1",
+            oplabel, "invalid_1_5",
             newop_invalid(&A, 1),
 
-            oplabel, "valid",
+            oplabel, "valid_3",
             newop_instr(&A, JVST_OP_VALID),
 
             NULL
           ),
 
           newop_proc(&A,
-            oplabel, "entry",
+            oplabel, "entry_0",
             newop_instr(&A, JVST_OP_TOKEN),
             newop_cmp(&A, JVST_OP_IEQ, oparg_tt(), oparg_tok(SJP_NUMBER)),
-            newop_br(&A, JVST_OP_CBT, "valid"),
+            newop_br(&A, JVST_OP_CBT, "valid_3"),
 
-            oplabel, "invalid_1",
+            oplabel, "invalid_1_5",
             newop_invalid(&A, 1),
 
-            oplabel, "valid",
+            oplabel, "valid_3",
             newop_instr(&A, JVST_OP_VALID),
 
             NULL
@@ -1716,110 +1741,128 @@ void test_op_dependencies(void)
       ),
 
       newop_program(&A,
-          newop_proc(&A,
-            opsplit, 2, 1, 2,
+          opsplit, 2, 1, 2,
+          opdfa, 2,
 
-            oplabel, "entry",
+          newop_proc(&A,
+            opslots, 4,
+
+            oplabel, "entry_0",
             newop_instr(&A, JVST_OP_TOKEN),
             newop_cmp(&A, JVST_OP_IEQ, oparg_tt(), oparg_tok(SJP_OBJECT_BEG)),
-            newop_br(&A, JVST_OP_CBT, "L_1"),
+            newop_br(&A, JVST_OP_CBT, "true_2"),
 
-            oplabel, "L_5",
+            oplabel, "false_8",
             newop_cmp(&A, JVST_OP_IEQ, oparg_tt(), oparg_tok(SJP_OBJECT_END)),
-            newop_br(&A, JVST_OP_CBT, "invalid_1"),
+            newop_br(&A, JVST_OP_CBT, "invalid_1_11"),
 
-            oplabel, "L_8",
+            oplabel, "false_12",
             newop_cmp(&A, JVST_OP_IEQ, oparg_tt(), oparg_tok(SJP_ARRAY_END)),
-            newop_br(&A, JVST_OP_CBT, "invalid_1"),
+            newop_br(&A, JVST_OP_CBT, "invalid_1_11"),
 
-            oplabel, "valid",
+            oplabel, "valid_5",
             newop_instr(&A, JVST_OP_VALID),
 
-            oplabel, "invalid_1",
-            newop_invalid(&A, 1),
+            oplabel, "true_2",
+            newop_instr2(&A, JVST_OP_SPLIT, oparg_lit(0), oparg_slot(3)),
+            newop_load(&A, JVST_OP_MOVE, oparg_slot(0), oparg_slot(3)),
+            newop_load(&A, JVST_OP_MOVE, oparg_slot(2), oparg_slot(0)),
+            newop_load(&A, JVST_OP_MOVE, oparg_slot(1), oparg_lit(1)),
+            newop_cmp(&A, JVST_OP_IGE, oparg_slot(2), oparg_slot(1)),
+            newop_br(&A, JVST_OP_CBT, "valid_5"),
 
-            oplabel, "L_1",
-            newop_instr2(&A, JVST_OP_SPLIT, oparg_lit(0), oparg_itmp(0)),
-            newop_load(&A, JVST_OP_ILOAD, oparg_itmp(1), oparg_lit(1)),
-            newop_cmp(&A, JVST_OP_IGE, oparg_itmp(0), oparg_itmp(1)),
-            newop_br(&A, JVST_OP_CBT, "valid"),
-
-            oplabel, "invalid_7",
+            oplabel, "invalid_7_7",
             newop_invalid(&A, 7),
-            NULL
-          ),
 
-          newop_proc(&A,
-            opdfa, 1,
-
-            oplabel, "loop_0",
-            newop_instr(&A, JVST_OP_TOKEN),
-            newop_cmp(&A, JVST_OP_IEQ, oparg_tt(), oparg_tok(SJP_OBJECT_END)),
-            newop_br(&A, JVST_OP_CBT, "valid"),
-
-            oplabel, "L_4",
-            newop_match(&A, 0),
-            newop_cmp(&A, JVST_OP_IEQ, oparg_m(), oparg_lit(0)),
-            newop_br(&A, JVST_OP_CBT, "M_6"),
-
-            newop_cmp(&A, JVST_OP_IEQ, oparg_m(), oparg_lit(1)),
-
-            oplabel, "invalid_8",
-            newop_invalid(&A, 8),
-
-            oplabel, "M_6",
-            newop_instr(&A, JVST_OP_CONSUME),
-            newop_br(&A, JVST_OP_BR, "loop_0"),
-
-            oplabel, "valid",
-            newop_instr(&A, JVST_OP_VALID),
+            oplabel, "invalid_1_11",
+            newop_invalid(&A, 1),
 
             NULL
           ),
 
           newop_proc(&A,
             opslots, 1,
-            opdfa, 1,
 
-            oplabel, "loop_0",
+            oplabel, "loop_2",
             newop_instr(&A, JVST_OP_TOKEN),
             newop_cmp(&A, JVST_OP_IEQ, oparg_tt(), oparg_tok(SJP_OBJECT_END)),
-            newop_br(&A, JVST_OP_CBT, "loop_end_0"),
+            newop_br(&A, JVST_OP_CBT, "valid_12"),
 
-            oplabel, "L_4",
+            oplabel, "false_5",
             newop_match(&A, 0),
-            newop_cmp(&A, JVST_OP_IEQ, oparg_m(), oparg_lit(0)),
-            newop_br(&A, JVST_OP_CBT, "M_6"),
-
-            newop_cmp(&A, JVST_OP_IEQ, oparg_m(), oparg_lit(1)),
+            newop_load(&A, JVST_OP_MOVE, oparg_slot(0), oparg_m()),
+            newop_cmp(&A, JVST_OP_IEQ, oparg_slot(0), oparg_lit(0)),
             newop_br(&A, JVST_OP_CBT, "M_7"),
 
-            newop_cmp(&A, JVST_OP_IEQ, oparg_m(), oparg_lit(2)),
+            oplabel, "M_next_8",
+            newop_cmp(&A, JVST_OP_IEQ, oparg_slot(0), oparg_lit(1)),
+            newop_br(&A, JVST_OP_CBT, "invalid_8_10"),
 
-            oplabel, "M_8",
-            newop_bitop(&A, JVST_OP_BSET, 0, 1),
-            newop_instr(&A, JVST_OP_CONSUME),
-            newop_br(&A, JVST_OP_BR, "loop_0"),
+            oplabel, "invalid_9_11",
+            newop_invalid(&A, 9),
 
             oplabel, "M_7",
+            newop_instr(&A, JVST_OP_CONSUME),
+            newop_br(&A, JVST_OP_BR, "loop_2"),
+
+            oplabel, "valid_12",
+            newop_instr(&A, JVST_OP_VALID),
+
+            oplabel, "invalid_8_10",
+            newop_invalid(&A, 8),
+
+            NULL
+          ),
+
+          newop_proc(&A,
+            opslots, 3,
+
+            oplabel, "loop_2",
+            newop_instr(&A, JVST_OP_TOKEN),
+            newop_cmp(&A, JVST_OP_IEQ, oparg_tt(), oparg_tok(SJP_OBJECT_END)),
+            newop_br(&A, JVST_OP_CBT, "loop_end_1"),
+
+            oplabel, "false_5",
+            newop_match(&A, 1),
+            newop_load(&A, JVST_OP_MOVE, oparg_slot(1), oparg_m()),
+            newop_cmp(&A, JVST_OP_IEQ, oparg_slot(1), oparg_lit(0)),
+            newop_br(&A, JVST_OP_CBT, "M_7"),
+
+            oplabel, "M_next_8",
+            newop_cmp(&A, JVST_OP_IEQ, oparg_slot(1), oparg_lit(1)),
+            newop_br(&A, JVST_OP_CBT, "M_9"),
+
+            oplabel, "M_next_10",
+            newop_cmp(&A, JVST_OP_IEQ, oparg_slot(1), oparg_lit(2)),
+            newop_br(&A, JVST_OP_CBT, "M_11"),
+
+            oplabel, "invalid_9_12",
+            newop_invalid(&A, 9),
+
+            oplabel, "M_7",
+            newop_instr(&A, JVST_OP_CONSUME),
+            newop_br(&A, JVST_OP_BR, "loop_2"),
+
+            oplabel, "M_9",
             newop_bitop(&A, JVST_OP_BSET, 0, 0),
             newop_instr(&A, JVST_OP_CONSUME),
-            newop_br(&A, JVST_OP_BR, "loop_0"),
+            newop_br(&A, JVST_OP_BR, "loop_2"),
 
-            oplabel, "M_6",
+            oplabel, "M_11",
+            newop_bitop(&A, JVST_OP_BSET, 0, 1),
             newop_instr(&A, JVST_OP_CONSUME),
-            newop_br(&A, JVST_OP_BR, "loop_0"),
+            newop_br(&A, JVST_OP_BR, "loop_2"),
 
-            oplabel, "loop_end_0",
-            newop_load(&A, JVST_OP_ILOAD, oparg_itmp(0), oparg_slot(0)),
-            newop_instr2(&A, JVST_OP_BAND, oparg_itmp(0), oparg_lit(3)),
-            newop_cmp(&A, JVST_OP_IEQ, oparg_itmp(0), oparg_lit(3)),
-            newop_br(&A, JVST_OP_CBT, "valid"),
+            oplabel, "loop_end_1",
+            newop_load(&A, JVST_OP_MOVE, oparg_slot(2), oparg_slot(0)),
+            newop_instr2(&A, JVST_OP_BAND, oparg_slot(2), oparg_lit(3)),
+            newop_cmp(&A, JVST_OP_IEQ, oparg_slot(2), oparg_lit(3)),
+            newop_br(&A, JVST_OP_CBT, "valid_15"),
 
-            oplabel, "invalid_6",
+            oplabel, "invalid_6_17",
             newop_invalid(&A, 6),
 
-            oplabel, "valid",
+            oplabel, "valid_15",
             newop_instr(&A, JVST_OP_VALID),
 
             NULL
@@ -1964,118 +2007,137 @@ void test_op_dependencies(void)
       ),
 
       newop_program(&A,
-          newop_proc(&A,
-            opsplit, 2, 1, 2,
+          opsplit, 2, 1, 2,
+          opdfa, 2,
 
-            oplabel, "entry",
+          newop_proc(&A,
+            opslots, 4,
+
+            oplabel, "entry_0",
             newop_instr(&A, JVST_OP_TOKEN),
             newop_cmp(&A, JVST_OP_IEQ, oparg_tt(), oparg_tok(SJP_OBJECT_BEG)),
-            newop_br(&A, JVST_OP_CBT, "L_1"),
+            newop_br(&A, JVST_OP_CBT, "true_2"),
 
-            oplabel, "L_5",
+            oplabel, "false_8",
             newop_cmp(&A, JVST_OP_IEQ, oparg_tt(), oparg_tok(SJP_OBJECT_END)),
-            newop_br(&A, JVST_OP_CBT, "invalid_1"),
+            newop_br(&A, JVST_OP_CBT, "invalid_1_11"),
 
-            oplabel, "L_8",
+            oplabel, "false_12",
             newop_cmp(&A, JVST_OP_IEQ, oparg_tt(), oparg_tok(SJP_ARRAY_END)),
-            newop_br(&A, JVST_OP_CBT, "invalid_1"),
+            newop_br(&A, JVST_OP_CBT, "invalid_1_11"),
 
-            oplabel, "valid",
+            oplabel, "valid_5",
             newop_instr(&A, JVST_OP_VALID),
 
-            oplabel, "invalid_1",
+            oplabel, "true_2",
+            newop_instr2(&A, JVST_OP_SPLIT, oparg_lit(0), oparg_slot(3)),
+            newop_load(&A, JVST_OP_MOVE, oparg_slot(0), oparg_slot(3)),
+            newop_load(&A, JVST_OP_MOVE, oparg_slot(2), oparg_slot(0)),
+            newop_load(&A, JVST_OP_MOVE, oparg_slot(1), oparg_lit(1)),
+            newop_cmp(&A, JVST_OP_IGE, oparg_slot(2), oparg_slot(1)),
+            newop_br(&A, JVST_OP_CBT, "valid_5"),
+
+            oplabel, "invalid_7_7",
+            newop_invalid(&A, 7),
+
+            oplabel, "invalid_1_11",
             newop_invalid(&A, 1),
 
-            oplabel, "L_1",
-            newop_instr2(&A, JVST_OP_SPLIT, oparg_lit(0), oparg_itmp(0)),
-            newop_load(&A, JVST_OP_ILOAD, oparg_itmp(1), oparg_lit(1)),
-            newop_cmp(&A, JVST_OP_IGE, oparg_itmp(0), oparg_itmp(1)),
-            newop_br(&A, JVST_OP_CBT, "valid"),
-
-            oplabel, "invalid_7",
-            newop_invalid(&A, 7),
             NULL
           ),
 
           newop_proc(&A,
-            opdfa, 1,
+            opslots, 1, 
 
-            oplabel, "loop_0",
+            oplabel, "loop_2",
             newop_instr(&A, JVST_OP_TOKEN),
             newop_cmp(&A, JVST_OP_IEQ, oparg_tt(), oparg_tok(SJP_OBJECT_END)),
-            newop_br(&A, JVST_OP_CBT, "valid"),
+            newop_br(&A, JVST_OP_CBT, "valid_12"),
 
-            oplabel, "L_4",
+            oplabel, "false_5",
             newop_match(&A, 0),
-            newop_cmp(&A, JVST_OP_IEQ, oparg_m(), oparg_lit(0)),
-            newop_br(&A, JVST_OP_CBT, "M_6"),
-
-            newop_cmp(&A, JVST_OP_IEQ, oparg_m(), oparg_lit(1)),
-
-            oplabel, "invalid_8",
-            newop_invalid(&A, 8),
-
-            oplabel, "M_6",
-            newop_instr(&A, JVST_OP_CONSUME),
-            newop_br(&A, JVST_OP_BR, "loop_0"),
-
-            oplabel, "valid",
-            newop_instr(&A, JVST_OP_VALID),
-
-            NULL
-          ),
-
-          newop_proc(&A,
-            opslots, 1,
-            opdfa, 1,
-
-            oplabel, "loop_0",
-            newop_instr(&A, JVST_OP_TOKEN),
-            newop_cmp(&A, JVST_OP_IEQ, oparg_tt(), oparg_tok(SJP_OBJECT_END)),
-            newop_br(&A, JVST_OP_CBT, "loop_end_0"),
-
-            oplabel, "L_4",
-            newop_match(&A, 0),
-            newop_cmp(&A, JVST_OP_IEQ, oparg_m(), oparg_lit(0)),
-            newop_br(&A, JVST_OP_CBT, "M_6"),
-
-            newop_cmp(&A, JVST_OP_IEQ, oparg_m(), oparg_lit(1)),
+            newop_load(&A, JVST_OP_MOVE, oparg_slot(0), oparg_m()),
+            newop_cmp(&A, JVST_OP_IEQ, oparg_slot(0), oparg_lit(0)),
             newop_br(&A, JVST_OP_CBT, "M_7"),
 
-            newop_cmp(&A, JVST_OP_IEQ, oparg_m(), oparg_lit(2)),
-            newop_br(&A, JVST_OP_CBT, "M_8"),
+            oplabel, "M_next_8",
+            newop_cmp(&A, JVST_OP_IEQ, oparg_slot(0), oparg_lit(1)),
+            newop_br(&A, JVST_OP_CBT, "invalid_8_10"),
 
-            newop_cmp(&A, JVST_OP_IEQ, oparg_m(), oparg_lit(3)),
-
-            oplabel, "M_9",
-            newop_bitop(&A, JVST_OP_BSET, 0, 0),
-            newop_instr(&A, JVST_OP_CONSUME),
-            newop_br(&A, JVST_OP_BR, "loop_0"),
-
-            oplabel, "M_8",
-            newop_bitop(&A, JVST_OP_BSET, 0, 1),
-            newop_instr(&A, JVST_OP_CONSUME),
-            newop_br(&A, JVST_OP_BR, "loop_0"),
+            oplabel, "invalid_9_11",
+            newop_invalid(&A, 9),
 
             oplabel, "M_7",
+            newop_instr(&A, JVST_OP_CONSUME),
+            newop_br(&A, JVST_OP_BR, "loop_2"),
+
+            oplabel, "valid_12",
+            newop_instr(&A, JVST_OP_VALID),
+
+            oplabel, "invalid_8_10",
+            newop_invalid(&A, 8),
+
+            NULL
+          ),
+
+          newop_proc(&A,
+            opslots, 3,
+
+            oplabel, "loop_2",
+            newop_instr(&A, JVST_OP_TOKEN),
+            newop_cmp(&A, JVST_OP_IEQ, oparg_tt(), oparg_tok(SJP_OBJECT_END)),
+            newop_br(&A, JVST_OP_CBT, "loop_end_1"),
+
+            oplabel, "false_5",
+            newop_match(&A, 1),
+            newop_load(&A, JVST_OP_MOVE, oparg_slot(1), oparg_m()),
+            newop_cmp(&A, JVST_OP_IEQ, oparg_slot(1), oparg_lit(0)),
+            newop_br(&A, JVST_OP_CBT, "M_7"),
+
+            oplabel, "M_next_8",
+            newop_cmp(&A, JVST_OP_IEQ, oparg_slot(1), oparg_lit(1)),
+            newop_br(&A, JVST_OP_CBT, "M_9"),
+
+            oplabel, "M_next_10",
+            newop_cmp(&A, JVST_OP_IEQ, oparg_slot(1), oparg_lit(2)),
+            newop_br(&A, JVST_OP_CBT, "M_11"),
+
+            oplabel, "M_next_12",
+            newop_cmp(&A, JVST_OP_IEQ, oparg_slot(1), oparg_lit(3)),
+            newop_br(&A, JVST_OP_CBT, "M_13"),
+
+            oplabel, "invalid_9_14",
+            newop_invalid(&A, 9),
+
+            oplabel, "M_7",
+            newop_instr(&A, JVST_OP_CONSUME),
+            newop_br(&A, JVST_OP_BR, "loop_2"),
+
+            oplabel, "M_9",
             newop_bitop(&A, JVST_OP_BSET, 0, 2),
             newop_instr(&A, JVST_OP_CONSUME),
-            newop_br(&A, JVST_OP_BR, "loop_0"),
+            newop_br(&A, JVST_OP_BR, "loop_2"),
 
-            oplabel, "M_6",
+            oplabel, "M_11",
+            newop_bitop(&A, JVST_OP_BSET, 0, 1),
             newop_instr(&A, JVST_OP_CONSUME),
-            newop_br(&A, JVST_OP_BR, "loop_0"),
+            newop_br(&A, JVST_OP_BR, "loop_2"),
 
-            oplabel, "loop_end_0",
-            newop_load(&A, JVST_OP_ILOAD, oparg_itmp(0), oparg_slot(0)),
-            newop_instr2(&A, JVST_OP_BAND, oparg_itmp(0), oparg_lit(7)),
-            newop_cmp(&A, JVST_OP_IEQ, oparg_itmp(0), oparg_lit(7)),
-            newop_br(&A, JVST_OP_CBT, "valid"),
+            oplabel, "M_13",
+            newop_bitop(&A, JVST_OP_BSET, 0, 0),
+            newop_instr(&A, JVST_OP_CONSUME),
+            newop_br(&A, JVST_OP_BR, "loop_2"),
 
-            oplabel, "invalid_6",
+            oplabel, "loop_end_1",
+            newop_load(&A, JVST_OP_MOVE, oparg_slot(2), oparg_slot(0)),
+            newop_instr2(&A, JVST_OP_BAND, oparg_slot(2), oparg_lit(7)),
+            newop_cmp(&A, JVST_OP_IEQ, oparg_slot(2), oparg_lit(7)),
+            newop_br(&A, JVST_OP_CBT, "valid_17"),
+
+            oplabel, "invalid_6_19",
             newop_invalid(&A, 6),
 
-            oplabel, "valid",
+            oplabel, "valid_17",
             newop_instr(&A, JVST_OP_VALID),
 
             NULL
@@ -2328,216 +2390,242 @@ void test_op_dependencies(void)
       ),
 
       newop_program(&A,
-          newop_proc(&A,
-            opsplit, 4, 1, 2, 3, 4,
-            opslots, 1,
+          opsplit, 4, 1,2,3,4,
+          opdfa, 4,
 
-            oplabel, "entry",
+          newop_proc(&A,
+            opslots, 5,
+
+            oplabel, "entry_0",
             newop_instr(&A, JVST_OP_TOKEN),
             newop_cmp(&A, JVST_OP_IEQ, oparg_tt(), oparg_tok(SJP_OBJECT_BEG)),
-            newop_br(&A, JVST_OP_CBT, "L_1"),
+            newop_br(&A, JVST_OP_CBT, "true_2"),
 
-            oplabel, "L_8",
+            oplabel, "false_11",
             newop_cmp(&A, JVST_OP_IEQ, oparg_tt(), oparg_tok(SJP_OBJECT_END)),
-            newop_br(&A, JVST_OP_CBT, "invalid_1"),
+            newop_br(&A, JVST_OP_CBT, "invalid_1_14"),
 
-            oplabel, "L_11",
+            oplabel, "false_15",
             newop_cmp(&A, JVST_OP_IEQ, oparg_tt(), oparg_tok(SJP_ARRAY_END)),
-            newop_br(&A, JVST_OP_CBT, "invalid_1"),
+            newop_br(&A, JVST_OP_CBT, "invalid_1_14"),
 
-            oplabel, "valid",
+            oplabel, "valid_5",
             newop_instr(&A, JVST_OP_VALID),
 
-            oplabel, "invalid_1",
-            newop_invalid(&A, 1),
-
-            oplabel, "L_1",
+            oplabel, "true_2",
             newop_instr2(&A, JVST_OP_SPLITV, oparg_lit(0), oparg_slot(0)),
-            newop_load(&A, JVST_OP_ILOAD, oparg_itmp(0), oparg_slot(0)),
-            newop_instr2(&A, JVST_OP_BAND, oparg_itmp(0), oparg_lit(1)),
-            newop_cmp(&A, JVST_OP_INEQ, oparg_itmp(0), oparg_lit(0)),
-            newop_br(&A, JVST_OP_CBT, "and_true_5"),
+            newop_load(&A, JVST_OP_MOVE, oparg_slot(1), oparg_slot(0)),
+            newop_instr2(&A, JVST_OP_BAND, oparg_slot(1), oparg_lit(1)),
+            newop_cmp(&A, JVST_OP_INEQ, oparg_slot(1), oparg_lit(0)),
+            newop_br(&A, JVST_OP_CBT, "and_true_8"),
 
-            oplabel, "or_false_6",
-            newop_load(&A, JVST_OP_ILOAD, oparg_itmp(1), oparg_slot(0)),
-            newop_instr2(&A, JVST_OP_BAND, oparg_itmp(1), oparg_lit(2)),
-            newop_cmp(&A, JVST_OP_IEQ, oparg_itmp(1), oparg_lit(2)),
-            newop_br(&A, JVST_OP_CBT, "and_true_5"),
+            oplabel, "or_false_9",
+            newop_load(&A, JVST_OP_MOVE, oparg_slot(2), oparg_slot(0)),
+            newop_instr2(&A, JVST_OP_BAND, oparg_slot(2), oparg_lit(2)),
+            newop_cmp(&A, JVST_OP_IEQ, oparg_slot(2), oparg_lit(2)),
+            newop_br(&A, JVST_OP_CBT, "and_true_8"),
 
-            oplabel, "invalid_7",
+            oplabel, "invalid_7_7",
             newop_invalid(&A, 7),
 
-            oplabel, "and_true_5",
-            newop_load(&A, JVST_OP_ILOAD, oparg_itmp(2), oparg_slot(0)),
-            newop_instr2(&A, JVST_OP_BAND, oparg_itmp(2), oparg_lit(4)),
-            newop_cmp(&A, JVST_OP_INEQ, oparg_itmp(2), oparg_lit(0)),
-            newop_br(&A, JVST_OP_CBT, "valid"),
+            oplabel, "and_true_8",
+            newop_load(&A, JVST_OP_MOVE, oparg_slot(3), oparg_slot(0)),
+            newop_instr2(&A, JVST_OP_BAND, oparg_slot(3), oparg_lit(4)),
+            newop_cmp(&A, JVST_OP_INEQ, oparg_slot(3), oparg_lit(0)),
+            newop_br(&A, JVST_OP_CBT, "valid_5"),
 
-            oplabel, "or_false_7",
-            newop_load(&A, JVST_OP_ILOAD, oparg_itmp(3), oparg_slot(0)),
-            newop_instr2(&A, JVST_OP_BAND, oparg_itmp(3), oparg_lit(8)),
-            newop_cmp(&A, JVST_OP_IEQ, oparg_itmp(3), oparg_lit(8)),
-            newop_br(&A, JVST_OP_CBT, "valid"),
-            newop_br(&A, JVST_OP_BR, "invalid_7"),
+            oplabel, "or_false_10",
+            newop_load(&A, JVST_OP_MOVE, oparg_slot(4), oparg_slot(0)),
+            newop_instr2(&A, JVST_OP_BAND, oparg_slot(4), oparg_lit(8)),
+            newop_cmp(&A, JVST_OP_IEQ, oparg_slot(4), oparg_lit(8)),
+            newop_br(&A, JVST_OP_CBT, "valid_5"),
+            newop_br(&A, JVST_OP_BR, "invalid_7_7"),
 
-            NULL
-          ),
-
-          newop_proc(&A,
-            opdfa, 1,
-
-            oplabel, "loop_0",
-            newop_instr(&A, JVST_OP_TOKEN),
-            newop_cmp(&A, JVST_OP_IEQ, oparg_tt(), oparg_tok(SJP_OBJECT_END)),
-            newop_br(&A, JVST_OP_CBT, "valid"),
-
-            oplabel, "L_4",
-            newop_match(&A, 0),
-            newop_cmp(&A, JVST_OP_IEQ, oparg_m(), oparg_lit(0)),
-            newop_br(&A, JVST_OP_CBT, "M_6"),
-
-            newop_cmp(&A, JVST_OP_IEQ, oparg_m(), oparg_lit(1)),
-
-            oplabel, "invalid_8",
-            newop_invalid(&A, 8),
-
-            oplabel, "M_6",
-            newop_instr(&A, JVST_OP_CONSUME),
-            newop_br(&A, JVST_OP_BR, "loop_0"),
-
-            oplabel, "valid",
-            newop_instr(&A, JVST_OP_VALID),
+            oplabel, "invalid_1_14",
+            newop_invalid(&A, 1),
 
             NULL
           ),
 
           newop_proc(&A,
             opslots, 1,
-            opdfa, 1,
-
-            oplabel, "loop_0",
+            oplabel, "loop_2",
             newop_instr(&A, JVST_OP_TOKEN),
             newop_cmp(&A, JVST_OP_IEQ, oparg_tt(), oparg_tok(SJP_OBJECT_END)),
-            newop_br(&A, JVST_OP_CBT, "loop_end_0"),
+            newop_br(&A, JVST_OP_CBT, "valid_12"),
 
-            oplabel, "L_4",
+            oplabel, "false_5",
             newop_match(&A, 0),
-            newop_cmp(&A, JVST_OP_IEQ, oparg_m(), oparg_lit(0)),
-            newop_br(&A, JVST_OP_CBT, "M_6"),
-
-            newop_cmp(&A, JVST_OP_IEQ, oparg_m(), oparg_lit(1)),
+            newop_load(&A, JVST_OP_MOVE, oparg_slot(0), oparg_m()),
+            newop_cmp(&A, JVST_OP_IEQ, oparg_slot(0), oparg_lit(0)),
             newop_br(&A, JVST_OP_CBT, "M_7"),
 
-            newop_cmp(&A, JVST_OP_IEQ, oparg_m(), oparg_lit(2)),
-            newop_br(&A, JVST_OP_CBT, "M_8"),
+            oplabel, "M_next_8",
+            newop_cmp(&A, JVST_OP_IEQ, oparg_slot(0), oparg_lit(1)),
+            newop_br(&A, JVST_OP_CBT, "invalid_8_10"),
 
-            newop_cmp(&A, JVST_OP_IEQ, oparg_m(), oparg_lit(3)),
-
-            oplabel, "M_9",
-            newop_bitop(&A, JVST_OP_BSET, 0, 0),
-            newop_instr(&A, JVST_OP_CONSUME),
-            newop_br(&A, JVST_OP_BR, "loop_0"),
-
-            oplabel, "M_8",
-            newop_bitop(&A, JVST_OP_BSET, 0, 1),
-            newop_instr(&A, JVST_OP_CONSUME),
-            newop_br(&A, JVST_OP_BR, "loop_0"),
+            oplabel, "invalid_9_11",
+            newop_invalid(&A, 9),
 
             oplabel, "M_7",
+            newop_instr(&A, JVST_OP_CONSUME),
+            newop_br(&A, JVST_OP_BR, "loop_2"),
+
+            oplabel, "valid_12",
+            newop_instr(&A, JVST_OP_VALID),
+
+            oplabel, "invalid_8_10",
+            newop_invalid(&A, 8),
+
+            NULL
+          ),
+
+          newop_proc(&A,
+            opslots, 3,
+
+            oplabel, "loop_2",
+            newop_instr(&A, JVST_OP_TOKEN),
+            newop_cmp(&A, JVST_OP_IEQ, oparg_tt(), oparg_tok(SJP_OBJECT_END)),
+            newop_br(&A, JVST_OP_CBT, "loop_end_1"),
+
+            oplabel, "false_5",
+            newop_match(&A, 1),
+            newop_load(&A, JVST_OP_MOVE, oparg_slot(1), oparg_m()),
+            newop_cmp(&A, JVST_OP_IEQ, oparg_slot(1), oparg_lit(0)),
+            newop_br(&A, JVST_OP_CBT, "M_7"),
+
+            oplabel, "M_next_8",
+            newop_cmp(&A, JVST_OP_IEQ, oparg_slot(1), oparg_lit(1)),
+            newop_br(&A, JVST_OP_CBT, "M_9"),
+
+            oplabel, "M_next_10",
+            newop_cmp(&A, JVST_OP_IEQ, oparg_slot(1), oparg_lit(2)),
+            newop_br(&A, JVST_OP_CBT, "M_11"),
+
+            oplabel, "M_next_12",
+            newop_cmp(&A, JVST_OP_IEQ, oparg_slot(1), oparg_lit(3)),
+            newop_br(&A, JVST_OP_CBT, "M_13"),
+
+            oplabel, "invalid_9_14",
+            newop_invalid(&A, 9),
+
+            oplabel, "M_7",
+            newop_instr(&A, JVST_OP_CONSUME),
+            newop_br(&A, JVST_OP_BR, "loop_2"),
+
+            oplabel, "M_9",
             newop_bitop(&A, JVST_OP_BSET, 0, 2),
             newop_instr(&A, JVST_OP_CONSUME),
-            newop_br(&A, JVST_OP_BR, "loop_0"),
+            newop_br(&A, JVST_OP_BR, "loop_2"),
 
-            oplabel, "M_6",
+            oplabel, "M_11",
+            newop_bitop(&A, JVST_OP_BSET, 0, 1),
             newop_instr(&A, JVST_OP_CONSUME),
-            newop_br(&A, JVST_OP_BR, "loop_0"),
+            newop_br(&A, JVST_OP_BR, "loop_2"),
 
-            oplabel, "loop_end_0",
-            newop_load(&A, JVST_OP_ILOAD, oparg_itmp(0), oparg_slot(0)),
-            newop_instr2(&A, JVST_OP_BAND, oparg_itmp(0), oparg_lit(7)),
-            newop_cmp(&A, JVST_OP_IEQ, oparg_itmp(0), oparg_lit(7)),
-            newop_br(&A, JVST_OP_CBT, "valid"),
+            oplabel, "M_13",
+            newop_bitop(&A, JVST_OP_BSET, 0, 0),
+            newop_instr(&A, JVST_OP_CONSUME),
+            newop_br(&A, JVST_OP_BR, "loop_2"),
 
-            oplabel, "invalid_6",
+            oplabel, "loop_end_1",
+            newop_load(&A, JVST_OP_MOVE, oparg_slot(2), oparg_slot(0)),
+            newop_instr2(&A, JVST_OP_BAND, oparg_slot(2), oparg_lit(7)),
+            newop_cmp(&A, JVST_OP_IEQ, oparg_slot(2), oparg_lit(7)),
+            newop_br(&A, JVST_OP_CBT, "valid_17"),
+
+            oplabel, "invalid_6_19",
             newop_invalid(&A, 6),
 
-            oplabel, "valid",
+            oplabel, "valid_17",
             newop_instr(&A, JVST_OP_VALID),
 
             NULL
           ),
               
           newop_proc(&A,
-            opdfa, 1,
+            opslots, 1,
 
-            oplabel, "loop_0",
+            oplabel, "loop_2",
             newop_instr(&A, JVST_OP_TOKEN),
             newop_cmp(&A, JVST_OP_IEQ, oparg_tt(), oparg_tok(SJP_OBJECT_END)),
-            newop_br(&A, JVST_OP_CBT, "valid"),
+            newop_br(&A, JVST_OP_CBT, "valid_12"),
 
-            oplabel, "L_4",
-            newop_match(&A, 0),
-            newop_cmp(&A, JVST_OP_IEQ, oparg_m(), oparg_lit(0)),
-            newop_br(&A, JVST_OP_CBT, "M_6"),
+            oplabel, "false_5",
+            newop_match(&A, 2),
+            newop_load(&A, JVST_OP_MOVE, oparg_slot(0), oparg_m()),
+            newop_cmp(&A, JVST_OP_IEQ, oparg_slot(0), oparg_lit(0)),
+            newop_br(&A, JVST_OP_CBT, "M_7"),
 
-            newop_cmp(&A, JVST_OP_IEQ, oparg_m(), oparg_lit(1)),
+            oplabel, "M_next_8",
+            newop_cmp(&A, JVST_OP_IEQ, oparg_slot(0), oparg_lit(1)),
+            newop_br(&A, JVST_OP_CBT, "invalid_8_10"),
 
-            oplabel, "invalid_8",
-            newop_invalid(&A, 8),
+            oplabel, "invalid_9_11",
+            newop_invalid(&A, 9),
 
-            oplabel, "M_6",
+            oplabel, "M_7",
             newop_instr(&A, JVST_OP_CONSUME),
-            newop_br(&A, JVST_OP_BR, "loop_0"),
+            newop_br(&A, JVST_OP_BR, "loop_2"),
 
-            oplabel, "valid",
+            oplabel, "valid_12",
             newop_instr(&A, JVST_OP_VALID),
+
+            oplabel, "invalid_8_10",
+            newop_invalid(&A, 8),
 
             NULL
           ),
 
           newop_proc(&A,
-            opslots, 1,
-            opdfa, 1,
+            opslots, 3,
 
-            oplabel, "loop_0",
+            oplabel, "loop_2",
             newop_instr(&A, JVST_OP_TOKEN),
             newop_cmp(&A, JVST_OP_IEQ, oparg_tt(), oparg_tok(SJP_OBJECT_END)),
-            newop_br(&A, JVST_OP_CBT, "loop_end_0"),
+            newop_br(&A, JVST_OP_CBT, "loop_end_1"),
 
-            oplabel, "L_4",
-            newop_match(&A, 0),
-            newop_cmp(&A, JVST_OP_IEQ, oparg_m(), oparg_lit(0)),
-            newop_br(&A, JVST_OP_CBT, "M_6"),
-
-            newop_cmp(&A, JVST_OP_IEQ, oparg_m(), oparg_lit(1)),
+            oplabel, "false_5",
+            newop_match(&A, 3),
+            newop_load(&A, JVST_OP_MOVE, oparg_slot(1), oparg_m()),
+            newop_cmp(&A, JVST_OP_IEQ, oparg_slot(1), oparg_lit(0)),
             newop_br(&A, JVST_OP_CBT, "M_7"),
 
-            newop_cmp(&A, JVST_OP_IEQ, oparg_m(), oparg_lit(2)),
+            oplabel, "M_next_8",
+            newop_cmp(&A, JVST_OP_IEQ, oparg_slot(1), oparg_lit(1)),
+            newop_br(&A, JVST_OP_CBT, "M_9"),
 
-            oplabel, "M_8",
-            newop_bitop(&A, JVST_OP_BSET, 0, 0),
-            newop_instr(&A, JVST_OP_CONSUME),
-            newop_br(&A, JVST_OP_BR, "loop_0"),
+            oplabel, "M_next_10",
+            newop_cmp(&A, JVST_OP_IEQ, oparg_slot(1), oparg_lit(2)),
+            newop_br(&A, JVST_OP_CBT, "M_11"),
+
+            oplabel, "invalid_9_12",
+            newop_invalid(&A, 9),
 
             oplabel, "M_7",
+            newop_instr(&A, JVST_OP_CONSUME),
+            newop_br(&A, JVST_OP_BR, "loop_2"),
+
+            oplabel, "M_9",
             newop_bitop(&A, JVST_OP_BSET, 0, 1),
             newop_instr(&A, JVST_OP_CONSUME),
-            newop_br(&A, JVST_OP_BR, "loop_0"),
+            newop_br(&A, JVST_OP_BR, "loop_2"),
 
-            oplabel, "M_6",
+            oplabel, "M_11",
+            newop_bitop(&A, JVST_OP_BSET, 0, 0),
             newop_instr(&A, JVST_OP_CONSUME),
-            newop_br(&A, JVST_OP_BR, "loop_0"),
+            newop_br(&A, JVST_OP_BR, "loop_2"),
 
-            oplabel, "loop_end_0",
-            newop_load(&A, JVST_OP_ILOAD, oparg_itmp(0), oparg_slot(0)),
-            newop_instr2(&A, JVST_OP_BAND, oparg_itmp(0), oparg_lit(3)),
-            newop_cmp(&A, JVST_OP_IEQ, oparg_itmp(0), oparg_lit(3)),
-            newop_br(&A, JVST_OP_CBT, "valid"),
+            oplabel, "loop_end_1",
+            newop_load(&A, JVST_OP_MOVE, oparg_slot(2), oparg_slot(0)),
+            newop_instr2(&A, JVST_OP_BAND, oparg_slot(2), oparg_lit(3)),
+            newop_cmp(&A, JVST_OP_IEQ, oparg_slot(2), oparg_lit(3)),
+            newop_br(&A, JVST_OP_CBT, "valid_15"),
 
-            oplabel, "invalid_6",
+            oplabel, "invalid_6_17",
             newop_invalid(&A, 6),
 
-            oplabel, "valid",
+            oplabel, "valid_15",
             newop_instr(&A, JVST_OP_VALID),
 
             NULL
@@ -2547,8 +2635,6 @@ void test_op_dependencies(void)
       ),
 
     },
-#if 0
-#endif /* 0 */
 
     { NULL },
   };

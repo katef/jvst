@@ -41,6 +41,7 @@ static struct jvst_cnode_matchset ar_cnode_matchsets[NUM_TEST_THINGS];
 static struct jvst_ir_stmt ar_ir_stmts[NUM_TEST_THINGS];
 static struct jvst_ir_expr ar_ir_exprs[NUM_TEST_THINGS];
 static struct jvst_ir_mcase ar_ir_mcases[NUM_TEST_THINGS];
+static size_t ar_ir_splitinds[NUM_TEST_THINGS];
 
 static struct jvst_op_program ar_op_prog[NUM_TEST_THINGS];
 static struct jvst_op_proc ar_op_proc[NUM_TEST_THINGS];
@@ -49,6 +50,7 @@ static struct jvst_op_instr ar_op_instr[NUM_TEST_THINGS];
 static double ar_op_float[NUM_TEST_THINGS];
 static int64_t ar_op_iconst[NUM_TEST_THINGS];
 static struct jvst_op_proc *ar_op_splits[NUM_TEST_THINGS];
+static size_t ar_op_splitmax[NUM_TEST_THINGS];
 
 // Returns a constant empty schema
 struct ast_schema *
@@ -993,33 +995,35 @@ newir_splitlist(struct arena_info *A, size_t ind, size_t n, ...)
 	size_t i;
 	va_list args;
 	struct jvst_ir_stmt *sl, **fpp;
+	size_t off,max, *inds;
 
 	sl = newir_stmt(A,JVST_IR_STMT_SPLITLIST);
 	sl->u.split_list.ind = ind;
 	sl->u.split_list.nframes = n;
-	fpp = &sl->u.split_list.frames;
 
 	if (n == 0) {
 		return sl;
 	}
 
+	off = A->nsplitinds;
+	max = ARRAYLEN(ar_ir_splitinds);
+	if (off+n >= max) {
+		fprintf(stderr, "too many IR split indices: %zu max\n", max);
+		abort();
+	}
+
+	A->nsplitinds += n;
+	inds = &ar_ir_splitinds[off];
+
 	va_start(args, n);
 	for (i=0; i < n; i++) {
 		size_t ind;
-		struct jvst_ir_stmt *fr;
 
-		ind = va_arg(args, int);
-
-		// cheesy, but avoids requiring us to wire things up for
-		// a test comparison
-		fr = newir_stmt(A,JVST_IR_STMT_FRAME);
-		fr->u.frame.frame_ind = ind;
-		*fpp = fr;
-		fpp = &fr->u.frame.split_next;
+		inds[i] = (size_t)va_arg(args, int);
 	}
 	va_end(args);
 
-	*fpp = NULL;
+	sl->u.split_list.frame_indices = inds;
 
 	return sl;
 }
@@ -1371,7 +1375,6 @@ newir_op(struct arena_info *A, enum jvst_ir_expr_type op,
 	case JVST_IR_EXPR_BOOL:
 	case JVST_IR_EXPR_TOK_TYPE:
 	case JVST_IR_EXPR_TOK_NUM:
-	case JVST_IR_EXPR_TOK_COMPLETE:
 	case JVST_IR_EXPR_TOK_LEN:
 	case JVST_IR_EXPR_COUNT:
 	case JVST_IR_EXPR_BTEST:
@@ -1397,52 +1400,19 @@ newir_op(struct arena_info *A, enum jvst_ir_expr_type op,
 
 struct jvst_op_instr v_oplabel;
 struct jvst_op_instr v_opslots;
-struct jvst_op_instr v_opfloat;
-struct jvst_op_instr v_opconst;
-struct jvst_op_instr v_opdfa;
-struct jvst_op_instr v_opsplit;
+
+struct jvst_op_proc v_opfloat;
+struct jvst_op_proc v_opconst;
+struct jvst_op_proc v_opdfa;
+struct jvst_op_proc v_opsplit;
 
 const struct jvst_op_instr *const oplabel = &v_oplabel;
 const struct jvst_op_instr *const opslots = &v_opslots;
-const struct jvst_op_instr *const opfloat = &v_opfloat;
-const struct jvst_op_instr *const opconst = &v_opconst;
-const struct jvst_op_instr *const opdfa   = &v_opdfa;
-const struct jvst_op_instr *const opsplit = &v_opsplit;
 
-struct jvst_op_program *
-newop_program(struct arena_info *A, ...)
-{
-	size_t i, max;
-	struct jvst_op_program *prog;
-	struct jvst_op_proc **procpp;
-	va_list args;
-
-	i   = A->nprog++;
-	max = ARRAYLEN(ar_op_prog);
-	if (A->nprog >= max) {
-		fprintf(stderr, "too many OP programs: %zu max\n", max);
-		abort();
-	}
-
-	prog  = &ar_op_prog[i];
-	memset(prog, 0, sizeof *prog);
-	procpp = &prog->procs;
-
-	va_start(args, A);
-	for (;;) {
-		struct jvst_op_proc *proc;
-		proc = va_arg(args, struct jvst_op_proc *);
-		if (proc == NULL) {
-			break;
-		}
-
-		*procpp = proc;
-		procpp = &proc->next;
-	}
-	va_end(args);
-
-	return prog;
-}
+const struct jvst_op_proc *const opfloat = &v_opfloat;
+const struct jvst_op_proc *const opconst = &v_opconst;
+const struct jvst_op_proc *const opdfa   = &v_opdfa;
+const struct jvst_op_proc *const opsplit = &v_opsplit;
 
 static double *
 newfloats(struct arena_info *A, double *fv, size_t n)
@@ -1454,6 +1424,7 @@ newfloats(struct arena_info *A, double *fv, size_t n)
 	if (A->nfloat + n > max) {
 		fprintf(stderr, "%s:%d (%s) too many floats (%zu max)\n",
 			__FILE__, __LINE__, __func__, max);
+		abort();
 	}
 
 	off = A->nfloat;
@@ -1477,6 +1448,7 @@ newconsts(struct arena_info *A, int64_t *cv, size_t n)
 	if (A->nconst + n > max) {
 		fprintf(stderr, "%s:%d (%s) too many integer constants (%zu max)\n",
 			__FILE__, __LINE__, __func__, max);
+		abort();
 	}
 
 	off = A->nconst;
@@ -1490,6 +1462,29 @@ newconsts(struct arena_info *A, int64_t *cv, size_t n)
 	return iconsts;
 }
 
+static size_t *
+newsplitmax(struct arena_info *A, size_t *smv, size_t n)
+{
+	size_t i,off,max;
+	size_t *splitmax;
+
+	off = A->nsplitmax;
+	max = ARRAYLEN(ar_op_splitmax);
+	if (off + n > max) {
+		fprintf(stderr, "%s:%d (%s) too many splits (%zu max)\n",
+			__FILE__, __LINE__, __func__, max);
+		abort();
+	}
+	A->nsplitmax += n;
+
+	splitmax = &ar_op_splitmax[off];
+	for (i=0; i < n; i++) {
+		splitmax[i] = smv[i];
+	}
+
+	return splitmax;
+}
+
 static struct jvst_op_proc **
 newsplits(struct arena_info *A, struct jvst_op_proc **sv, size_t n)
 {
@@ -1500,6 +1495,7 @@ newsplits(struct arena_info *A, struct jvst_op_proc **sv, size_t n)
 	if (A->nsplit + n > max) {
 		fprintf(stderr, "%s:%d (%s) too many splits (%zu max)\n",
 			__FILE__, __LINE__, __func__, max);
+		abort();
 	}
 
 	off = A->nsplit;
@@ -1513,18 +1509,138 @@ newsplits(struct arena_info *A, struct jvst_op_proc **sv, size_t n)
 	return splits;
 }
 
+struct jvst_op_program *
+newop_program(struct arena_info *A, ...)
+{
+	size_t i, max;
+	struct jvst_op_program *prog;
+	struct jvst_op_proc **procpp;
+	size_t nfloat = 0;
+	size_t nconst = 0;
+	size_t nsplit = 0;
+	double flt[16] = { 0.0 };
+	int64_t iconsts[16] = { 0 };
+	size_t splitmax[16] = { 0 };
+	struct jvst_op_proc *splits[64] = { NULL };
+	va_list args;
+
+	i   = A->nprog++;
+	max = ARRAYLEN(ar_op_prog);
+	if (A->nprog >= max) {
+		fprintf(stderr, "too many OP programs: %zu max\n", max);
+		abort();
+	}
+
+	prog  = &ar_op_prog[i];
+	memset(prog, 0, sizeof *prog);
+	procpp = &prog->procs;
+
+	va_start(args, A);
+	for (;;) {
+		struct jvst_op_proc *proc;
+		proc = va_arg(args, struct jvst_op_proc *);
+		if (proc == NULL) {
+			break;
+		}
+
+		if (proc == opfloat) {
+			int ind;
+
+			ind = nfloat++;
+			if (nfloat >= ARRAYLEN(flt)) {
+				fprintf(stderr, "%s:%d (%s) too many floats! (max is %zu)\n",
+					__FILE__, __LINE__, __func__, ARRAYLEN(flt));
+				abort();
+			}
+			flt[ind] = va_arg(args, double);
+			continue;
+		}
+
+		if (proc == opconst) {
+			int ind;
+
+			ind = nconst++;
+			if (nconst >= ARRAYLEN(iconsts)) {
+				fprintf(stderr, "%s:%d (%s) too many integer constants! (max is %zu)\n",
+					__FILE__, __LINE__, __func__, ARRAYLEN(iconsts));
+				abort();
+			}
+			iconsts[ind] = va_arg(args, int64_t);
+			continue;
+		}
+
+		if (proc == opsplit) {
+			int ind;
+			int j,n,off;
+			struct jvst_op_proc *spl, **splpp;
+
+			ind = nsplit++;
+			if (nsplit>= ARRAYLEN(splitmax)) {
+				fprintf(stderr, "%s:%d (%s) too many splits ! (max is %zu)\n",
+					__FILE__, __LINE__, __func__, ARRAYLEN(splitmax));
+				abort();
+			}
+
+			n = va_arg(args, int);
+			off = (ind>0) ? splitmax[ind-1] : 0;
+
+			if (off+n >= (int)ARRAYLEN(splits)) {
+				fprintf(stderr, "%s:%d (%s) too many total split functions ! (max is %zu)\n",
+					__FILE__, __LINE__, __func__, ARRAYLEN(splits));
+				abort();
+			}
+
+			splitmax[ind] = off+n;
+
+			for (j=0; j < n; j++) {
+				int pind;
+				pind = va_arg(args, int);
+
+				splits[off + j] = newop_proc(A, NULL);
+				splits[off + j]->proc_index = pind;
+			}
+
+			continue;
+		}
+
+		if (proc == opdfa) {
+			int ndfa;
+
+			ndfa = va_arg(args, int);
+			prog->ndfa += ndfa;
+			continue;
+		}
+
+		*procpp = proc;
+		procpp = &proc->next;
+	}
+	va_end(args);
+
+	if (nfloat > 0) {
+		prog->fdata = newfloats(A, flt, nfloat);
+		prog->nfloat = nfloat;
+	}
+
+	if (nconst > 0) {
+		prog->cdata = newconsts(A, iconsts, nconst);
+		prog->nconst = nconst;
+	}
+
+	if (nsplit > 0) {
+		prog->splitmax = newsplitmax(A, splitmax, nsplit);
+		prog->splits = newsplits(A, splits, splitmax[nsplit-1]);
+		prog->nsplit = nsplit;
+	}
+
+	return prog;
+}
+
 struct jvst_op_proc *
 newop_proc(struct arena_info *A, ...)
 {
 	size_t i, max;
 	struct jvst_op_proc *proc;
 	struct jvst_op_instr **ipp;
-	size_t nfloat = 0;
-	size_t nconst = 0;
-	size_t nsplit = 0;
-	double flt[16] = { 0.0 };
-	int64_t iconsts[16] = { 0 };
-	struct jvst_op_proc *splits[16] = { NULL };
 	va_list args;
 
 
@@ -1555,70 +1671,6 @@ fetch:
 			goto fetch;
 		}
 
-		if (instr == opfloat) {
-			int ind;
-
-			ind = nfloat++;
-			if (nfloat >= ARRAYLEN(flt)) {
-				fprintf(stderr, "%s:%d (%s) too many floats! (max is %zu)\n",
-					__FILE__, __LINE__, __func__, ARRAYLEN(flt));
-				abort();
-			}
-			flt[ind] = va_arg(args, double);
-			continue;
-		}
-
-		if (instr == opconst) {
-			int ind;
-
-			ind = nconst++;
-			if (nconst >= ARRAYLEN(iconsts)) {
-				fprintf(stderr, "%s:%d (%s) too many integer constants! (max is %zu)\n",
-					__FILE__, __LINE__, __func__, ARRAYLEN(iconsts));
-				abort();
-			}
-			iconsts[ind] = va_arg(args, int64_t);
-			continue;
-		}
-
-		if (instr == opsplit) {
-			int ind;
-			int j,n;
-			struct jvst_op_proc *spl, **splpp;
-
-			ind = nsplit++;
-			if (nsplit>= ARRAYLEN(splits)) {
-				fprintf(stderr, "%s:%d (%s) too many splits ! (max is %zu)\n",
-					__FILE__, __LINE__, __func__, ARRAYLEN(splits));
-				abort();
-			}
-
-			splpp = &splits[ind];
-
-			n = va_arg(args, int);
-			for (j=0; j < n; j++) {
-				int pind;
-				pind = va_arg(args, int);
-
-				*splpp = newop_proc(A, NULL);
-				(*splpp)->proc_index = pind;
-				(*splpp)->next = NULL;
-				(*splpp)->split_next = NULL;
-
-				splpp = &(*splpp)->split_next;
-			}
-
-			continue;
-		}
-
-		if (instr == opdfa) {
-			int ndfa;
-
-			ndfa = va_arg(args, int);
-			proc->ndfa += ndfa;
-			continue;
-		}
-
 		if (instr == opslots) {
 			int nslots;
 
@@ -1631,25 +1683,38 @@ fetch:
 			instr->label = label;
 		}
 
+		{
+			struct jvst_op_proc *ptest = (struct jvst_op_proc *)instr;
+
+			if (ptest == opfloat) {
+				fprintf(stderr, "%s:%d (%s) opfloat belongs on programs, not procs\n",
+					__FILE__, __LINE__, __func__);
+				abort();
+			}
+
+			if (ptest == opconst) {
+				fprintf(stderr, "%s:%d (%s) opconst belongs on programs, not procs\n",
+					__FILE__, __LINE__, __func__);
+				abort();
+			}
+
+			if (ptest == opsplit) {
+				fprintf(stderr, "%s:%d (%s) opsplit belongs on programs, not procs\n",
+					__FILE__, __LINE__, __func__);
+				abort();
+			}
+
+			if (ptest == opdfa) {
+				fprintf(stderr, "%s:%d (%s) opdfa belongs on programs, not procs\n",
+					__FILE__, __LINE__, __func__);
+				abort();
+			}
+		}
+
 		*ipp = instr;
 		ipp = &instr->next;
 	}
 	va_end(args);
-
-	if (nfloat > 0) {
-		proc->fdata = newfloats(A, flt, nfloat);
-		proc->nfloat = nfloat;
-	}
-
-	if (nconst > 0) {
-		proc->cdata = newconsts(A, iconsts, nconst);
-		proc->nconst = nconst;
-	}
-
-	if (nsplit > 0) {
-		proc->splits = newsplits(A, splits, nsplit);
-		proc->nsplit = nsplit;
-	}
 
 	return proc;
 }
@@ -1697,8 +1762,8 @@ newop_cmp(struct arena_info *A, enum jvst_vm_op op,
 	case JVST_OP_FNEQ:
 	case JVST_OP_FINT:
 		instr = newop_instr(A, op);
-		instr->u.args[0] = arg1;
-		instr->u.args[1] = arg2;
+		instr->args[0] = arg1;
+		instr->args[1] = arg2;
 		return instr;
 
 	case JVST_OP_NOP:
@@ -1720,12 +1785,14 @@ newop_cmp(struct arena_info *A, enum jvst_vm_op op,
 	case JVST_OP_BAND:
 	case JVST_OP_VALID:
 	case JVST_OP_INVALID:
-		fprintf(stderr, "OP %s is not a comparison\n",
-			jvst_op_name(op));
+	case JVST_OP_MOVE:
+		fprintf(stderr, "%s:%d (%s) OP %s is not a comparison\n",
+			__FILE__, __LINE__, __func__, jvst_op_name(op));
 		abort();
 	}
 
-	fprintf(stderr, "Unknown OP %d\n", op);
+	fprintf(stderr, "%s:%d (%s) Unknown OP %d\n",
+		__FILE__, __LINE__, __func__, op);
 	abort();
 }
 
@@ -1735,8 +1802,8 @@ newop_bitop(struct arena_info *A, enum jvst_vm_op op, int frame_off, int bit)
 	struct jvst_op_instr *instr;
 
 	instr = newop_instr(A, op);
-	instr->u.args[0] = oparg_slot(frame_off);
-	instr->u.args[1] = oparg_lit(bit);
+	instr->args[0] = oparg_slot(frame_off);
+	instr->args[1] = oparg_lit(bit);
 	return instr;
 }
 
@@ -1747,8 +1814,8 @@ newop_instr2(struct arena_info *A, enum jvst_vm_op op,
 	struct jvst_op_instr *instr;
 
 	instr = newop_instr(A, op);
-	instr->u.args[0] = arg1;
-	instr->u.args[1] = arg2;
+	instr->args[0] = arg1;
+	instr->args[1] = arg2;
 	return instr;
 }
 
@@ -1762,25 +1829,18 @@ arg_okay(struct jvst_op_arg arg, int kind, int writeable)
 	case JVST_VM_ARG_NONE:
 		return (kind == ARG_NONE) && (writeable == ARG_WRITEABLE);
 
-	case JVST_VM_ARG_FLAG:
-	case JVST_VM_ARG_PC:
 	case JVST_VM_ARG_TT:
 	case JVST_VM_ARG_TLEN:
 	case JVST_VM_ARG_M:
 	case JVST_VM_ARG_TOKTYPE:
 	case JVST_VM_ARG_CONST:
-	case JVST_VM_ARG_TCOMPLETE:
 		return (kind == ARG_INT) && (writeable == ARG_READABLE);
 
 	case JVST_VM_ARG_TNUM:
 		return (kind == ARG_FLOAT) && (writeable == ARG_READABLE);
 
-	case JVST_VM_ARG_FLOAT:
-		return (kind == ARG_FLOAT);
-
-	case JVST_VM_ARG_INT:
 	case JVST_VM_ARG_SLOT:
-		return (kind == ARG_INT);
+		return (kind == ARG_INT) || (kind == ARG_FLOAT);
 
 	default:
 		fprintf(stderr, "%s:%d (%s) unknown argument type %d\n",
@@ -1825,6 +1885,10 @@ newop_load(struct arena_info *A, enum jvst_vm_op op,
 		}
 		goto make_op;
 
+	case JVST_OP_MOVE:
+		// XXX - add some rules!
+		goto make_op;
+
 	case JVST_OP_ILT:
 	case JVST_OP_ILE:
 	case JVST_OP_IEQ:
@@ -1865,8 +1929,8 @@ newop_load(struct arena_info *A, enum jvst_vm_op op,
 
 make_op:
 	instr = newop_instr(A, op);
-	instr->u.args[0] = arg1;
-	instr->u.args[1] = arg2;
+	instr->args[0] = arg1;
+	instr->args[1] = arg2;
 	return instr;
 }
 
@@ -1880,7 +1944,8 @@ newop_br(struct arena_info *A, enum jvst_vm_op op, const char *label)
 	case JVST_OP_CBT:
 	case JVST_OP_CBF:
 		instr = newop_instr(A, op);
-		instr->u.branch.label = label;
+		instr->args[0].type = JVST_VM_ARG_LABEL;
+		instr->args[0].u.label = label;
 		return instr;
 
 	case JVST_OP_ILT:
@@ -1912,6 +1977,7 @@ newop_br(struct arena_info *A, enum jvst_vm_op op, const char *label)
 	case JVST_OP_BAND:
 	case JVST_OP_VALID:
 	case JVST_OP_INVALID:
+	case JVST_OP_MOVE:
 		fprintf(stderr, "%s:%d (%s) OP %s is not a branch\n",
 		__FILE__, __LINE__, __func__, jvst_op_name(op));
 		abort();
@@ -1927,17 +1993,17 @@ newop_match(struct arena_info *A, int64_t dfa)
 {
 	struct jvst_op_instr *instr;
 	instr = newop_instr(A, JVST_OP_MATCH);
-	instr->u.args[0] = oparg_lit(dfa);
-	instr->u.args[1] = oparg_none();
+	instr->args[0] = oparg_lit(dfa);
+	instr->args[1] = oparg_none();
 	return instr;
 }
 
 struct jvst_op_instr *
-newop_call(struct arena_info *A, size_t pind)
+newop_call(struct arena_info *A, struct jvst_op_arg dest)
 {
 	struct jvst_op_instr *instr;
 	instr = newop_instr(A, JVST_OP_CALL);
-	instr->u.call.proc_index = pind;
+	instr->args[0] = dest;
 	return instr;
 }
 
@@ -1946,8 +2012,8 @@ newop_incr(struct arena_info *A, size_t slot)
 {
 	struct jvst_op_instr *instr;
 	instr = newop_instr(A, JVST_OP_INCR);
-	instr->u.args[0] = oparg_slot(slot);
-	instr->u.args[1] = oparg_none();
+	instr->args[0] = oparg_slot(slot);
+	instr->args[1] = oparg_none();
 	return instr;
 }
 
@@ -1956,7 +2022,8 @@ newop_invalid(struct arena_info *A, enum jvst_invalid_code ecode)
 {
 	struct jvst_op_instr *instr;
 	instr = newop_instr(A, JVST_OP_INVALID);
-	instr->u.ecode = ecode;
+	instr->args[0].type = JVST_VM_ARG_CONST;
+	instr->args[0].u.index = ecode;
 	return instr;
 }
 
