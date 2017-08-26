@@ -4617,7 +4617,13 @@ jvst_ir_linearize(struct jvst_ir_stmt *ir)
 }
 
 void
-jvst_ir_print(struct jvst_ir_stmt *stmt)
+jvst_ir_debug(struct jvst_ir_stmt *stmt)
+{
+	jvst_ir_print(stderr,stmt);
+}
+
+void
+jvst_ir_print(FILE *f, struct jvst_ir_stmt *stmt)
 {
 	size_t i;
 	// FIXME: gross hack
@@ -4625,10 +4631,10 @@ jvst_ir_print(struct jvst_ir_stmt *stmt)
 
 	jvst_ir_dump(stmt, buf, sizeof buf);
 	for (i=0; i < 72; i++) {
-		fprintf(stderr, "-");
+		fprintf(f, "-");
 	}
-	fprintf(stderr, "\n");
-	fprintf(stderr, "%s\n", buf);
+	fprintf(f, "\n");
+	fprintf(f, "%s\n", buf);
 }
 
 struct jvst_ir_stmt *

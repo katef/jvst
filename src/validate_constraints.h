@@ -1,6 +1,8 @@
 #ifndef VALIDATE_CONSTRAINTS_H
 #define VALIDATE_CONSTRAINTS_H
 
+#include <stdio.h>
+
 #include "sjp_parser.h"
 #include "ast.h"
 
@@ -203,7 +205,11 @@ jvst_cnode_dump(struct jvst_cnode *node, char *buf, size_t nb);
 
 // for debugging, prints node to stderr
 void
-jvst_cnode_print(struct jvst_cnode *node);
+jvst_cnode_print(FILE *f, struct jvst_cnode *node);
+
+// for debugging, prints node to stderr
+void
+jvst_cnode_debug(struct jvst_cnode *node);
 
 #undef MODULE_NAME
 

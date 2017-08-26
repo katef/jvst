@@ -1,6 +1,7 @@
 #ifndef VALIDATE_OP_H
 #define VALIDATE_OP_H
 
+#include <stdio.h>
 #include <stdlib.h>
 
 #include "validate_ir.h"
@@ -104,7 +105,10 @@ int
 jvst_op_dump(struct jvst_op_program *prog, char *buf, size_t nb);
 
 void
-jvst_op_print(struct jvst_op_program *prog);
+jvst_op_debug(struct jvst_op_program *prog);
+
+void
+jvst_op_print(FILE *f, struct jvst_op_program *prog);
 
 struct jvst_vm_program *
 jvst_op_encode(struct jvst_op_program *prog);

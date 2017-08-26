@@ -3,6 +3,7 @@
 
 #include <stdbool.h>
 #include <stdint.h>
+#include <stdio.h>
 
 #include "sjp_parser.h"
 
@@ -396,7 +397,10 @@ jvst_ir_stmt_type_name(enum jvst_ir_stmt_type type);
 
 // for debugging, prints node to stderr
 void
-jvst_ir_print(struct jvst_ir_stmt *node);
+jvst_ir_debug(struct jvst_ir_stmt *node);
+
+void
+jvst_ir_print(FILE *f, struct jvst_ir_stmt *node);
 
 #endif /* JVST_VALIDATE_IR_H */
 

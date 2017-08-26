@@ -704,13 +704,19 @@ int
 jvst_cnode_dump(struct jvst_cnode *node, char *buf, size_t nb);
 
 void
-jvst_cnode_print(struct jvst_cnode *node)
+jvst_cnode_debug(struct jvst_cnode *node)
+{
+	jvst_cnode_print(stderr, node);
+}
+
+void
+jvst_cnode_print(FILE *f, struct jvst_cnode *node)
 {
 	// FIXME: gross hack
 	char buf[65536] = {0}; // 64K
 
 	jvst_cnode_dump(node, buf, sizeof buf);
-	fprintf(stderr, "%s\n", buf);
+	fprintf(f, "%s\n", buf);
 }
 
 int
