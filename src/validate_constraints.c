@@ -995,9 +995,11 @@ static struct jvst_cnode *
 cnode_deep_copy(struct jvst_cnode *node);
 
 static int
-mcase_copier(const struct fsm *dfa, const struct fsm_state *st)
+mcase_copier(const struct fsm *dfa, const struct fsm_state *st, void *opaque)
 {
 	struct jvst_cnode *node, *ndup;
+
+	(void)opaque;
 
 	if (!fsm_isend(dfa, st)) {
 		return 1;
@@ -1036,7 +1038,7 @@ cnode_mswitch_copy(struct jvst_cnode *node)
 	tree->u.mswitch.dfa = dup_fsm;
 
 	// copy and collect all opaque states
-	fsm_all(dup_fsm, mcase_copier);
+	fsm_walk_states(dup_fsm, NULL, mcase_copier);
 
 	mcpp = &tree->u.mswitch.cases;
 	for (mcases = node->u.mswitch.cases; mcases != NULL; mcases = mcases->next) {
@@ -1660,15 +1662,20 @@ merge_mcases(const struct fsm_state **orig, size_t n,
 	fsm_setopaque(dfa, comb, mcase);
 }
 
-static struct jvst_cnode **mcase_collector_head;
+struct mcase_collector {
+	struct jvst_cnode **mcpp;
+};
+// static struct jvst_cnode **mcase_collector_head;
 
 static int
-mcase_collector(const struct fsm *dfa, const struct fsm_state *st)
+mcase_collector(const struct fsm *dfa, const struct fsm_state *st, void *opaque)
 {
 	struct jvst_cnode *node;
+	struct mcase_collector *collector;
 
-	assert(mcase_collector_head != NULL);
-	assert(*mcase_collector_head == NULL);
+	collector = opaque;
+	assert(collector->mcpp != NULL);
+	assert(*collector->mcpp == NULL);
 
 	if (!fsm_isend(dfa, st)) {
 		return 1;
@@ -1678,8 +1685,8 @@ mcase_collector(const struct fsm *dfa, const struct fsm_state *st)
 	assert(node->type == JVST_CNODE_MATCH_CASE);
 	assert(node->next == NULL);
 
-	*mcase_collector_head = node;
-	mcase_collector_head = &node->next;
+	*collector->mcpp = node;
+	collector->mcpp = &node->next;
 
 	return 1;
 }
@@ -1823,6 +1830,7 @@ cnode_canonify_propset(struct jvst_cnode *top)
 	struct jvst_cnode *pm, *mcases, *msw, **mcpp;
 	struct fsm_options *opts;
 	struct fsm *matches;
+	struct mcase_collector collector;
 
 	// FIXME: this is a leak...
 	opts = xmalloc(sizeof *opts);
@@ -1908,9 +1916,9 @@ cnode_canonify_propset(struct jvst_cnode *top)
 	// iterating over the DFA end states.  All MATCH_CASE nodes must
 	// be placed into a linked list.
 	mcases = NULL;
-	mcase_collector_head = &mcases; // XXX - ugly global variable
+	collector.mcpp = &mcases;
 
-	fsm_all(matches, mcase_collector);
+	fsm_walk_states(matches, &collector, mcase_collector);
 
 	// step 4: sort the MATCH_CASE nodes.
 	//
