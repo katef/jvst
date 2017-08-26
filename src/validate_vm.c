@@ -13,8 +13,9 @@
 #include "xalloc.h"
 #include "sjp_testing.h"
 #include "validate_ir.h"  // XXX - this is for INVALID codes, which should be moved!
+#include "debug.h"
 
-#define DEBUG_OPCODES 0		// displays opcodes and the current frame's stack
+#define DEBUG_OPCODES (debug & DEBUG_VMOP)	// displays opcodes and the current frame's stack
 #define DEBUG_STEP    0		// instruction-by-instruction execution of the VM
 #define DEBUG_TOKENS  0		// displays tokens as they're read
 #define DEBUG_BSEARCH 0		// debugs DFA binary search
@@ -1029,11 +1030,7 @@ vm_split(struct jvst_vm *vm, int split, union jvst_vm_stackval *slot, int splitv
 	return JVST_VALID;
 }
 
-#if DEBUG_OPCODES
-#  define DEBUG_OP(vm,pc,opcode) debug_op((vm),(pc),(opcode))
-#else
-#  define DEBUG_OP(vm,pc,opcode) do{}while(0)
-#endif /* DEBUG_OPCODES */
+#define DEBUG_OP(vm,pc,opcode) do{ if (DEBUG_OPCODES) { debug_op((vm),(pc),(opcode)); } } while(0)
 
 #define NEXT do{ vm->r_pc = ++pc; goto loop; } while(0)
 #define BRANCH(newpc) do { pc += (newpc); vm->r_pc = pc; goto loop; } while(0)
