@@ -18,6 +18,7 @@
 #define DEBUG_STEP    0		// instruction-by-instruction execution of the VM
 #define DEBUG_TOKENS  0		// displays tokens as they're read
 #define DEBUG_BSEARCH 0		// debugs DFA binary search
+#define DEBUG_SPLITV  0		// debugs how SPLITV sets its result masks
 
 // XXX - replace with something better at some point
 //       (maybe a longjmp to an error handler?)
@@ -25,6 +26,11 @@
 	do { fprintf(stderr, "%s:%d (%s) PANIC (code=%d): %s\n",  \
 		__FILE__, __LINE__, __func__, (ecode), (errmsg)); \
 		jvst_vm_dumpstate(vm); abort(); } while(0)
+
+#define NOT_YET_IMPLEMENTED(op) do { \
+	fprintf(stderr, "%s:%d (%s) op %s not yet implemented\n", \
+		__FILE__, __LINE__, __func__, jvst_op_name((op)));  \
+	abort(); } while(0)
 
 const char *
 jvst_op_name(enum jvst_vm_op op)
@@ -806,8 +812,8 @@ debug_op(struct jvst_vm *vm, uint32_t pc, uint32_t opcode)
 	vm_dumpregs(&buf, vm);
 	fprintf(stderr, "REGS > %s", buf.buf);
 	vm_dumpstack(stderr, vm);
-	fprintf(stderr, "STATE> nobj=%zu, narr=%zu, consumed=%d, nexttok=%d, error=%d, dfa_st=%d\n",
-		vm->nobj, vm->narr, vm->consumed, vm->nexttok, vm->error, vm->dfa_st);
+	fprintf(stderr, "STATE> vm=%p nobj=%zu, narr=%zu, consumed=%d, nexttok=%d, error=%d, dfa_st=%d\n",
+		(void *)vm, vm->nobj, vm->narr, vm->consumed, vm->nexttok, vm->error, vm->dfa_st);
 }
 
 /* MATCH semantics:
@@ -863,7 +869,7 @@ static enum jvst_result
 vm_run_next(struct jvst_vm *vm, enum SJP_RESULT pret, struct sjp_event *evt);
 
 static int
-vm_split(struct jvst_vm *vm, int split, union jvst_vm_stackval *slot)
+vm_split(struct jvst_vm *vm, int split, union jvst_vm_stackval *slot, int splitv)
 {
 	uint32_t proc0, proc1, nproc, i, ndone;
 	int endstate;
@@ -967,18 +973,58 @@ vm_split(struct jvst_vm *vm, int split, union jvst_vm_stackval *slot)
 			PANIC(vm, -1, "internal error: split finished, endstate is not INDETERMINATE or VALID");
 	}
 
-	// all splits have finished... count number of valid splits
-	// and clean up split resources
-	slot->i = 0;
-	for (i=0; i < nproc; i++) {
-		assert(vm->splits[i].prog == NULL);
+	// all splits have finished.  record valid splits
+	if (splitv == 0) {
+		// count number of valid splits
+		slot->i = 0;
+		for (i=0; i < nproc; i++) {
+			assert(vm->splits[i].prog == NULL);
 
-		if (vm->splits[i].error == 0) {
-			slot->i++;
+			if (vm->splits[i].error == 0) {
+				slot->i++;
+			}
 		}
-		jvst_vm_finalize(&vm->splits[i]);
+	} else {
+		size_t i, nslots;
+		uint64_t mask;
+	       
+		nslots = nproc / 64 + ((nproc % 64) > 0);
+
+		// zero bits in bitfield
+		for (i=0; i < nslots; i++) {
+			slot[i].u = 0;
+		}
+
+		// set bits in bitfield
+		mask = 1;
+		for (i=0; i < nproc; i++) {
+			size_t sl = i / 64;
+#if DEBUG_SPLITV
+			{
+				size_t bi;
+				fprintf(stderr, "SPLITV> i=%zu, slot = %zu, mask = %" PRIx64 ", bf=",
+					i, sl, mask);
+				for (bi=64; bi > 0; bi--) {
+					int b = (slot[sl].u & ((uint64_t)1 << (bi-1))) > 0;
+					fprintf(stderr,"%c", b?'1':'0');
+				}
+				fprintf(stderr,"\n");
+			}
+#endif /* DEBUG_SPLITV */
+
+			if (vm->splits[i].error == 0) {
+				slot[sl].u |= mask;
+			}
+			mask = mask << 1;
+			if (!mask) { mask = 1; }
+		}
 	}
 
+	// clean up split resources and reset vm->nsplit
+	for (i=0; i < nproc; i++) {
+		assert(vm->splits[i].prog == NULL);
+		jvst_vm_finalize(&vm->splits[i]);
+	}
 	vm->nsplit = 0;
 	return JVST_VALID;
 }
@@ -1166,12 +1212,6 @@ loop:
 			if (vm->consumed) {
 				if (next_token(vm, fp)) {
 					return JVST_NEXT;
-				}
-
-				if (vm->evt.type == SJP_OBJECT_BEG) {
-					vm ->nobj++;
-				} else if (vm->evt.type == SJP_ARRAY_BEG) {
-					vm ->narr++;
 				}
 			}
 
@@ -1371,6 +1411,7 @@ loop:
 		}
 		NEXT;
 
+	case JVST_OP_SPLITV:
 	case JVST_OP_SPLIT:
 		{
 			uint32_t a0,a1;
@@ -1390,17 +1431,13 @@ loop:
 				PANIC(vm, -1, "SPLIT op with bad split index");
 			}
 
-			ret = vm_split(vm,split,slot);
+			ret = vm_split(vm,split,slot, (op == JVST_OP_SPLITV));
 			if (ret != JVST_VALID) {
 				goto finish;
 			}
 		}
 		NEXT;
 
-	case JVST_OP_SPLITV:
-		fprintf(stderr, "%s:%d (%s) op %s not yet implemented\n",
-			__FILE__, __LINE__, __func__, jvst_op_name(op));
-		abort();
 	}
 
 	vm->error = JVST_INVALID_VM_INVALID_OP;
