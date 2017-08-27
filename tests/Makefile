@@ -20,7 +20,7 @@ SRC += ${TEST_SRC}
 CFLAGS.${src} += -I share/git/sjp -I src
 DFLAGS.${src} += -I share/git/sjp -I src
 
-CFLAGS.${src} += -std=c99 -fsanitize=address -Wno-missing-field-initializers -Wno-unused
+CFLAGS.${src} += -std=c99 -Wno-missing-field-initializers -Wno-unused
 DFLAGS.${src} += -std=c99
 
 CFLAGS.${src} += ${CFLAGS.libre} ${CFLAGS.libfsm}
@@ -34,7 +34,6 @@ TEST_DEP_OBJS += ${BUILD}/${src:R}.o
 .endfor
 
 .for prog in ${TEST_PROG}
-LFLAGS.${prog} += -fsanitize=address
 LFLAGS.${prog} += ${LIBS.libre} ${LIBS.libfsm}
 .endfor
 

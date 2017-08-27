@@ -39,7 +39,7 @@ VALID_SRC += src/sjp_testing.c
 VALID_SRC += src/compile.c
 
 .for src in ${VALID_SRC:Msrc/*.c}
-CFLAGS.${src} += -std=c99 -fsanitize=address -Wno-missing-field-initializers -Wno-unused
+CFLAGS.${src} += -std=c99 -Wno-missing-field-initializers -Wno-unused
 DFLAGS.${src} += -std=c99
 
 CFLAGS.${src} += -I share/git/sjp
