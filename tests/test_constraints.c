@@ -604,6 +604,35 @@ void test_xlate_required(void)
                             NULL),
           SJP_NONE),
     },
+
+    {
+      TRANSLATE, 
+      newschema_p(&A, 0,
+          "properties", newprops(&A,
+            "foo", newschema(&A, JSON_VALUE_NUMBER),
+            "bar", newschema(&A, JSON_VALUE_STRING),
+            NULL),
+          "required", stringset(&A, "foo", NULL),
+          NULL),
+
+        NULL,
+
+        newcnode_switch(&A, 1,
+          SJP_OBJECT_BEG, newcnode_bool(&A,JVST_CNODE_AND,
+                            newcnode_required(&A, stringset(&A, "foo", NULL)),
+                            newcnode_bool(&A,JVST_CNODE_AND,
+                              newcnode_propset(&A,
+                                newcnode_prop_match(&A, RE_LITERAL, "foo",
+                                  newcnode_switch(&A, 0, SJP_NUMBER, newcnode_valid(), SJP_NONE)),
+                                newcnode_prop_match(&A, RE_LITERAL, "bar", 
+                                  newcnode_switch(&A, 0, SJP_STRING, newcnode_valid(), SJP_NONE)),
+                                NULL),
+                              newcnode_valid(),
+                              NULL),
+                            NULL),
+          SJP_NONE),
+    },
+
     { STOP },
   };
 
@@ -1134,6 +1163,37 @@ void test_simplify_required(void)
         SJP_NONE),
 
     },
+
+    {
+      SIMPLIFY, NULL,
+      newcnode_switch(&A, 1,
+        SJP_OBJECT_BEG, newcnode_bool(&A,JVST_CNODE_AND,
+                          newcnode_required(&A, stringset(&A, "foo", NULL)),
+                          newcnode_bool(&A,JVST_CNODE_AND,
+                            newcnode_propset(&A,
+                              newcnode_prop_match(&A, RE_LITERAL, "foo",
+                                newcnode_switch(&A, 0, SJP_NUMBER, newcnode_valid(), SJP_NONE)),
+                              newcnode_prop_match(&A, RE_LITERAL, "bar", 
+                                newcnode_switch(&A, 0, SJP_STRING, newcnode_valid(), SJP_NONE)),
+                              NULL),
+                            newcnode_valid(),
+                            NULL),
+                          NULL),
+        SJP_NONE),
+
+      newcnode_switch(&A, 1,
+        SJP_OBJECT_BEG, newcnode_bool(&A,JVST_CNODE_AND,
+                          newcnode_required(&A, stringset(&A, "foo", NULL)),
+                          newcnode_propset(&A,
+                            newcnode_prop_match(&A, RE_LITERAL, "foo",
+                              newcnode_switch(&A, 0, SJP_NUMBER, newcnode_valid(), SJP_NONE)),
+                            newcnode_prop_match(&A, RE_LITERAL, "bar",
+                              newcnode_switch(&A, 0, SJP_STRING, newcnode_valid(), SJP_NONE)),
+                            NULL),
+                          NULL),
+        SJP_NONE),
+    },
+
     { STOP },
   };
 
@@ -1710,6 +1770,50 @@ void test_canonify_required(void)
 
                           NULL),
                         NULL),
+        SJP_NONE),
+    },
+
+    {
+      CANONIFY, NULL,
+      newcnode_switch(&A, 1,
+        SJP_OBJECT_BEG, newcnode_bool(&A,JVST_CNODE_AND,
+                          newcnode_required(&A, stringset(&A, "foo", NULL)),
+                          newcnode_bool(&A,JVST_CNODE_AND,
+                            newcnode_propset(&A,
+                              newcnode_prop_match(&A, RE_LITERAL, "foo",
+                                newcnode_switch(&A, 0, SJP_NUMBER, newcnode_valid(), SJP_NONE)),
+                              newcnode_prop_match(&A, RE_LITERAL, "bar", 
+                                newcnode_switch(&A, 0, SJP_STRING, newcnode_valid(), SJP_NONE)),
+                              NULL),
+                            newcnode_valid(),
+                            NULL),
+                          NULL),
+        SJP_NONE),
+
+      newcnode_switch(&A, 1,
+        SJP_OBJECT_BEG, newcnode_bool(&A,JVST_CNODE_AND,
+                          newcnode_reqmask(&A, 1),
+                          newcnode_mswitch(&A, 
+                            // default case
+                            newcnode_valid(),
+
+                            newcnode_mcase(&A,
+                              newmatchset(&A, RE_LITERAL, "bar", -1),
+                              newcnode_switch(&A, 0, SJP_STRING, newcnode_valid(), SJP_NONE)
+                            ),
+
+                            newcnode_mcase(&A,
+                              newmatchset(&A, RE_LITERAL, "foo", RE_LITERAL, "foo", -1),
+                              newcnode_bool(&A,JVST_CNODE_AND,
+                                newcnode_switch(&A, 0, SJP_NUMBER, newcnode_valid(), SJP_NONE),
+                                newcnode_reqbit(&A, 0),
+                                NULL
+                              )
+                            ),
+
+                            NULL
+                          ),
+                          NULL),
         SJP_NONE),
     },
 
