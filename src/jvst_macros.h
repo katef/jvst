@@ -14,7 +14,7 @@
 #define STATIC_ASSERT(x, name) static_assert((x), STRINGIFY(name))
 #else
 #define STATIC_ASSERT(x, name)          \
-	struct {                        \
+	extern struct {                 \
 		char tmp[2 * (x)-1];    \
 	} SYMCAT3(static_assert_, name, __LINE__)
 #endif

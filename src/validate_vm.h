@@ -230,8 +230,6 @@ enum {
 static inline uint32_t
 jvst_vm_barg(long p)
 {
-	uint32_t raw;
-
 	assert(p >= JVST_VM_BARG_MIN);
 	assert(p <= JVST_VM_BARG_MAX);
 

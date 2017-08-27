@@ -10,6 +10,11 @@
 #include "validate_testing.h"
 #include "validate_constraints.h"
 
+#include "debug.h"
+
+// provides tests with their own debug flag
+unsigned debug = 0;
+
 int ntest;
 int nfail;
 int nskipped;

@@ -1839,7 +1839,13 @@ jvst_op_assemble(struct jvst_ir_stmt *ir)
 }
 
 void
-jvst_op_print(struct jvst_op_program *prog)
+jvst_op_debug(struct jvst_op_program *prog)
+{
+	jvst_op_print(stderr, prog);
+}
+
+void
+jvst_op_print(FILE *f, struct jvst_op_program *prog)
 {
 	size_t i;
 	// FIXME: gross hack
@@ -1847,10 +1853,10 @@ jvst_op_print(struct jvst_op_program *prog)
 
 	jvst_op_dump(prog, buf, sizeof buf);
 	for (i=0; i < 72; i++) {
-		fprintf(stderr, "-");
+		fprintf(f, "-");
 	}
-	fprintf(stderr, "\n");
-	fprintf(stderr, "%s\n", buf);
+	fprintf(f, "\n");
+	fprintf(f, "%s\n", buf);
 }
 
 struct dfa_lookup {

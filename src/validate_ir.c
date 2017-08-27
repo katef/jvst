@@ -1747,14 +1747,15 @@ obj_mcase_translate(struct jvst_cnode *ctree, struct ir_object_builder *builder)
 	return stmt;
 }
 
-static struct ir_object_builder *obj_mcase_builder_state;
-
 static int
-obj_mcase_builder(const struct fsm *dfa, const struct fsm_state *st)
+obj_mcase_builder(const struct fsm *dfa, const struct fsm_state *st, void *opaque)
 {
+	struct ir_object_builder *state;
 	struct jvst_cnode *node;
 	struct jvst_ir_mcase *mcase;
 	struct jvst_ir_stmt *stmt;
+
+	state = opaque;
 
 	if (!fsm_isend(dfa, st)) {
 		return 1;
@@ -1768,9 +1769,9 @@ obj_mcase_builder(const struct fsm *dfa, const struct fsm_state *st)
 	// Basically, we need to keep track of whether the property
 	// value is consumed or not, and add a CONSUME statement after
 	// translation if it isn't.
-	obj_mcase_builder_state->consumed = false;
-	stmt = obj_mcase_translate(node->u.mcase.constraint, obj_mcase_builder_state);
-	if (!obj_mcase_builder_state->consumed) {
+	state->consumed = false;
+	stmt = obj_mcase_translate(node->u.mcase.constraint, state);
+	if (!state->consumed) {
 		struct jvst_ir_stmt *seq, **spp;
 		seq = ir_stmt_new(JVST_IR_STMT_SEQ);
 		spp = &seq->u.stmt_list;
@@ -1825,9 +1826,7 @@ ir_translate_obj_inner(struct jvst_cnode *top, struct ir_object_builder *builder
 			builder->matcher = fsm_clone(top->u.mswitch.dfa);
 
 			// replace MATCH_CASE opaque entries in copy with jvst_ir_mcase nodes
-			obj_mcase_builder_state = builder;
-			fsm_all(builder->matcher, obj_mcase_builder);
-			obj_mcase_builder_state = NULL;
+			fsm_walk_states(builder->matcher, builder, obj_mcase_builder);
 
 			// assemble jvst_ir_mcase nodes into list for an MATCH_SWITCH node and number the cases
 			which = 0;
@@ -4618,7 +4617,13 @@ jvst_ir_linearize(struct jvst_ir_stmt *ir)
 }
 
 void
-jvst_ir_print(struct jvst_ir_stmt *stmt)
+jvst_ir_debug(struct jvst_ir_stmt *stmt)
+{
+	jvst_ir_print(stderr,stmt);
+}
+
+void
+jvst_ir_print(FILE *f, struct jvst_ir_stmt *stmt)
 {
 	size_t i;
 	// FIXME: gross hack
@@ -4626,10 +4631,10 @@ jvst_ir_print(struct jvst_ir_stmt *stmt)
 
 	jvst_ir_dump(stmt, buf, sizeof buf);
 	for (i=0; i < 72; i++) {
-		fprintf(stderr, "-");
+		fprintf(f, "-");
 	}
-	fprintf(stderr, "\n");
-	fprintf(stderr, "%s\n", buf);
+	fprintf(f, "\n");
+	fprintf(f, "%s\n", buf);
 }
 
 struct jvst_ir_stmt *

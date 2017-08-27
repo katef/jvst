@@ -101,8 +101,7 @@ static int run_vm_test(const struct validation_test *t)
 
   ret = jvst_vm_close(&vm);
   if (!failed && JVST_IS_INVALID(ret) && t->succeeds) {
-    fprintf(stderr, "%s:%d (%s) XXX - DUMP VM ERROR STACK - XXX\n",
-        __FILE__, __LINE__, __func__);
+    jvst_vm_dumpstate(&vm);
   }
 
   failed = failed || JVST_IS_INVALID(ret);
@@ -145,6 +144,9 @@ void test_empty_schema(void)
     { true, "{}", empty_schema() },
     { true, "[]", empty_schema() },
     { true, "{ \"foo\" : \"bar\" }", empty_schema() },
+
+    // lots of embedded stuff
+    { true, "{ \"foo\" : { \"bar\" : { \"quux\" : [ 1, 2, 3, {}, { \"this\" : [] } ], \"foo\" : [ {}, {}, [ {} ] ] } } }", empty_schema() },
 
     // one to make sure that we're checking for valid json
     { false, "{ 12 : \"bar\" }", empty_schema() },
@@ -690,6 +692,75 @@ void test_anyof_2(void)
   RUNTESTS(tests);
 }
 
+void test_dependencies_1(void)
+{
+  struct arena_info A = {0};
+  // schema: { "dependencies": {"quux": ["foo", "bar"], "this": ["that"]} }
+  struct ast_schema *schema = newschema_p(&A, 0,
+          "dep_strings", newpropnames(&A,
+                           "quux", stringset(&A, "foo", "bar", NULL),
+                           "this", stringset(&A, "that", NULL),
+                           NULL),
+          NULL);
+
+  const struct validation_test tests[] = {
+#if 0
+    // "description": "empty object should be valid"
+    { true, "{}", schema, },
+
+    // "description": "non-objects are valid"
+    { true, "1", schema, },
+    { true, "1.1", schema, },
+    { true, "[]", schema, },
+    { true, "true", schema, },
+    { true, "false", schema, },
+    { true, "null", schema, },
+
+    // "description": "foo by itself is valid"
+    { true, "{ \"foo\" : 5 }", schema, },
+
+    // "description": "bar by itself is valid"
+    { true, "{ \"bar\" : \"baz\" }", schema, },
+
+    // "description": "foo and bar by themselves are valid"
+    { true, "{ \"foo\" : \"quux\" }", schema, },
+
+    // "description": "quux and foo/bar without bar/foo is invalid"
+    { false, "{ \"quux\" : 3, \"foo\" : \"quux\" }", schema, },
+    { false, "{ \"quux\" : 3, \"bar\" : true }", schema, },
+
+    // "description": "quux and both foo and bar is valid"
+    { true, "{ \"quux\" : 3, \"foo\" : \"this\", \"bar\" : false }", schema, },
+
+    // "description": "that by itself is valid"
+    { true, "{ \"that\" : 7 }", schema, },
+
+    // "description": "this with that is valid"
+    { true, "{ \"this\" : 5, \"that\" : 0.3 }", schema, },
+
+    // "description": "this without that is invalid"
+    { false, "{ \"this\" : 5, \"foo\" : 0.3 }", schema, },
+
+    // "description": "this, that, and quux without both foo and bar is invalid"
+    { false, "{ \"this\" : 5, \"that\" : 0.6, \"quux\" : false }", schema, },
+    { false, "{ \"this\" : 5, \"that\" : 0.6, \"quux\" : false, \"foo\" : 3 }", schema, },
+    { false, "{ \"this\" : 5, \"that\" : 0.6, \"quux\" : false, \"bar\" : [1,2,3] }", schema, },
+#endif
+
+    // "description": "quux,foo, bar, and this without that is invalid"
+    { false, "{ \"this\" : 5, \"foo\" : 0.6, \"quux\" : false, \"bar\" : [1,2,3] }", schema, },
+
+#if 0
+    // "description": "quux,foo,bar, this, and that is valid"
+    { true, "{ \"this\" : 5, \"foo\" : 0.6, \"quux\" : false, \"bar\" : [1,2,3], \"that\" : { \"this\" : 5 } }", schema, },
+#endif
+
+    { false, NULL, NULL },
+  };
+
+  RUNTESTS(tests);
+}
+
 int main(void)
 {
   test_empty_schema();
@@ -713,6 +784,8 @@ int main(void)
 
   test_anyof_1();
   test_anyof_2();
+
+  test_dependencies_1();
 
   return report_tests();
 }
