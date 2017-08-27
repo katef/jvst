@@ -21,12 +21,6 @@ CFLAGS.${src} += -std=c99 -Wno-missing-field-initializers
 DFLAGS.${src} += -std=c99
 .endfor
 
-PROG += jvst
-
-.for src in ${SRC:Msrc/*.c}
-${BUILD}/bin/jvst: ${BUILD}/${src:R}.o
-.endfor
-
 VALID_SRC += src/validate_sbuf.c
 VALID_SRC += src/validate.c
 VALID_SRC += src/validate_constraints.c
@@ -47,6 +41,13 @@ DFLAGS.${src} += -I share/git/sjp
 .endfor
 
 SRC += ${VALID_SRC}
+
+PROG += jvst
+JVST = ${BUILD}/bin/jvst
+
+.for src in ${SRC:Msrc/*.c}
+${BUILD}/bin/jvst: ${BUILD}/${src:R}.o
+.endfor
 
 .for src in ${SRC:Msrc/*.c}
 CFLAGS.${src} += ${CFLAGS.libre} ${CFLAGS.libfsm}
