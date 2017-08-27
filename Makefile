@@ -19,6 +19,7 @@ PKG += libfsm
 
 # layout
 SUBDIR += src
+SUBDIR += tests/unit
 SUBDIR += tests
 
 .include <subdir.mk>
