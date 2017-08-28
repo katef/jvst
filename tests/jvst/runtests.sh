@@ -52,7 +52,7 @@ while [ $# -gt 0 ]; do
 
     casedesc=`awk -v CN=$casenum -- '$1 == CN { print }' < ${desc_file} | sed -e 's/^[0-9]\{1,\}[ 	]\{1,\}//'`
 
-    ${JVST} -c -r ${schema} ${testfile} > ${outfile} 2>&1
+    ${JVST} -l jvst -c -r ${schema} ${testfile} > ${outfile} 2>&1
     valid=$?
     if [ $valid != 0 ]; then
       # standardize valid to be 0 (success) or 1 (failure)

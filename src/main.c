@@ -29,20 +29,7 @@
 #include "validate_op.h"
 #include "validate_vm.h"
 
-enum {
-	PRINT_SCHEMA           = 1 << 0,
-	PRINT_INITIAL_CNODE    = 1 << 1,
-	PRINT_SIMPLIFIED_CNODE = 1 << 2,
-	PRINT_CANONIFIED_CNODE = 1 << 3,
-	PRINT_IR               = 1 << 4,
-	PRINT_LINEAR_IR        = 1 << 5,
-	PRINT_FLATTENED_IR     = 1 << 6,
-	PRINT_OPCODES          = 1 << 7,
-	PRINT_VMPROG           = 1 << 8
-};
-
 unsigned debug;
-unsigned print;
 
 static char *
 readfile(FILE *f, size_t *np)
@@ -104,11 +91,20 @@ debug_flags(const char *s)
 		case '+': v = 1; continue;
 		case '-': v = 0; continue;
 
-		case 'a': e = ~0U;         break;
-		case 's': e = DEBUG_SJP;   break;
-		case 'l': e = DEBUG_LEX;   break;
-		case 'c': e = DEBUG_ACT;   break;
-		case 'v': e = DEBUG_VMOP;  break;
+		case 'a': e = ~0U;                    break;
+		case 's': e = DEBUG_SJP;              break;
+		case 'l': e = DEBUG_LEX;              break;
+		case 'c': e = DEBUG_ACT;              break;
+		case 'S': e = DEBUG_PARSED_SCHEMA;    break;
+		case 'C': e = DEBUG_INITIAL_CNODE;    break;
+		case 'm': e = DEBUG_SIMPLIFIED_CNODE; break;
+		case 'n': e = DEBUG_CANONIFIED_CNODE; break;
+		case 'i': e = DEBUG_IR;               break;
+		case 'L': e = DEBUG_LINEAR_IR;        break;
+		case 'f': e = DEBUG_FLATTENED_IR;     break;
+		case 'o': e = DEBUG_OPCODES;          break;
+		case 'p': e = DEBUG_VMPROG;           break;
+		case 'v': e = DEBUG_VMOP;             break;
 
 		default:
 			fprintf(stderr, "-d: unrecognised flag '%c'\n", *s);
@@ -125,83 +121,43 @@ debug_flags(const char *s)
 	return 0;
 }
 
-static int
-print_flags(const char *s)
-{
-	int v;
-
-	assert(s != NULL);
-
-	v = 1;
-
-	for ( ; *s != '\0'; s++) {
-		int e;
-
-		switch (*s) {
-		case '+': v = 1; continue;
-		case '-': v = 0; continue;
-
-		case 'a': e = ~0U;                    break;
-		case 's': e = PRINT_SCHEMA;           break;
-		case 'c': e = PRINT_INITIAL_CNODE;    break;
-		case 'S': e = PRINT_SIMPLIFIED_CNODE; break;
-		case 'n': e = PRINT_CANONIFIED_CNODE; break;
-		case 'i': e = PRINT_IR;               break;
-		case 'l': e = PRINT_LINEAR_IR;        break;
-		case 'F': e = PRINT_FLATTENED_IR;     break;
-		case 'o': e = PRINT_OPCODES;          break;
-		case 'p': e = PRINT_VMPROG;           break;
-
-		case ',': continue;
-
-		default:
-			fprintf(stderr, "-p: unrecognised flag '%c'\n", *s);
-			return -1;
-		}
-
-		if (v) {
-			print |=  e;
-		} else {
-			print &= ~e;
-		}
-	}
-
-	return 0;
-}
-
+enum jvst_lang {
+	JVST_LANG_VM = 0,
+	JVST_LANG_C,
+};
 
 int
 main(int argc, char *argv[])
 {
 	static const struct ast_schema ast_default;
 	int r;
-	int compile=0, runvm=0, genc=0;
+	int compile=0, runvm=0;
 	struct jvst_vm_program *prog = NULL;
 	struct jvst_ir_stmt *ir;
+	enum jvst_lang lang = JVST_LANG_VM;
 
 	{
 		int c;
 
-		while (c = getopt(argc, argv, "p:rcCd:"), c != -1) {
+		while (c = getopt(argc, argv, "l:rcd:"), c != -1) {
 			switch (c) {
 			case 'c':
 				compile = 1;
 				break;
 
-			case 'C':
-				genc = 1;
-				// fprintf(stderr, "generating C is not yet supported\n");
-				// exit(EXIT_FAILURE);
-				break;
-
-			case 'd':
-				if (-1 == debug_flags(optarg)) {
+			case 'l':
+				if (strcmp(optarg,"c") == 0) {
+					lang = JVST_LANG_C;
+				} else if (strcmp(optarg,"jvst") == 0) {
+					lang = JVST_LANG_VM;
+				} else {
+					fprintf(stderr, "unknown language: %s\n", optarg);
 					goto usage;
 				}
 				break;
 
-			case 'p':
-				if (-1 == print_flags(optarg)) {
+			case 'd':
+				if (-1 == debug_flags(optarg)) {
 					goto usage;
 				}
 				break;
@@ -219,7 +175,9 @@ main(int argc, char *argv[])
 		argv += optind;
 	}
 
-	if (compile || genc) {
+	if (compile) {
+		/* Prepare IR tree (all output languages) */
+
 		FILE *f_schema;
 		char *p;
 		size_t n;
@@ -260,7 +218,7 @@ main(int argc, char *argv[])
 
 		parse(&l, &ast);
 
-		if (print & PRINT_SCHEMA) {
+		if (debug & DEBUG_PARSED_SCHEMA) {
 			ast_dump(stdout, &ast);
 		}
 
@@ -275,68 +233,83 @@ main(int argc, char *argv[])
 		n = 0;
 
 		ctree = jvst_cnode_translate_ast(&ast);
-		if (print & PRINT_INITIAL_CNODE) {
+		if (debug & DEBUG_INITIAL_CNODE) {
 			printf("Initial cnode tree\n");
 			jvst_cnode_print(stdout, ctree);
 			printf("\n");
 		}
 
 		simplified = jvst_cnode_simplify(ctree);
-		if (print & PRINT_SIMPLIFIED_CNODE) {
+		if (debug & DEBUG_SIMPLIFIED_CNODE) {
 			printf("Simplified cnode tree\n");
 			jvst_cnode_print(stdout, simplified);
 			printf("\n");
 		}
 
 		canonified = jvst_cnode_canonify(simplified);
-		if (print & PRINT_CANONIFIED_CNODE) {
+		if (debug & DEBUG_CANONIFIED_CNODE) {
 			printf("Canonified cnode tree\n");
 			jvst_cnode_print(stdout, canonified);
 			printf("\n");
 		}
 
 		ir = jvst_ir_translate(canonified);
-		if (print & PRINT_IR) {
+		if (debug & DEBUG_IR) {
 			printf("Initial IR\n");
 			jvst_ir_print(stdout, ir);
 			printf("\n");
 		}
 	}
 
+	/* compile IR into VM opcodes */
 	if (compile) {
-		struct jvst_ir_stmt *linearized, *flattened;
-		struct jvst_op_program *op_prog;
+		switch (lang) {
+		case JVST_LANG_VM:
+			{
+				struct jvst_ir_stmt *linearized, *flattened;
+				struct jvst_op_program *op_prog;
 
-		linearized = jvst_ir_linearize(ir);
-		if (print & PRINT_LINEAR_IR) {
-			printf("Linearized IR\n");
-			jvst_ir_print(stdout, linearized);
-			printf("\n");
+				linearized = jvst_ir_linearize(ir);
+				if (debug & DEBUG_LINEAR_IR) {
+					printf("Linearized IR\n");
+					jvst_ir_print(stdout, linearized);
+					printf("\n");
+				}
+
+				flattened = jvst_ir_flatten(linearized);
+				if (debug & DEBUG_FLATTENED_IR) {
+					printf("Flattened IR\n");
+					jvst_ir_print(stdout, flattened);
+					printf("\n");
+				}
+
+				op_prog = jvst_op_assemble(flattened);
+				if (debug & DEBUG_OPCODES) {
+					printf("Assembled OP codes\n");
+					jvst_op_print(stdout, op_prog);
+					printf("\n");
+				}
+
+				prog = jvst_op_encode(op_prog);
+				if (debug & DEBUG_VMPROG) {
+					printf("Final VM program:\n");
+					jvst_vm_program_print(stdout, prog);
+					printf("\n");
+				}
+
+				// TODO: add bit where the vm program is saved, possibly
+				// if runvm is false
+			}
+			break;
+
+		case JVST_LANG_C:
+			fprintf(stderr, "C output needs to be implemented\n");
+			exit(EXIT_FAILURE);
+
+		default:
+			fprintf(stderr, "internal error: unknown language %d\n", lang);
+			abort();
 		}
-
-		flattened = jvst_ir_flatten(linearized);
-		if (print & PRINT_FLATTENED_IR) {
-			printf("Flattened IR\n");
-			jvst_ir_print(stdout, flattened);
-			printf("\n");
-		}
-
-		op_prog = jvst_op_assemble(flattened);
-		if (print & PRINT_OPCODES) {
-			printf("Assembled OP codes\n");
-			jvst_op_print(stdout, op_prog);
-			printf("\n");
-		}
-
-		prog = jvst_op_encode(op_prog);
-		if (print & PRINT_VMPROG) {
-			printf("Final VM program:\n");
-			jvst_vm_program_print(stdout, prog);
-			printf("\n");
-		}
-
-		// TODO: add bit where the vm program is saved, possibly
-		// if runvm is false
 	}
 
 	if (runvm) {
@@ -391,9 +364,15 @@ main(int argc, char *argv[])
 
 usage:
 
-	fprintf(stderr, "usage: jvst [-d +-aslc] -c <schema> [<compiled>]\n"
+	fprintf(stderr, "usage: jvst [-d +-aslc] [-l <lang>] -c <schema> [<compiled>]\n"
 			"       jvst [-d +-aslc] -c -r <schema> [<json>]\n"
 			// "       jvst [-d +-aslc] -r <compiled> [<json>]\n"
+			"\n"
+			"  -l <lang>\n"
+			"           specifies output language for compilation\n"
+			"           current options:\n"
+			"             jvst        generates jvst VM bytecode (default)\n"
+			"             c           generates C\n"
 			"\n"
 			"  -c       compile schema to jvst VM code\n"
 			"\n"
@@ -405,20 +384,17 @@ usage:
 			"           s   sjp parser\n"
 			"           l   schema lexer\n"
 			"           c   schema actions\n"
-			"           v   vm opcodes\n"
-			"\n"
-			"  -p       print intermediates\n"
-			"       +/- enables/disables\n"
-			"           a   all\n"
-			"           s   schema\n"
-			"           c   initial cnode tree\n"
-			"           S   simplified cnode tree\n"
-			"           n   canonical cnode tree\n"
-			"           i   IR tree\n"
-			"           l   linearized IR tree\n"
-			"           F   flattened IR tree\n"
-			"           o   assembled opcodes\n"
-			"           p   final VM program\n");
+			"           S   print parsed schema tree\n"
+			"           C   print initial cnode tree\n"
+			"           m   print simplified cnode tree\n"
+			"           n   print canonical cnode tree\n"
+			"           i   print IR tree\n"
+			"           L   print linearized IR tree\n"
+			"           f   print flattened IR tree\n"
+			"           o   print opcodes\n"
+			"           p   print final VM program\n"
+			"           v   print VM instructions while executing\n"
+			"\n");
 
 	return 1;
 }
