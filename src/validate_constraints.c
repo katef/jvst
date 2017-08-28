@@ -679,7 +679,7 @@ and_or_xor:
 		{
 			struct jvst_cnode_matchset *ms;
 
-			sbuf_snprintf(buf, "MATCH_SWITCH(\n");
+			sbuf_snprintf(buf, "MATCH_CASE(\n");
 			assert(node->u.mcase.matchset != NULL);
 
 			for (ms = node->u.mcase.matchset; ms != NULL; ms = ms->next) {
