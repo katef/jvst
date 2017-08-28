@@ -12,6 +12,8 @@
 
 	kw;
 	type;
+        ast-schema;
+        ast-prop-schema;
 
 %terminals%
 
@@ -84,8 +86,15 @@
 	<set-type>:                 (:type)   -> ();
 	<set-title>:                (:string) -> ();
 	<set-description>:          (:string) -> ();
+        <set-properties>:           (:ast-prop-schema) -> ();
 
 	<clear-types>;
+
+        <new-prop-schema>:          (:string,:ast-schema) -> (:ast-prop-schema);
+
+        <append-list-of-props>:     (:ast-prop-schema,:ast-prop-schema) -> ();
+
+        <parse-schema>:             () -> (:ast-schema);
 
 	<err-unimplemented>;
 	<err-syntax>;
@@ -205,6 +214,31 @@
 		<err-expected-type>;
 	};
 
+        directive-properties [
+                prop-schema: () -> (ps: ast-prop-schema) = {
+                        s = STRING;
+                        colon;
+                        sch = <parse-schema>;
+                        ps = <new-prop-schema>(s,sch);
+                };
+
+                list-of-properties: () -> (ps: ast-prop-schema) = {
+                        ps = prop-schema;
+                        {
+                                comma;
+                                ps1 = list-of-properties;
+                                <append-list-of-props>(ps,ps1);
+                        ||
+                                $;
+                        };
+                };
+        ] = {
+                OCURLY;
+                ps = list-of-properties;
+                <set-properties>(ps);
+                CCURLY;
+        };
+
 	directive-title = {
 		s = STRING;
 		<set-title>(s);
@@ -281,7 +315,7 @@
 		placeholder;
 	||
 		? = <kw-properties>(k);
-		placeholder;
+                directive-properties;
 	||
 		? = <kw-pattern-properties>(k);
 		placeholder;
@@ -388,5 +422,5 @@
 
 %entry%
 
-	file;
+	file, schema;
 

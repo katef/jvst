@@ -24,6 +24,9 @@
 	kw     -> kw;
 	type   -> type;
 
+        ast-prop-schema -> ast_prop_schema_t;
+        ast-schema -> ast_schema_t;
+
 %header% @{
 
 	#include <assert.h>
@@ -49,6 +52,8 @@
 	typedef json_number number;
 	typedef enum kw kw;
 	typedef enum json_valuetype type;
+        typedef struct ast_schema *ast_schema_t;
+        typedef struct ast_property_schema *ast_prop_schema_t;
 
 	#define CURRENT_TERMINAL act_state->t.type
 	#define ERROR_TERMINAL   SJP_TOK_NONE /* XXX: NONE is not an error */
@@ -288,6 +293,37 @@
 	<kw-description>:           (k :kw) -> (v :bool) = @{ @v = (@k == KW_DESCRIPTION);           @};
 	<kw-default>:               (k :kw) -> (v :bool) = @{ @v = (@k == KW_DEFAULT);               @};
 	<kw-examples>:              (k :kw) -> (v :bool) = @{ @v = (@k == KW_EXAMPLES);              @};
+
+        <new-prop-schema>:          (p :string,sch :ast-schema) -> (ps :ast-prop-schema) = @{
+                @ps = xmalloc(sizeof *@ps);
+                @ps->pattern.str = @p;
+                @ps->pattern.dialect = RE_LITERAL;
+                @ps->schema = @sch;
+                @ps->next = NULL;
+        @};
+
+        <append-list-of-props>:     (head: ast-prop-schema,entry: ast-prop-schema) -> () = @{
+                struct ast_property_schema tmp;
+                tmp = *(@head);
+                *(@head) = *(@entry);
+                *(@entry) = tmp;
+                @head->next = @entry;
+        @};
+
+        <parse-schema>: () -> (sch: ast-schema) = @{
+                static struct ast_schema zero = { 0 };
+                @sch = xmalloc(sizeof *@sch);
+                *@sch = zero;
+                p_schema(lex_state, act_state, @sch);
+        @};
+
+        <set-properties>:           (ps :ast-prop-schema) -> () = @{
+		if (debug & DEBUG_ACT) {
+                        // XXX - make this useful!
+			fprintf(stderr, "<set-properties>: %p\n", (void *) @ps);
+		}
+                ast->properties.set = @ps;
+        @};
 
 	<set-schema>: (s :string) -> () = @{
 		assert(@s.s != NULL);
