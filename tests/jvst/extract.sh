@@ -6,12 +6,17 @@ if [ -z "${JQ+set}" ]; then
   JQ=`which jq`
 fi
 
-prefix=$1
-json=$2
+json=$1
+if [ $# -ge 2 ]; then
+  prefix=$2
+else
+  prefix=`basename ${json}`
+  prefix=${prefix%.json}
+fi
 
-echo "JQ    =${JQ}"
-echo "prefix=${prefix}"
-echo "json  =${json}"
+echo "JQ     ${JQ}"
+echo "json   ${json}"
+echo "prefix ${prefix}"
 
 usage() {
   echo "$0 <dirname> <test.json>"
@@ -39,13 +44,14 @@ while [ ${i} -lt ${ntests} ]; do
   while [ ${j} -lt ${ncases} ]; do
     desc=`${JQ} -r ".[${i}].tests[${j}].description" ${json}`
     valid=`${JQ} -r ".[${i}].tests[${j}].valid" ${json}`
+    jstr=`printf '%03d' $j`
     if [ "${valid}" = "true" ]; then
-      fn=${prefix}/${i}/test_${j}_valid.json
+      fn=${prefix}/${i}/test_${jstr}_valid.json
     else
-      fn=${prefix}/${i}/test_${j}_invalid.json
+      fn=${prefix}/${i}/test_${jstr}_invalid.json
     fi
-    echo -e "${j}\t${desc}" >> $fndesc
-    ${JQ} -r ".[${i}].tests[${j}].data" ${json} > ${fn}
+    echo "${j}\t${desc}" >> $fndesc
+    ${JQ} ".[${i}].tests[${j}].data" ${json} > ${fn}
     j=$(( $j + 1 ))
   done
   i=$(( $i + 1 ))
