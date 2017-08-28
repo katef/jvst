@@ -27,6 +27,12 @@
 		abort();							\
 	} while (0)
 
+#define INVALID_OPERATION(cnode, oper)						\
+	do {	fprintf(stderr, "%s:%d (%s) invalid operation %s on %s node \n", \
+			__FILE__, __LINE__, __func__,				\
+			jvst_cnode_type_name((cnode)->type), (oper));		\
+		abort(); } while (0)
+
 enum {
 	JVST_CNODE_CHUNKSIZE = 1024,
 	JVST_CNODE_NUMROOTS  = 32,
@@ -673,7 +679,7 @@ and_or_xor:
 		{
 			struct jvst_cnode_matchset *ms;
 
-			sbuf_snprintf(buf, "MATCH_SWITCH(\n");
+			sbuf_snprintf(buf, "MATCH_CASE(\n");
 			assert(node->u.mcase.matchset != NULL);
 
 			for (ms = node->u.mcase.matchset; ms != NULL; ms = ms->next) {
@@ -1018,6 +1024,27 @@ mcase_copier(const struct fsm *dfa, const struct fsm_state *st, void *opaque)
 	ndup = cnode_deep_copy(node);
 	node->u.mcase.tmp = ndup;
 
+	fsm_setopaque((struct fsm *)dfa, (struct fsm_state *)st, ndup);
+
+	return 1;
+}
+
+static int
+mcase_update_opaque(const struct fsm *dfa, const struct fsm_state *st, void *opaque)
+{
+	struct jvst_cnode *node, *ndup;
+
+	(void)opaque;
+
+	if (!fsm_isend(dfa, st)) {
+		return 1;
+	}
+
+	node = fsm_getopaque((struct fsm *)dfa, st);
+	assert(node->type == JVST_CNODE_MATCH_CASE);
+	assert(node->u.mcase.tmp != NULL);
+
+	ndup = node->u.mcase.tmp;
 	fsm_setopaque((struct fsm *)dfa, (struct fsm_state *)st, ndup);
 
 	return 1;
@@ -2072,6 +2099,29 @@ cnode_canonify_pass1(struct jvst_cnode *tree)
 	SHOULD_NOT_REACH();
 }
 
+static int cnode_cmp(const void *p0, const void *p1)
+{
+	const struct jvst_cnode *a, *b;
+	int delta;
+
+	a = *(const void **)p0;
+	b = *(const void **)p1;
+
+	delta = a->type - b->type;
+	/*
+	fprintf(stderr, "a is %s, b is %s, delta = %d\n", 
+		jvst_cnode_type_name(a->type),
+		jvst_cnode_type_name(b->type),
+		delta);
+		*/
+	if (delta != 0) {
+		return delta;
+	}
+
+	// TODO: implement comparison for nodes of the same type!
+	return 0;
+}
+
 static struct jvst_cnode *
 cnode_canonify_pass2(struct jvst_cnode *tree)
 {
@@ -2088,21 +2138,59 @@ cnode_canonify_pass2(struct jvst_cnode *tree)
 	case JVST_CNODE_COUNT_RANGE:
 		return tree;
 
+	case JVST_CNODE_NOT:
+		{
+			// NOT should have exactly one child!
+			assert(tree->u.ctrl != NULL);
+			assert(tree->u.ctrl->next == NULL);
+
+			tree->u.ctrl = jvst_cnode_canonify(tree->u.ctrl);
+		}
+		return tree;
+
 	case JVST_CNODE_AND:
 	case JVST_CNODE_OR:
 	case JVST_CNODE_XOR:
-	case JVST_CNODE_NOT:
 		{
-			struct jvst_cnode *xform = NULL;
-			struct jvst_cnode **xpp = &xform;
+			struct jvst_cnode *xform, **xpp, **nlist;
+			size_t i, n;
 
+			// AND/OR/XOR should have at least one child
+			assert(tree->u.ctrl != NULL);
+
+			// count number of child nodes
+			n = 0;
 			for (node = tree->u.ctrl; node != NULL; node = node->next) {
-				*xpp = jvst_cnode_canonify(node);
-				xpp = &(*xpp)->next;
+				n++;
 			}
 
-			tree->u.ctrl = xform;
+			// canonify the nodes, store in nlist for now
+			nlist = xmalloc(n * sizeof nlist[0]);
+			for (i=0, node = tree->u.ctrl; node != NULL; i++, node = node->next) {
+				assert(i < n);
+				nlist[i] = jvst_cnode_canonify(node);
+			}
+			assert(i == n);
 
+			// now sort the nodes to keep them in
+			// deterministic order.
+			//
+			// XXX - need to make sure that this correctly
+			// sorts nodes of the same type in a
+			// deterministic manner
+			qsort(nlist, n, sizeof *nlist, cnode_cmp);
+
+			// reform the linked list
+			xform = NULL;
+			xpp = &xform;
+			for (i=0; i < n; i++) {
+				*xpp = nlist[i];
+				xpp = &nlist[i]->next;
+				*xpp = NULL;
+			}
+
+			free(nlist);
+			tree->u.ctrl = xform;
 		}
 		return tree;
 
@@ -2116,20 +2204,62 @@ cnode_canonify_pass2(struct jvst_cnode *tree)
 		return tree;
 
 	case JVST_CNODE_OBJ_PROP_SET:
-		return cnode_canonify_propset(tree);
+		{
+			struct jvst_cnode *result;
+			result = cnode_canonify_propset(tree);
+			return jvst_cnode_canonify(result);
+		}
+
+	case JVST_CNODE_MATCH_SWITCH:
+		{
+			struct jvst_cnode *mc, **mcpp;
+
+			tree->u.mswitch.default_case = jvst_cnode_canonify(tree->u.mswitch.default_case);
+
+			mc = NULL;
+			mcpp = &mc;
+			for (node = tree->u.mswitch.cases; node != NULL; node = node->next) {
+				struct jvst_cnode *result;
+
+				assert(node->u.mcase.tmp == NULL);
+
+				result = jvst_cnode_canonify(node);
+				node->u.mcase.tmp = result;
+				*mcpp = result;
+				mcpp = &(*mcpp)->next;
+			}
+
+			*mcpp = NULL;
+
+			// now we have to relabel the states of the
+			// fsm...
+			//
+			// XXX - should we make a copy of the DFA?
+			// This could result in a lot of copies...
+			fsm_walk_states(tree->u.mswitch.dfa, NULL, mcase_update_opaque);
+
+			tree->u.mswitch.cases = mc;
+		}
+		return tree;
+
+	case JVST_CNODE_MATCH_CASE:
+		{
+			tree->u.mcase.constraint = jvst_cnode_canonify(tree->u.mcase.constraint);
+		}
+		return tree;
 
 	case JVST_CNODE_NUM_INTEGER:
 	case JVST_CNODE_STR_MATCH:
-	case JVST_CNODE_OBJ_PROP_MATCH:
-	case JVST_CNODE_OBJ_REQUIRED:
 	case JVST_CNODE_ARR_ITEM:
 	case JVST_CNODE_ARR_ADDITIONAL:
 	case JVST_CNODE_OBJ_REQMASK:
 	case JVST_CNODE_OBJ_REQBIT:
-	case JVST_CNODE_MATCH_SWITCH:
-	case JVST_CNODE_MATCH_CASE:
 		// TODO: basic optimization for these nodes
 		return tree;
+
+	case JVST_CNODE_OBJ_PROP_MATCH:
+	case JVST_CNODE_OBJ_REQUIRED:
+		INVALID_OPERATION(tree, "canonization (pass 2)");
 	}
 
 	// avoid default case in switch so the compiler can complain if
