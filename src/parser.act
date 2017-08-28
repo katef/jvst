@@ -398,6 +398,26 @@
 		ast->exclusive_minimum = true;
 	@};
 
+	<set-min-properties>: (n :number) -> () = @{
+                ast_count c = (ast_count)@n;
+		if (debug & DEBUG_ACT) {
+			fprintf(stderr, "<set-min-properties>: %ld\n", (long)c);
+		}
+
+		ast->kws |= KWS_MINMAX_PROPERTIES;
+		ast->min_properties = c;
+	@};
+
+	<set-max-properties>: (n :number) -> () = @{
+                ast_count c = (ast_count)@n;
+		if (debug & DEBUG_ACT) {
+			fprintf(stderr, "<set-max-properties>: %ld\n", (long)c);
+		}
+
+		ast->kws |= KWS_MINMAX_PROPERTIES;
+		ast->max_properties = c;
+	@};
+
 	<clear-types> = @{
 		if (debug & DEBUG_ACT) {
 			fprintf(stderr, "<clear-types>\n");

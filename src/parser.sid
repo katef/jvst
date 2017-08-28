@@ -83,6 +83,8 @@
 	<set-exclusive-maximum>:    (:number) -> ();
 	<set-minimum>:              (:number) -> ();
 	<set-exclusive-minimum>:    (:number) -> ();
+        <set-min-properties>:       (:number) -> ();
+        <set-max-properties>:       (:number) -> ();
 	<set-type>:                 (:type)   -> ();
 	<set-title>:                (:string) -> ();
 	<set-description>:          (:string) -> ();
@@ -173,6 +175,20 @@
 	directive-exclusive-minimum = {
 		n = NUMBER;
 		<set-exclusive-minimum>(n);
+	##
+		<err-expected-number>;
+	};
+
+	directive-min-properties = {
+		n = NUMBER;
+		<set-min-properties>(n);
+	##
+		<err-expected-number>;
+	};
+
+	directive-max-properties = {
+		n = NUMBER;
+		<set-max-properties>(n);
 	##
 		<err-expected-number>;
 	};
@@ -306,10 +322,10 @@
 		placeholder;
 	||
 		? = <kw-max-properties>(k);
-		placeholder;
+		directive-max-properties;
 	||
 		? = <kw-min-properties>(k);
-		placeholder;
+		directive-min-properties;
 	||
 		? = <kw-required>(k);
 		placeholder;
