@@ -108,6 +108,7 @@ debug_flags(const char *s)
 		case 's': e = DEBUG_SJP;   break;
 		case 'l': e = DEBUG_LEX;   break;
 		case 'c': e = DEBUG_ACT;   break;
+		case 'v': e = DEBUG_VMOP;  break;
 
 		default:
 			fprintf(stderr, "-d: unrecognised flag '%c'\n", *s);
@@ -404,6 +405,7 @@ usage:
 			"           s   sjp parser\n"
 			"           l   schema lexer\n"
 			"           c   schema actions\n"
+			"           v   vm opcodes\n"
 			"\n"
 			"  -p       print intermediates\n"
 			"       +/- enables/disables\n"
