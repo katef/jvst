@@ -794,17 +794,12 @@ vm_dumpevt(struct sbuf *buf, const struct jvst_vm *vm)
 	}
 }
 
-static inline void
-debug_op(struct jvst_vm *vm, uint32_t pc, uint32_t opcode)
+static void
+debug_state(struct jvst_vm *vm)
 {
 	char cbuf[128];
 	struct sbuf buf = { .buf = cbuf, .cap = sizeof(cbuf), .len = 0, .np = 0 };
 
-	vm_dump_opcode(&buf, pc, opcode, 0);
-	fprintf(stderr, "INSTR> %s", buf.buf);
-
-	buf.len = 0;
-	buf.np = 0;
 	vm_dumpevt(&buf, vm);
 	fprintf(stderr, "EVT  > %s\n", buf.buf);
 
@@ -815,6 +810,18 @@ debug_op(struct jvst_vm *vm, uint32_t pc, uint32_t opcode)
 	vm_dumpstack(stderr, vm);
 	fprintf(stderr, "STATE> vm=%p nobj=%zu, narr=%zu, consumed=%d, nexttok=%d, error=%d, dfa_st=%d\n",
 		(void *)vm, vm->nobj, vm->narr, vm->consumed, vm->nexttok, vm->error, vm->dfa_st);
+}
+
+static void
+debug_op(struct jvst_vm *vm, uint32_t pc, uint32_t opcode)
+{
+	char cbuf[128];
+	struct sbuf buf = { .buf = cbuf, .cap = sizeof(cbuf), .len = 0, .np = 0 };
+
+	vm_dump_opcode(&buf, pc, opcode, 0);
+	fprintf(stderr, "INSTR> %s", buf.buf);
+
+	debug_state(vm);
 }
 
 /* MATCH semantics:
@@ -1502,6 +1509,67 @@ jvst_vm_more(struct jvst_vm *vm, char *data, size_t n)
 
 		if (SJP_ERROR(pret)) {
 			vm->error = pret;
+			if (DEBUG_OPCODES) {
+				const char *lbeg, *lend, *err, *end;
+				size_t i,n,width = 60, padding = 12;
+				char buf[128] = { 0 }, *bstart = &buf[0];
+				int ellipsis = 0;
+
+				fprintf(stderr, "Error parsing JSON, offset %zu (line %zu, col %zu): %s\n",
+					vm->parser.lex.off, vm->parser.lex.line + 1,
+					vm->parser.lex.off - vm->parser.lex.lbeg + 1,
+					ret2name(pret));
+				fprintf(stderr, "line: ");
+
+				lbeg = &vm->parser.lex.data[vm->parser.lex.lbeg];
+				err  = &vm->parser.lex.data[vm->parser.lex.off];
+				end = &vm->parser.lex.data[vm->parser.lex.sz];
+				lend = memchr(lbeg, '\n', end-lbeg);
+				if (lend == NULL) {
+					lend = end;
+				}
+
+				if (lend-lbeg >= (ptrdiff_t) sizeof buf) {
+					const char *emin, *emax;
+					emin = lbeg;
+					if (err-lbeg > (ptrdiff_t) padding) {
+						emin = err-padding;
+						ellipsis |= 0x1;
+					}
+
+					emax = lend;
+					if (lend-err > (ptrdiff_t) width) {
+						lend = err+width;
+						ellipsis |= 0x2;
+					}
+
+					assert(lend-lbeg < (ptrdiff_t) sizeof buf);
+				}
+
+				memcpy(&buf[0], lbeg, lend-lbeg);
+				if (ellipsis & 0x1) {
+					fprintf(stderr, "...");
+				}
+				fprintf(stderr, "%s", buf);
+				if (ellipsis & 0x2) {
+					fprintf(stderr, "...");
+				}
+				fprintf(stderr, "\n");
+
+				fprintf(stderr, "      ");
+				n = err - lbeg;
+				for (i=0; i < n; i++) {
+					buf[i] = ' ';
+				}
+				buf[n] = '^';
+				buf[n+1] = '\0';
+
+				fprintf(stderr,"%s\n",buf);
+				fprintf(stderr, "\n");
+
+				debug_state(vm);
+			}
+
 			return JVST_INVALID;
 		}
 
