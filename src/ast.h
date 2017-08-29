@@ -109,7 +109,7 @@ struct ast_schema {
 
 		KWS_MINMAX_LENGTH         = 1 << 5, /* .min_length and .max_length */
 		KWS_MINMAX_ITEMS          = 1 << 7, /* .min_items  and .max_items */
-		KWS_MINMAX_PROPERTIES     = 1 << 8  /* .min_properties and .max_properties */
+		KWS_MINMAX_PROPERTIES     = 1 << 8, /* .min_properties and .max_properties */
 	} kws;
 
 	/* TODO: transform post-parse to populate AST_STRING to .pattern instead */
@@ -224,3 +224,4 @@ ast_dump(FILE *f, const struct ast_schema *ast);
 
 #endif
 
+/* vim: set tabstop=8 shiftwidth=8 noexpandtab: */

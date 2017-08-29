@@ -50,6 +50,12 @@ struct ast_schema *
 empty_schema(void);
 
 struct ast_schema *
+true_schema(void);
+
+struct ast_schema *
+false_schema(void);
+
+struct ast_schema *
 newschema(struct arena_info *A, int types);
 
 struct ast_schema *

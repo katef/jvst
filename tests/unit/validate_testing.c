@@ -69,6 +69,32 @@ empty_schema(void)
 	return &empty;
 }
 
+struct ast_schema *
+true_schema(void)
+{
+	static struct ast_schema true_schema= {
+		.kws = KWS_VALUE,
+		.value = {
+			.type = JSON_VALUE_BOOL,
+			.u = { .v = true },
+		},
+	};
+	return &true_schema;
+}
+
+struct ast_schema *
+false_schema(void)
+{
+	static struct ast_schema false_schema= {
+		.kws = KWS_VALUE,
+		.value = {
+			.type = JSON_VALUE_BOOL,
+			.u = { .v = false },
+		},
+	};
+	return &false_schema;
+}
+
 struct json_string
 newstr(const char *s)
 {

@@ -229,6 +229,19 @@ static void test_xlate_empty_schema(void)
   RUNTESTS(tests);
 }
 
+static void test_xlate_true_false_schemas(void)
+{
+  struct arena_info A = {0};
+
+  const struct cnode_test tests[] = {
+    { TRANSLATE, true_schema(), NULL, newcnode_switch(&A, 1, SJP_NONE) },
+    { TRANSLATE, false_schema(), NULL, newcnode_switch(&A, 0, SJP_NONE) },
+    { STOP },
+  };
+
+  RUNTESTS(tests);
+}
+
 static void test_xlate_type_number(void)
 {
   struct arena_info A = {0};
@@ -1896,6 +1909,7 @@ void test_canonify_required(void)
 int main(void)
 {
   test_xlate_empty_schema();
+  test_xlate_true_false_schemas();
 
   test_xlate_type_number();
   test_xlate_type_object();

@@ -757,6 +757,15 @@ jvst_cnode_translate_ast(const struct ast_schema *ast)
 	enum json_valuetype types;
 
 	assert(ast != NULL);
+
+	if (ast->kws & KWS_VALUE) {
+	       	if (ast->value.type != JSON_VALUE_BOOL) {
+			fprintf(stderr, "Invalid JSON value type.  Schemas must be objects or booleans.\n");
+			abort();
+		}
+		return cnode_new_switch(ast->value.u.v);
+	}
+
 	types = ast->types;
 
 	// TODO - implement ast->some_of.set != NULL logic
