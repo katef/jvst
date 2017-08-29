@@ -104,6 +104,9 @@
 
         <parse-schema>:             () -> (:ast-schema);
 
+        <set-schema-true>:          () -> ();
+        <set-schema-false>:         () -> ();
+
 	<err-unimplemented>;
 	<err-syntax>;
 	<err-expected-colon>;
@@ -430,8 +433,10 @@
 		! = NUMBER;
 	||
 		! = TRUE;
+                <set-schema-true>;
 	||
 		! = FALSE;
+                <set-schema-false>;
 	||
 		NULL;
 	##

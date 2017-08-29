@@ -333,6 +333,18 @@
                 p_schema(lex_state, act_state, @sch);
         @};
 
+        <set-schema-true>:          () -> () = @{
+                ast->kws |= KWS_VALUE;
+                ast->value.type = JSON_VALUE_BOOL;
+                ast->value.u.v = true;
+        @};
+
+        <set-schema-false>:         () -> () = @{
+                ast->kws |= KWS_VALUE;
+                ast->value.type = JSON_VALUE_BOOL;
+                ast->value.u.v = false;
+        @};
+
         <set-properties>:           (ps :ast-prop-schema) -> () = @{
 		if (debug & DEBUG_ACT) {
                         // XXX - make this useful!
