@@ -24,6 +24,9 @@
 	kw     -> kw;
 	type   -> type;
 
+        re-dialect -> re_dialect_t;
+        regexp     -> ast_regexp_t;
+
         ast-prop-schema -> ast_prop_schema_t;
         ast-schema -> ast_schema_t;
 
@@ -52,8 +55,14 @@
 	typedef json_number number;
 	typedef enum kw kw;
 	typedef enum json_valuetype type;
+
+        typedef enum re_dialect re_dialect_t;
+        typedef struct ast_regexp ast_regexp_t;
+
         typedef struct ast_schema *ast_schema_t;
         typedef struct ast_property_schema *ast_prop_schema_t;
+
+        #define RE_PATTERN_DIALECT RE_NATIVE
 
 	#define CURRENT_TERMINAL act_state->t.type
 	#define ERROR_TERMINAL   SJP_TOK_NONE /* XXX: NONE is not an error */
@@ -294,10 +303,17 @@
 	<kw-default>:               (k :kw) -> (v :bool) = @{ @v = (@k == KW_DEFAULT);               @};
 	<kw-examples>:              (k :kw) -> (v :bool) = @{ @v = (@k == KW_EXAMPLES);              @};
 
-        <new-prop-schema>:          (p :string,sch :ast-schema) -> (ps :ast-prop-schema) = @{
+        <re-literal>:               () -> (dialect :re-dialect) = @{ @dialect = RE_LITERAL; @};
+        <re-pattern>:               () -> (dialect :re-dialect) = @{ @dialect = RE_PATTERN_DIALECT; @};
+
+        <new-regexp>:               (dialect :re-dialect, pat :string) -> (re :regexp) = @{
+                @re.dialect = @dialect;
+                @re.str = @pat;
+        @};
+
+        <new-prop-schema>:          (re :regexp,sch :ast-schema) -> (ps :ast-prop-schema) = @{
                 @ps = xmalloc(sizeof *@ps);
-                @ps->pattern.str = @p;
-                @ps->pattern.dialect = RE_LITERAL;
+                @ps->pattern = @re;
                 @ps->schema = @sch;
                 @ps->next = NULL;
         @};

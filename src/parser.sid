@@ -14,6 +14,8 @@
 	type;
         ast-schema;
         ast-prop-schema;
+        regexp;
+        re-dialect;
 
 %terminals%
 
@@ -90,9 +92,13 @@
 	<set-description>:          (:string) -> ();
         <set-properties>:           (:ast-prop-schema) -> ();
 
+        <new-regexp>:               (:re-dialect, :string) -> (:regexp);
+        <re-literal>:               () -> (:re-dialect);
+        <re-pattern>:               () -> (:re-dialect);
+
 	<clear-types>;
 
-        <new-prop-schema>:          (:string,:ast-schema) -> (:ast-prop-schema);
+        <new-prop-schema>:          (:regexp,:ast-schema) -> (:ast-prop-schema);
 
         <append-list-of-props>:     (:ast-prop-schema,:ast-prop-schema) -> ();
 
@@ -230,19 +236,20 @@
 		<err-expected-type>;
 	};
 
-        directive-properties [
-                prop-schema: () -> (ps: ast-prop-schema) = {
+        directive-properties: (dialect: re-dialect) -> () [
+                prop-schema: (dialect: re-dialect) -> (ps: ast-prop-schema) = {
                         s = STRING;
                         colon;
                         sch = <parse-schema>;
-                        ps = <new-prop-schema>(s,sch);
+                        re = <new-regexp>(dialect,s);
+                        ps = <new-prop-schema>(re,sch);
                 };
 
-                list-of-properties: () -> (ps: ast-prop-schema) = {
-                        ps = prop-schema;
+                list-of-properties: (dialect: re-dialect) -> (ps: ast-prop-schema) = {
+                        ps = prop-schema(dialect);
                         {
                                 comma;
-                                ps1 = list-of-properties;
+                                ps1 = list-of-properties(dialect);
                                 <append-list-of-props>(ps,ps1);
                         ||
                                 $;
@@ -250,7 +257,7 @@
                 };
         ] = {
                 OCURLY;
-                ps = list-of-properties;
+                ps = list-of-properties(dialect);
                 <set-properties>(ps);
                 CCURLY;
         };
@@ -331,10 +338,12 @@
 		placeholder;
 	||
 		? = <kw-properties>(k);
-                directive-properties;
+                dialect = <re-literal>;
+                directive-properties(dialect);
 	||
 		? = <kw-pattern-properties>(k);
-		placeholder;
+                dialect = <re-pattern>;
+		directive-properties(dialect);
 	||
 		? = <kw-additional-properties>(k);
 		placeholder;
