@@ -827,6 +827,95 @@ void test_ir_properties(void)
       )
     },
 
+    {
+      TRANSLATE,
+      newcnode_switch(&A, 1,
+        SJP_OBJECT_BEG, newcnode_propset(&A,
+                          newcnode_prop_match(&A, RE_NATIVE, "a*",
+                            newcnode_switch(&A, 0, SJP_NUMBER, newcnode(&A,JVST_CNODE_NUM_INTEGER), SJP_NONE)),
+                          newcnode_prop_match(&A, RE_NATIVE, "aaa*",
+                            newcnode_switch(&A, 1,
+                              SJP_NUMBER, newcnode_range(&A, JVST_CNODE_RANGE_MAX, 0.0, 20.0),
+                              SJP_NONE)),
+                          NULL),
+        SJP_NONE),
+
+      newir_frame(&A,
+          newir_matcher(&A, 0, "dfa"),
+          newir_stmt(&A, JVST_IR_STMT_TOKEN),
+          newir_if(&A, newir_istok(&A, SJP_OBJECT_BEG),
+            newir_seq(&A,
+              newir_loop(&A, "L_OBJ", 0,
+                newir_stmt(&A, JVST_IR_STMT_TOKEN),
+                newir_if(&A, newir_istok(&A, SJP_OBJECT_END),
+                  newir_break(&A, "L_OBJ", 0),
+                  newir_seq(&A,                                 // unnecessary SEQ should be removed in the future
+                    newir_match(&A, 0,
+                      // no match
+                      newir_case(&A, 0, 
+                        NULL,
+                        newir_stmt(&A, JVST_IR_STMT_CONSUME)
+                      ),
+
+                      // a* (but not aaa*)
+                      newir_case(&A, 1,
+                        newmatchset(&A, RE_NATIVE, "a*", -1),
+                        newir_frame(&A,
+                          newir_stmt(&A, JVST_IR_STMT_TOKEN),   // XXX - is this necessary?
+                          newir_if(&A, newir_istok(&A, SJP_NUMBER),
+                            newir_if(&A, newir_isint(&A, newir_expr(&A, JVST_IR_EXPR_TOK_NUM)),
+                              newir_stmt(&A, JVST_IR_STMT_VALID),
+                              newir_invalid(&A, JVST_INVALID_NOT_INTEGER, "number is not an integer")),
+                            newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token")
+                          ),
+                          NULL
+                        )
+                      ),
+
+                      // aaa* (also matches a*)
+                      newir_case(&A, 2,
+                        newmatchset(&A, RE_NATIVE, "a*", RE_NATIVE, "aaa*", -1),
+                        newir_frame(&A,
+                          newir_stmt(&A, JVST_IR_STMT_TOKEN),   // XXX - is this necessary?
+                          newir_if(&A, newir_istok(&A, SJP_NUMBER),
+                            newir_if(&A, 
+                              newir_op(&A, JVST_IR_EXPR_AND,
+                                newir_op(&A, JVST_IR_EXPR_LE, 
+                                  newir_expr(&A, JVST_IR_EXPR_TOK_NUM),
+                                  newir_num(&A, 20.0)),
+                                newir_isint(&A, newir_expr(&A, JVST_IR_EXPR_TOK_NUM))
+                              ),
+                              newir_stmt(&A, JVST_IR_STMT_VALID),
+                              newir_invalid(&A, JVST_INVALID_NUMBER, "number not valid")),
+                            newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token")
+                          ),
+                          NULL
+                        )
+                      ),
+
+                      NULL
+                    ),
+                    NULL
+                  )
+                ),
+                NULL
+              ),
+              newir_stmt(&A, JVST_IR_STMT_VALID),
+              NULL
+            ),
+
+            newir_if(&A, newir_istok(&A, SJP_OBJECT_END),
+              newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token"),
+              newir_if(&A, newir_istok(&A, SJP_ARRAY_END),
+                newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token"),
+                newir_stmt(&A, JVST_IR_STMT_VALID)
+              )
+            )
+          ),
+          NULL
+      )
+    },
+
     { STOP },
   };
 

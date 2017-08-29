@@ -1468,11 +1468,11 @@ ir_translate_number_expr(struct jvst_cnode *top)
 			if (top->u.num_range.flags & JVST_CNODE_RANGE_EXCL_MAX) {
 				upper = ir_expr_op(JVST_IR_EXPR_LT,
 						ir_expr_new(JVST_IR_EXPR_TOK_NUM),
-						ir_expr_num(top->u.num_range.min));
+						ir_expr_num(top->u.num_range.max));
 			} else if (top->u.num_range.flags & JVST_CNODE_RANGE_MAX) {
 				upper = ir_expr_op(JVST_IR_EXPR_LE,
 						ir_expr_new(JVST_IR_EXPR_TOK_NUM),
-						ir_expr_num(top->u.num_range.min));
+						ir_expr_num(top->u.num_range.max));
 			}
 
 			assert((lower != NULL) || (upper != NULL));
