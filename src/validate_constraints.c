@@ -1980,7 +1980,7 @@ cnode_canonify_propset(struct jvst_cnode *top)
 
 		.io = FSM_IO_GETC,
 		.prefix = NULL,
-		.carryopaque = merge_mcases,
+		.carryopaque = NULL,
 	};
 
 	assert(top->type == JVST_CNODE_OBJ_PROP_SET);
@@ -2001,6 +2001,7 @@ cnode_canonify_propset(struct jvst_cnode *top)
 		struct jvst_cnode_matchset *mset;
 		struct fsm *pat;
 		struct json_str_iter siter;
+		enum re_dialect dialect;
 		struct re_err err = { 0 };
 
 		cons = pm->u.prop_match.constraint;
@@ -2010,17 +2011,39 @@ cnode_canonify_propset(struct jvst_cnode *top)
 
 		siter.str = pm->u.prop_match.match.str;
 		siter.off = 0;
+		dialect = pm->u.prop_match.match.dialect;
 
 		pat = re_comp(
-			pm->u.prop_match.match.dialect,
+			dialect,
 			json_str_getc,
 			&siter,
 			opts,
 			(enum re_flags)0,
 			&err);
 
-		// errors should be checked in parsing
-		assert(pat != NULL);
+		if (pat == NULL) {
+			struct json_string str;
+			char tmp[128], *pbuf;
+
+			str = pm->u.prop_match.match.str;
+			if (str.len < sizeof tmp) {
+				pbuf = &tmp[0];
+			} else {
+				pbuf = xmalloc(str.len+1);
+			}
+
+			memcpy(pbuf, str.s, str.len);
+			pbuf[str.len] = '\0';
+
+			re_perror(dialect, &err, NULL, pbuf);
+			if (pbuf != &tmp[0]) {
+				// it's the small diligences, like
+				// free()'ing a temporary buffer, even
+				// though you're going to abort()
+				free(pbuf);
+			}
+			abort();
+		}
 
 		fsm_setendopaque(pat, mcase);
 
@@ -2043,6 +2066,12 @@ cnode_canonify_propset(struct jvst_cnode *top)
 	//
 	// NB: combining requires copying because different end states
 	// may still have the original MATCH_CASE node.
+
+	// defer setting carryopaque until we're done compiling the REs
+	// into their own DFAs.  each RE gets a unique opaque value for
+	// all of its endstates.  When we union the DFAs together, we
+	// may need to merge these states, but not during compilation.
+	opts->carryopaque = merge_mcases;
 
 	if (!fsm_determinise(matches)) {
 		perror("cannot determinise fsm");
