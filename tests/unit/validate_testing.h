@@ -70,6 +70,9 @@ schema_set_count(struct ast_schema_set *s);
 struct ast_property_schema *
 newprops(struct arena_info *A, ...);
 
+struct ast_property_schema *
+newpatternprops(struct arena_info *A, ...);
+
 struct ast_property_names *
 newpropnames(struct arena_info *A, ...);
 

@@ -145,6 +145,9 @@ struct jvst_cnode {
 
 			// temp storage used in duplication
 			void *tmp;
+
+			unsigned collected:1;
+			unsigned copied:1;
 		} mcase;
 
 		/* Nodes used for simplifying required properties */

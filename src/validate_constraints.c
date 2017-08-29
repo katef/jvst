@@ -1019,10 +1019,18 @@ mcase_copier(const struct fsm *dfa, const struct fsm_state *st, void *opaque)
 
 	node = fsm_getopaque((struct fsm *)dfa, st);
 	assert(node->type == JVST_CNODE_MATCH_CASE);
+
+	if (node->u.mcase.copied) {
+		assert(node->u.mcase.tmp != NULL);
+		return 1;
+	}
+
 	assert(node->u.mcase.tmp == NULL);
 
 	ndup = cnode_deep_copy(node);
+	assert(ndup != NULL);
 	node->u.mcase.tmp = ndup;
+	node->u.mcase.copied = 1;
 
 	fsm_setopaque((struct fsm *)dfa, (struct fsm_state *)st, ndup);
 
@@ -1050,6 +1058,50 @@ mcase_update_opaque(const struct fsm *dfa, const struct fsm_state *st, void *opa
 	return 1;
 }
 
+static int print_mcases_walker(const struct fsm *fsm, const struct fsm_state *st, void *opaque)
+{
+	struct jvst_cnode *cn;
+
+	(void)opaque;
+	if (!fsm_isend(fsm,st)) {
+		return 1;
+	}
+
+	cn = fsm_getopaque((struct fsm *)fsm,(struct fsm_state *)st);
+	fprintf(stderr, "fsm=%p, st=%p, cnode=%p\n",
+		(void *)fsm, (void *)st, (void *)cn);
+	jvst_cnode_debug(cn);
+	fprintf(stderr, "tmp=%p collected=%d copied=%d\n",
+		cn->u.mcase.tmp,
+		cn->u.mcase.collected,
+		cn->u.mcase.copied);
+	fprintf(stderr, "\n");
+
+	return 1;
+}
+
+static void print_mcases(struct fsm *fsm)
+{
+	fsm_walk_states(fsm, NULL, print_mcases_walker);
+}
+
+static void print_mswitch(struct jvst_cnode *node)
+{
+	struct jvst_cnode *mc;
+	size_t i;
+
+	fprintf(stderr, "mcases in dfa\n");
+	print_mcases(node->u.mswitch.dfa);
+
+	fprintf(stderr, "mcases in cases list...\n");
+	for(i=0,mc = node->u.mswitch.cases; mc != NULL; i++,mc = mc->next) {
+		fprintf(stderr, "[%05zu] %p copied? %d  collected? %d  tmp=%p\n",
+			i, (void *)mc, mc->u.mcase.copied, mc->u.mcase.collected, mc->u.mcase.tmp);
+	}
+}
+
+void (*volatile foofunc)(struct jvst_cnode *) = &print_mswitch;
+
 static struct jvst_cnode *
 cnode_mswitch_copy(struct jvst_cnode *node)
 {
@@ -1068,19 +1120,40 @@ cnode_mswitch_copy(struct jvst_cnode *node)
 	// FSMs
 	dup_fsm = fsm_clone(node->u.mswitch.dfa);
 
+#if 0
+	fprintf(stderr, "original mcases in dfa\n");
+	print_mcases(node->u.mswitch.dfa);
+
+	fprintf(stderr, "duplicated mcases in dfa\n");
+	print_mcases(dup_fsm);
+#endif
+
 	tree->u.mswitch.dfa = dup_fsm;
 
 	// copy and collect all opaque states
-	fsm_walk_states(dup_fsm, NULL, mcase_copier);
-
 	mcpp = &tree->u.mswitch.cases;
 	for (mcases = node->u.mswitch.cases; mcases != NULL; mcases = mcases->next) {
-		assert(mcases->u.mcase.tmp != NULL);
-		*mcpp = mcases->u.mcase.tmp;
-		mcases->u.mcase.tmp = NULL;
-		mcpp = &(*mcpp)->next;
+		struct jvst_cnode *mcdup;
+
+		assert(mcases->u.mcase.tmp == NULL);
+		assert(!mcases->u.mcase.copied);
+
+		mcdup = cnode_deep_copy(mcases);
+
+		assert(mcdup->u.mcase.tmp == NULL);
+		assert(!mcdup->u.mcase.copied);
+
+		mcases->u.mcase.tmp = mcdup;
+		mcases->u.mcase.copied = 1;
+
+		*mcpp = mcdup;
+		mcpp = &mcdup->next;
 	}
 
+	// update the copied DFA
+	fsm_walk_states(dup_fsm, NULL, mcase_update_opaque);
+
+	// all mswitch nodes need a default case!
 	assert(node->u.mswitch.default_case != NULL);
 	tree->u.mswitch.default_case = cnode_deep_copy(node->u.mswitch.default_case);
 
@@ -1657,6 +1730,7 @@ merge_mcases(const struct fsm_state **orig, size_t n,
 
 	if (nstates == 1) {
 		assert(mcase != NULL);
+		assert(mcase->next == NULL);
 		fsm_setopaque(dfa, comb, mcase);
 		return;
 	}
@@ -1692,6 +1766,7 @@ merge_mcases(const struct fsm_state **orig, size_t n,
 		jpp = &(*jpp)->next;
 	}
 
+	assert(mcase->next == NULL);
 	fsm_setopaque(dfa, comb, mcase);
 }
 
@@ -1716,10 +1791,17 @@ mcase_collector(const struct fsm *dfa, const struct fsm_state *st, void *opaque)
 
 	node = fsm_getopaque((struct fsm *)dfa, st);
 	assert(node->type == JVST_CNODE_MATCH_CASE);
+
+	if (node->u.mcase.collected) {
+		return 1;
+	}
+
 	assert(node->next == NULL);
+	assert(collector->mcpp != &node->next);
 
 	*collector->mcpp = node;
 	collector->mcpp = &node->next;
+	node->u.mcase.collected = 1;
 
 	return 1;
 }
@@ -1804,6 +1886,18 @@ mcase_cmp(const void *p0, const void *p1)
 	for(; (ms0 != NULL) || (ms1 != NULL); ms0=ms0->next, ms1=ms1->next) {
 		int diff;
 
+		if (ms0 == ms1) {
+			return 0;
+		}
+
+		if (ms0 == NULL) {
+			return -1;
+		}
+
+		if (ms1 == NULL) {
+			return 1;
+		}
+
 		diff = matchset_cmp(&ms0,&ms1);
 		if (diff != 0) {
 			return diff;
@@ -1822,7 +1916,7 @@ sort_mcases(struct jvst_cnode **mcpp)
 {
 	struct jvst_cnode *mc, **mcv;
 	size_t i,n;
-	struct jvst_cnode *mcv0[16];
+	struct jvst_cnode *mcv0[16] = { 0 };
 
 	assert(mcpp != NULL);
 
@@ -1903,6 +1997,7 @@ cnode_canonify_propset(struct jvst_cnode *top)
 		cons = pm->u.prop_match.constraint;
 		mset = cnode_matchset_new(pm->u.prop_match.match, NULL);
 		mcase = cnode_new_mcase(mset, cons);
+		assert(mcase->next == NULL);
 
 		siter.str = pm->u.prop_match.match.str;
 		siter.off = 0;
@@ -1953,6 +2048,13 @@ cnode_canonify_propset(struct jvst_cnode *top)
 
 	fsm_walk_states(matches, &collector, mcase_collector);
 
+	{
+		struct jvst_cnode *n;
+		for (n=mcases; n != NULL; n=n->next) {
+			n->u.mcase.collected = 0;
+		}
+	}
+
 	// step 4: sort the MATCH_CASE nodes.
 	//
 	// This keeps the IR output deterministic (useful for testing,
@@ -1976,6 +2078,8 @@ cnode_canonify_propset(struct jvst_cnode *top)
 		cons = jvst_cnode_simplify(mcases->u.mcase.constraint);
 		mcases->u.mcase.constraint = jvst_cnode_canonify(cons);
 	}
+
+	// print_mswitch(msw);
 
 	return msw;
 }
@@ -2224,6 +2328,7 @@ cnode_canonify_pass2(struct jvst_cnode *tree)
 				assert(node->u.mcase.tmp == NULL);
 
 				result = jvst_cnode_canonify(node);
+				assert(result != NULL);
 				node->u.mcase.tmp = result;
 				*mcpp = result;
 				mcpp = &(*mcpp)->next;

@@ -348,6 +348,34 @@ void test_xlate_properties(void)
                             NULL),
           SJP_NONE),
     },
+
+    {
+      TRANSLATE, 
+      newschema_p(&A, 0,
+        "properties", newpatternprops(&A, "a*", newschema(&A, JSON_VALUE_INTEGER), NULL),
+        "properties", newpatternprops(&A, "aaa*", newschema_p(&A, 0, "maximum", 20.0, NULL), NULL),
+        NULL
+      ),
+
+      NULL,
+      newcnode_switch(&A, 1,
+        SJP_OBJECT_BEG, newcnode_bool(&A, JVST_CNODE_AND,
+                          newcnode_propset(&A,
+                            newcnode_prop_match(&A, RE_NATIVE, "a*",
+                              newcnode_switch(&A, 0, SJP_NUMBER, newcnode(&A,JVST_CNODE_NUM_INTEGER), SJP_NONE)),
+                            newcnode_prop_match(&A, RE_NATIVE, "aaa*",
+                              newcnode_switch(&A, 1,
+                                SJP_NUMBER, newcnode_bool(&A, JVST_CNODE_AND,
+                                              newcnode_range(&A, JVST_CNODE_RANGE_MAX, 0.0, 20.0),
+                                              newcnode_valid(),
+                                              NULL),
+                                SJP_NONE)),
+                            NULL),
+                          newcnode_valid(),
+                          NULL),
+        SJP_NONE)
+    },
+
     { STOP },
   };
 
@@ -1728,6 +1756,48 @@ void test_canonify_propsets(void)
 
                             NULL),
           SJP_NONE),
+    },
+
+    {
+      CANONIFY, NULL, 
+      newcnode_switch(&A, 1,
+        SJP_OBJECT_BEG, newcnode_bool(&A, JVST_CNODE_AND,
+                          newcnode_propset(&A,
+                            newcnode_prop_match(&A, RE_NATIVE, "a*",
+                              newcnode_switch(&A, 0, SJP_NUMBER, newcnode(&A,JVST_CNODE_NUM_INTEGER), SJP_NONE)),
+                            newcnode_prop_match(&A, RE_NATIVE, "aaa*",
+                              newcnode_switch(&A, 1,
+                                SJP_NUMBER, newcnode_bool(&A, JVST_CNODE_AND,
+                                              newcnode_range(&A, JVST_CNODE_RANGE_MAX, 0.0, 20.0),
+                                              newcnode_valid(),
+                                              NULL),
+                                SJP_NONE)),
+                            NULL),
+                          newcnode_valid(),
+                          NULL),
+        SJP_NONE),
+
+      newcnode_switch(&A, 1,
+        SJP_OBJECT_BEG, newcnode_mswitch(&A,
+                          newcnode_valid(),
+
+                          newcnode_mcase(&A,
+                            newmatchset(&A, RE_NATIVE, "a*", -1),
+                            newcnode_switch(&A, 0, SJP_NUMBER, newcnode(&A,JVST_CNODE_NUM_INTEGER), SJP_NONE)
+                          ),
+
+                          newcnode_mcase(&A,
+                            newmatchset(&A, RE_NATIVE, "a*", RE_NATIVE, "aaa*", -1),
+                            newcnode_switch(&A, 0,
+                              SJP_NUMBER, newcnode_bool(&A, JVST_CNODE_AND,
+                                newcnode_range(&A, JVST_CNODE_RANGE_MAX, 0.0, 20.0),
+                                newcnode(&A,JVST_CNODE_NUM_INTEGER),
+                                NULL),
+                              SJP_NONE)
+                            ),
+                          NULL
+                        ),
+        SJP_NONE)
     },
 
     { STOP },
