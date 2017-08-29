@@ -98,6 +98,8 @@
 
 	<clear-types>;
 
+        <add-required-property>:    (:string) -> ();
+
         <new-prop-schema>:          (:regexp,:ast-schema) -> (:ast-prop-schema);
 
         <append-list-of-props>:     (:ast-prop-schema,:ast-prop-schema) -> ();
@@ -201,6 +203,28 @@
 	##
 		<err-expected-number>;
 	};
+
+        directive-required [
+                required-property = {
+                        s = STRING;
+                        <add-required-property>(s);
+                };
+
+                list-of-required-properties = {
+                        required-property;
+                        {
+                                comma;
+                                list-of-required-properties;
+                        ||
+                                $;
+                        };
+                };
+
+        ] = {
+                OBRACKET;
+                list-of-required-properties;
+                CBRACKET;
+        };
 
 	directive-type [
 
@@ -338,7 +362,7 @@
 		directive-min-properties;
 	||
 		? = <kw-required>(k);
-		placeholder;
+                directive-required;
 	||
 		? = <kw-properties>(k);
                 dialect = <re-literal>;

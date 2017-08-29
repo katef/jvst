@@ -311,6 +311,15 @@
                 @re.str = @pat;
         @};
 
+        <add-required-property>:    (s :string) -> () = @{
+                struct ast_string_set *ss;
+                ss = xmalloc(sizeof *ss);
+                ss->str = @s;
+                // prepend required property
+                ss->next = ast->required.set;
+                ast->required.set = ss;
+        @};
+
         <new-prop-schema>:          (re :regexp,sch :ast-schema) -> (ps :ast-prop-schema) = @{
                 @ps = xmalloc(sizeof *@ps);
                 @ps->pattern = @re;
