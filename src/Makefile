@@ -56,5 +56,6 @@ DFLAGS.${src} += ${CFLAGS.libre} ${CFLAGS.libfsm}
 
 .for prog in ${PROG}
 LFLAGS.${prog} += ${LIBS.libre} ${LIBS.libfsm}
+LFLAGS.${prog} += -lm
 .endfor
 

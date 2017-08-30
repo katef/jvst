@@ -35,6 +35,7 @@ TEST_DEP_OBJS += ${BUILD}/${src:R}.o
 
 .for prog in ${TEST_PROG}
 LFLAGS.${prog} += ${LIBS.libre} ${LIBS.libfsm}
+LFLAGS.${prog} += -lm
 .endfor
 
 .for prog in ${TEST_PROG}
