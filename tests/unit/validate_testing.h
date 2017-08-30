@@ -102,7 +102,7 @@ struct jvst_cnode *
 newcnode_range(struct arena_info *A, enum jvst_cnode_rangeflags flags, double min, double max);
 
 struct jvst_cnode *
-newcnode_counts(struct arena_info *A, size_t min, size_t max);
+newcnode_counts(struct arena_info *A, size_t min, size_t max, bool upper);
 
 struct jvst_cnode *
 newcnode_valid(void);

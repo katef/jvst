@@ -56,13 +56,22 @@ dump_schema(FILE *f, const struct ast_schema *ast)
 		fprintf(f, "</TR>");
 	}
 
-	if ((ast->kws & KWS_MINMAX_LENGTH)) {
+	if ((ast->kws & KWS_MIN_LENGTH)) {
 	}
 
-	if ((ast->kws & KWS_MINMAX_ITEMS)) {
+	if ((ast->kws & KWS_MAX_LENGTH)) {
 	}
 
-	if ((ast->kws & KWS_MINMAX_PROPERTIES)) {
+	if ((ast->kws & KWS_MIN_ITEMS)) {
+	}
+
+	if ((ast->kws & KWS_MAX_ITEMS)) {
+	}
+
+	if ((ast->kws & KWS_MIN_PROPERTIES)) {
+	}
+
+	if ((ast->kws & KWS_MAX_PROPERTIES)) {
 	}
 
 	if (ast->types != 0) {

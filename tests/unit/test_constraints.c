@@ -409,7 +409,7 @@ void test_xlate_minproperties_1(void)
       TRANSLATE, schema, NULL,
         newcnode_switch(&A, 1,
           SJP_OBJECT_BEG, newcnode_bool(&A,JVST_CNODE_AND,
-                            newcnode_counts(&A, 1, 0),
+                            newcnode_counts(&A, 1, 0, false),
                             newcnode_valid(),
                             NULL),
           SJP_NONE),
@@ -438,7 +438,7 @@ void test_xlate_minproperties_2(void)
       TRANSLATE, schema, NULL,
         newcnode_switch(&A, 1,
           SJP_OBJECT_BEG, newcnode_bool(&A,JVST_CNODE_AND,
-                            newcnode_counts(&A, 1, 0),
+                            newcnode_counts(&A, 1, 0, false),
                             newcnode_bool(&A,JVST_CNODE_AND,
                               newcnode_propset(&A,
                                 newcnode_prop_match(&A, RE_LITERAL, "foo",
@@ -477,13 +477,13 @@ void test_xlate_minproperties_3(void)
       TRANSLATE, schema, NULL,
         newcnode_switch(&A, 1,
           SJP_OBJECT_BEG, newcnode_bool(&A,JVST_CNODE_AND,
-                            newcnode_counts(&A, 1, 0),
+                            newcnode_counts(&A, 1, 0, false),
                             newcnode_bool(&A,JVST_CNODE_AND,
                               newcnode_propset(&A,
                                 newcnode_prop_match(&A, RE_LITERAL, "foo",
                                   newcnode_switch(&A, 0,
                                     SJP_OBJECT_BEG, newcnode_bool(&A,JVST_CNODE_AND,
-                                                      newcnode_counts(&A, 1, 0),
+                                                      newcnode_counts(&A, 1, 0, false),
                                                       newcnode_valid(),
                                                       NULL),
                                     SJP_NONE)),
@@ -515,7 +515,7 @@ void test_xlate_maxproperties_1(void)
       TRANSLATE, schema, NULL,
         newcnode_switch(&A, 1,
           SJP_OBJECT_BEG, newcnode_bool(&A,JVST_CNODE_AND,
-                            newcnode_counts(&A, 0, 2),
+                            newcnode_counts(&A, 0, 2, true),
                             newcnode_valid(),
                             NULL),
           SJP_NONE),
@@ -546,13 +546,13 @@ void test_xlate_maxproperties_2(void)
       TRANSLATE, schema, NULL,
         newcnode_switch(&A, 1,
           SJP_OBJECT_BEG, newcnode_bool(&A,JVST_CNODE_AND,
-                            newcnode_counts(&A, 0, 1),
+                            newcnode_counts(&A, 0, 1, true),
                             newcnode_bool(&A,JVST_CNODE_AND,
                               newcnode_propset(&A,
                                 newcnode_prop_match(&A, RE_LITERAL, "foo",
                                   newcnode_switch(&A, 0,
                                     SJP_OBJECT_BEG, newcnode_bool(&A,JVST_CNODE_AND,
-                                                      newcnode_counts(&A, 0, 1),
+                                                      newcnode_counts(&A, 0, 1, true),
                                                       newcnode_valid(),
                                                       NULL),
                                     SJP_NONE)),
@@ -573,7 +573,14 @@ void test_xlate_maxproperties_2(void)
 void test_xlate_minmaxproperties_1(void)
 {
   struct arena_info A = {0};
-  struct ast_schema *schema = newschema_p(&A, 0,
+
+  // initial schema is not reduced (additional constraints are ANDed
+  // together).  Reduction will occur on a later pass.
+  const struct cnode_test tests[] = {
+    {
+      TRANSLATE, 
+
+      newschema_p(&A, 0,
       "minProperties", 1,
       "maxProperties", 1,
       "properties", newprops(&A,
@@ -583,33 +590,49 @@ void test_xlate_minmaxproperties_1(void)
           NULL), // XXX - JSON_VALUE_INTEGER
         "bar", newschema(&A, JSON_VALUE_STRING),
         NULL),
-      NULL);
+      NULL),
 
-  // initial schema is not reduced (additional constraints are ANDed
-  // together).  Reduction will occur on a later pass.
-  const struct cnode_test tests[] = {
-    {
-      TRANSLATE, schema, NULL,
-        newcnode_switch(&A, 1,
-          SJP_OBJECT_BEG, newcnode_bool(&A,JVST_CNODE_AND,
-                            newcnode_counts(&A, 1, 1),
-                            newcnode_bool(&A,JVST_CNODE_AND,
-                              newcnode_propset(&A,
-                                newcnode_prop_match(&A, RE_LITERAL, "foo",
-                                  newcnode_switch(&A, 0,
-                                    SJP_OBJECT_BEG, newcnode_bool(&A,JVST_CNODE_AND,
-                                                      newcnode_counts(&A, 1, 2),
-                                                      newcnode_valid(),
-                                                      NULL),
-                                    SJP_NONE)),
-                                newcnode_prop_match(&A, RE_LITERAL, "bar",
-                                  newcnode_switch(&A, 0, SJP_STRING, newcnode_valid(), SJP_NONE)),
-                                NULL),
-                              newcnode_valid(),
+      NULL,
+
+      newcnode_switch(&A, 1,
+        SJP_OBJECT_BEG, newcnode_bool(&A,JVST_CNODE_AND,
+                          newcnode_counts(&A, 1, 1, true),
+                          newcnode_bool(&A,JVST_CNODE_AND,
+                            newcnode_propset(&A,
+                              newcnode_prop_match(&A, RE_LITERAL, "foo",
+                                newcnode_switch(&A, 0,
+                                  SJP_OBJECT_BEG, newcnode_bool(&A,JVST_CNODE_AND,
+                                                    newcnode_counts(&A, 1, 2, true),
+                                                    newcnode_valid(),
+                                                    NULL),
+                                  SJP_NONE)),
+                              newcnode_prop_match(&A, RE_LITERAL, "bar",
+                                newcnode_switch(&A, 0, SJP_STRING, newcnode_valid(), SJP_NONE)),
                               NULL),
+                            newcnode_valid(),
                             NULL),
-          SJP_NONE),
+                          NULL),
+        SJP_NONE),
     },
+
+    {
+      TRANSLATE, 
+
+      newschema_p(&A, 0,
+      "minProperties", 1,
+      "maxProperties", 0,
+      NULL),
+
+      NULL,
+
+      newcnode_switch(&A, 1,
+        SJP_OBJECT_BEG, newcnode_bool(&A,JVST_CNODE_AND,
+                          newcnode_counts(&A, 1, 0, true),
+                          newcnode_valid(),
+                          NULL),
+        SJP_NONE),
+    },
+
     { STOP },
   };
 

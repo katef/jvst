@@ -599,8 +599,8 @@ and_or_xor:
 
 		sbuf_snprintf(buf, "x");
 
-		if (node->u.counts.max > 0) {
-			sbuf_snprintf(buf, "<= %zu", node->u.counts.min);
+		if (node->u.counts.upper > 0) {
+			sbuf_snprintf(buf, "<= %zu", node->u.counts.max);
 		}
 
 		sbuf_snprintf(buf, ")");
@@ -869,12 +869,14 @@ jvst_cnode_translate_ast(const struct ast_schema *ast)
 		node->u.sw[SJP_OBJECT_BEG] = top_jxn;
 	}
 
-	if (ast->kws & KWS_MINMAX_PROPERTIES) {
+	if (ast->kws & (KWS_MIN_PROPERTIES | KWS_MAX_PROPERTIES)) {
 		struct jvst_cnode *range, *jxn;
 
 		range = jvst_cnode_alloc(JVST_CNODE_COUNT_RANGE);
 		range->u.counts.min = ast->min_properties;
 		range->u.counts.max = ast->max_properties;
+
+		range->u.counts.upper = !!(ast->kws & KWS_MAX_PROPERTIES);
 
 		jxn = jvst_cnode_alloc(JVST_CNODE_AND);
 		jxn->u.ctrl = range;

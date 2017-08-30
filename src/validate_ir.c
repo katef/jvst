@@ -1963,7 +1963,7 @@ ir_translate_obj_inner(struct jvst_cnode *top, struct ir_object_builder *builder
 				checkpp = &(*checkpp)->u.if_.br_true;
 			}
 
-			if (top->u.counts.max > 0) {
+			if (top->u.counts.upper) {
 				*checkpp = ir_stmt_if(
 					ir_expr_op(JVST_IR_EXPR_LE,
 						ir_expr_count(counter),

@@ -446,7 +446,7 @@
 			fprintf(stderr, "<set-min-properties>: %ld\n", (long)c);
 		}
 
-		ast->kws |= KWS_MINMAX_PROPERTIES;
+		ast->kws |= KWS_MIN_PROPERTIES;
 		ast->min_properties = c;
 	@};
 
@@ -463,7 +463,7 @@
 			fprintf(stderr, "<set-max-properties>: %ld\n", (long)c);
 		}
 
-		ast->kws |= KWS_MINMAX_PROPERTIES;
+		ast->kws |= KWS_MAX_PROPERTIES;
 		ast->max_properties = c;
 	@};
 

@@ -945,7 +945,7 @@ validate_object(struct jvst_validator *v, enum SJP_RESULT pret, struct sjp_event
 		}
 	}
 
-	if (schema->kws & KWS_MINMAX_PROPERTIES) {
+	if ((schema->kws & KWS_MIN_PROPERTIES) || (schema->kws & KWS_MAX_PROPERTIES)) {
 		venum |= OBJ_MINMAX_PROPERTIES;
 	}
 

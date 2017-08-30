@@ -101,15 +101,20 @@ struct ast_schema {
 	 * "examples": TODO: unimplemented
 	 */
 	enum ast_kws {
-		KWS_VALUE                 = 1 << 0,
+		KWS_VALUE                 = 1 <<  0,
 
-		KWS_MULTIPLE_OF           = 1 << 1,
-		KWS_MAXIMUM               = 1 << 2, /* also "exclusiveMaximum" */
-		KWS_MINIMUM               = 1 << 3, /* also "exclusiveMinimum" */
+		KWS_MULTIPLE_OF           = 1 <<  1,
+		KWS_MAXIMUM               = 1 <<  2, /* also "exclusiveMaximum" */
+		KWS_MINIMUM               = 1 <<  3, /* also "exclusiveMinimum" */
 
-		KWS_MINMAX_LENGTH         = 1 << 5, /* .min_length and .max_length */
-		KWS_MINMAX_ITEMS          = 1 << 7, /* .min_items  and .max_items */
-		KWS_MINMAX_PROPERTIES     = 1 << 8, /* .min_properties and .max_properties */
+		KWS_MIN_LENGTH            = 1 <<  5, /* .min_length and .max_length */
+		KWS_MAX_LENGTH            = 1 <<  6, /* .min_length and .max_length */
+
+		KWS_MIN_ITEMS             = 1 <<  7, /* .min_items  and .max_items */
+		KWS_MAX_ITEMS             = 1 <<  8, /* .min_items  and .max_items */
+
+		KWS_MIN_PROPERTIES        = 1 <<  9, /* .min_properties and .max_properties */
+		KWS_MAX_PROPERTIES        = 1 << 10, /* .min_properties and .max_properties */
 	} kws;
 
 	/* TODO: transform post-parse to populate AST_STRING to .pattern instead */

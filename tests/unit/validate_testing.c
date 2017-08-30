@@ -283,10 +283,10 @@ newschema_p(struct arena_info *A, int types, ...)
 
 		// big dumb if-else chain gets the job done...
 		if (strcmp(pname, "minProperties") == 0) {
-			s->kws |= KWS_MINMAX_PROPERTIES;
+			s->kws |= KWS_MIN_PROPERTIES;
 			s->min_properties = va_arg(args, ast_count);
 		} else if (strcmp(pname, "maxProperties") == 0) {
-			s->kws |= KWS_MINMAX_PROPERTIES;
+			s->kws |= KWS_MAX_PROPERTIES;
 			s->max_properties = va_arg(args, ast_count);
 		} else if (strcmp(pname, "properties") == 0) {
 			struct ast_property_schema *prop_set, **pspp;
@@ -572,12 +572,13 @@ newcnode_range(struct arena_info *A, enum jvst_cnode_rangeflags flags, double mi
 }
 
 struct jvst_cnode *
-newcnode_counts(struct arena_info *A, size_t min, size_t max)
+newcnode_counts(struct arena_info *A, size_t min, size_t max, bool upper)
 {
 	struct jvst_cnode *node, **pp;
 	node = newcnode(A, JVST_CNODE_COUNT_RANGE);
 	node->u.counts.min = min;
 	node->u.counts.max = max;
+	node->u.counts.upper = upper;
 	return node;
 }
 

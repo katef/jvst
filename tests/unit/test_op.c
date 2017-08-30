@@ -1348,7 +1348,7 @@ void test_op_minmax_properties_1(void)
     {
       ASSEMBLE,
       newcnode_switch(&A, 1,
-        SJP_OBJECT_BEG, newcnode_counts(&A, 1, 0),
+        SJP_OBJECT_BEG, newcnode_counts(&A, 1, 0, false),
         SJP_NONE),
 
       // XXX
@@ -1482,7 +1482,7 @@ void test_op_minmax_properties_1(void)
     {
       ASSEMBLE,
       newcnode_switch(&A, 1,
-        SJP_OBJECT_BEG, newcnode_counts(&A, 0, 2),
+        SJP_OBJECT_BEG, newcnode_counts(&A, 0, 2, true),
         SJP_NONE),
 
       // XXX - comments here are largely the same as in the previous
@@ -1602,7 +1602,7 @@ void test_op_minmax_properties_1(void)
     {
       ASSEMBLE,
       newcnode_switch(&A, 1,
-        SJP_OBJECT_BEG, newcnode_counts(&A, 2, 5),
+        SJP_OBJECT_BEG, newcnode_counts(&A, 2, 5, true),
         SJP_NONE),
 
       // XXX - comments here are largely the same as in the first
@@ -1732,7 +1732,7 @@ void test_op_minmax_properties_1(void)
     {
       ENCODE,
       newcnode_switch(&A, 1,
-        SJP_OBJECT_BEG, newcnode_counts(&A, 2, 5),
+        SJP_OBJECT_BEG, newcnode_counts(&A, 2, 5, true),
         SJP_NONE),
 
       // XXX - comments here are largely the same as in the first
@@ -1924,7 +1924,7 @@ void test_op_minproperties_2(void)
       ASSEMBLE,
       newcnode_switch(&A, 1,
         SJP_OBJECT_BEG, newcnode_bool(&A,JVST_CNODE_AND,
-                          newcnode_counts(&A, 1, 0),
+                          newcnode_counts(&A, 1, 0, false),
                           newcnode_propset(&A,
                             newcnode_prop_match(&A, RE_LITERAL, "foo",
                               newcnode_switch(&A, 0, SJP_NUMBER, newcnode_valid(), SJP_NONE)),
@@ -4154,13 +4154,13 @@ void test_op_minproperties_3(void)
       NONE,
       newcnode_switch(&A, 1,
         SJP_OBJECT_BEG, newcnode_bool(&A,JVST_CNODE_AND,
-                          newcnode_counts(&A, 1, 0),
+                          newcnode_counts(&A, 1, 0, false),
                           newcnode_bool(&A,JVST_CNODE_AND,
                             newcnode_propset(&A,
                               newcnode_prop_match(&A, RE_LITERAL, "foo",
                                 newcnode_switch(&A, 0,
                                   SJP_OBJECT_BEG, newcnode_bool(&A,JVST_CNODE_AND,
-                                                    newcnode_counts(&A, 1, 0),
+                                                    newcnode_counts(&A, 1, 0, false),
                                                     newcnode_valid(),
                                                     NULL),
                                   SJP_NONE)),
@@ -4195,7 +4195,7 @@ void test_op_maxproperties_1(void)
       NONE,
       newcnode_switch(&A, 1,
         SJP_OBJECT_BEG, newcnode_bool(&A,JVST_CNODE_AND,
-                          newcnode_counts(&A, 0, 2),
+                          newcnode_counts(&A, 0, 2, true),
                           newcnode_valid(),
                           NULL),
         SJP_NONE),
@@ -4229,13 +4229,13 @@ void test_op_maxproperties_2(void)
       NONE,
       newcnode_switch(&A, 1,
         SJP_OBJECT_BEG, newcnode_bool(&A,JVST_CNODE_AND,
-                          newcnode_counts(&A, 0, 1),
+                          newcnode_counts(&A, 0, 1, true),
                           newcnode_bool(&A,JVST_CNODE_AND,
                             newcnode_propset(&A,
                               newcnode_prop_match(&A, RE_LITERAL, "foo",
                                 newcnode_switch(&A, 0,
                                   SJP_OBJECT_BEG, newcnode_bool(&A,JVST_CNODE_AND,
-                                                    newcnode_counts(&A, 0, 1),
+                                                    newcnode_counts(&A, 0, 1, true),
                                                     newcnode_valid(),
                                                     NULL),
                                   SJP_NONE)),
@@ -4278,13 +4278,13 @@ void test_op_minmax_properties_2(void)
       NONE,
       newcnode_switch(&A, 1,
         SJP_OBJECT_BEG, newcnode_bool(&A,JVST_CNODE_AND,
-                          newcnode_counts(&A, 1, 1),
+                          newcnode_counts(&A, 1, 1, true),
                           newcnode_bool(&A,JVST_CNODE_AND,
                             newcnode_propset(&A,
                               newcnode_prop_match(&A, RE_LITERAL, "foo",
                                 newcnode_switch(&A, 0,
                                   SJP_OBJECT_BEG, newcnode_bool(&A,JVST_CNODE_AND,
-                                                    newcnode_counts(&A, 1, 2),
+                                                    newcnode_counts(&A, 1, 2, true),
                                                     newcnode_valid(),
                                                     NULL),
                                   SJP_NONE)),
