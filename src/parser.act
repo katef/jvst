@@ -62,8 +62,6 @@
         typedef struct ast_schema *ast_schema_t;
         typedef struct ast_property_schema *ast_prop_schema_t;
 
-        #define RE_PATTERN_DIALECT RE_NATIVE
-
 	#define CURRENT_TERMINAL act_state->t.type
 	#define ERROR_TERMINAL   SJP_TOK_NONE /* XXX: NONE is not an error */
 	#define ADVANCE_LEXER    next(lex_state, &act_state->t)
@@ -304,7 +302,7 @@
 	<kw-examples>:              (k :kw) -> (v :bool) = @{ @v = (@k == KW_EXAMPLES);              @};
 
         <re-literal>:               () -> (dialect :re-dialect) = @{ @dialect = RE_LITERAL; @};
-        <re-pattern>:               () -> (dialect :re-dialect) = @{ @dialect = RE_PATTERN_DIALECT; @};
+        <re-pattern>:               () -> (dialect :re-dialect) = @{ @dialect = RE_NATIVE; @};
 
         <new-regexp>:               (dialect :re-dialect, pat :string) -> (re :regexp) = @{
                 @re.dialect = @dialect;
@@ -436,7 +434,14 @@
 	@};
 
 	<set-min-properties>: (n :number) -> () = @{
-                ast_count c = (ast_count)@n;
+                ast_count c;
+
+		if (!(@n > 0)) {
+			xerr(lex_state, KW_MIN_PROPERTIES, "expected > 0, got %f", @n);
+		}
+
+                c = (ast_count)@n;
+
 		if (debug & DEBUG_ACT) {
 			fprintf(stderr, "<set-min-properties>: %ld\n", (long)c);
 		}
@@ -446,7 +451,14 @@
 	@};
 
 	<set-max-properties>: (n :number) -> () = @{
-                ast_count c = (ast_count)@n;
+                ast_count c;
+
+		if (!(@n > 0)) {
+			xerr(lex_state, KW_MIN_PROPERTIES, "expected > 0, got %f", @n);
+		}
+
+                c = (ast_count)@n;
+
 		if (debug & DEBUG_ACT) {
 			fprintf(stderr, "<set-max-properties>: %ld\n", (long)c);
 		}

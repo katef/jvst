@@ -263,8 +263,8 @@
 		<err-expected-type>;
 	};
 
-        directive-properties: (dialect: re-dialect) -> () [
-                prop-schema: (dialect: re-dialect) -> (ps: ast-prop-schema) = {
+        directive-properties: (dialect :re-dialect) -> () [
+                prop-schema: (dialect :re-dialect) -> (ps :ast-prop-schema) = {
                         s = STRING;
                         colon;
                         sch = <parse-schema>;
@@ -272,7 +272,7 @@
                         ps = <new-prop-schema>(re,sch);
                 };
 
-                list-of-properties: (dialect: re-dialect) -> (ps: ast-prop-schema) = {
+                list-of-properties: (dialect :re-dialect) -> (ps :ast-prop-schema) = {
                         ps = prop-schema(dialect);
                         {
                                 comma;

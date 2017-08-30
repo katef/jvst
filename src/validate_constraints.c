@@ -2025,6 +2025,10 @@ cnode_canonify_propset(struct jvst_cnode *top)
 			struct json_string str;
 			char tmp[128], *pbuf;
 
+			// the match.str field is a json_string, which
+			// is length encoded and may not have a
+			// terminating NUL character.  Copy it so we can
+			// pass it to re_perror.
 			str = pm->u.prop_match.match.str;
 			if (str.len < sizeof tmp) {
 				pbuf = &tmp[0];
@@ -2037,9 +2041,6 @@ cnode_canonify_propset(struct jvst_cnode *top)
 
 			re_perror(dialect, &err, NULL, pbuf);
 			if (pbuf != &tmp[0]) {
-				// it's the small diligences, like
-				// free()'ing a temporary buffer, even
-				// though you're going to abort()
 				free(pbuf);
 			}
 			abort();
