@@ -2005,6 +2005,8 @@ mcase_re_compile(struct ast_regexp *re, struct fsm_options *opts, struct jvst_cn
 			(enum re_flags)0,
 			&err);
 
+	fsm_minimise(pat);
+
 	if (pat == NULL) {
 		goto error;
 	}
