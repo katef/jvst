@@ -105,6 +105,9 @@ struct jvst_cnode *
 newcnode_counts(struct arena_info *A, size_t min, size_t max, bool upper);
 
 struct jvst_cnode *
+newcnode_strmatch(struct arena_info *A, enum re_dialect dialect, const char *pat);
+
+struct jvst_cnode *
 newcnode_valid(void);
 
 struct jvst_cnode *

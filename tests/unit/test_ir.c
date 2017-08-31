@@ -3665,6 +3665,54 @@ void test_ir_dependencies(void)
   RUNTESTS(tests);
 }
 
+void test_ir_patterns(void)
+{
+  struct arena_info A = {0};
+
+  // initial schema is not reduced (additional constraints are ANDed
+  // together).  Reduction will occur on a later pass.
+  const struct ir_test tests[] = {
+    {
+      TRANSLATE,
+      newcnode_switch(&A, 1,
+        SJP_STRING, newcnode_strmatch(&A, RE_NATIVE, "a+b.d"),
+        SJP_NONE),
+
+      newir_frame(&A,
+          newir_matcher(&A, 0, "dfa"),
+          newir_stmt(&A, JVST_IR_STMT_TOKEN),
+          newir_if(&A, newir_istok(&A, SJP_STRING),
+            newir_match(&A, 0,
+              newir_case(&A, 0, 
+                NULL,
+                newir_invalid(&A, JVST_INVALID_STRING, "invalid string")
+              ),
+
+              // match "bar"
+              newir_case(&A, 1,
+                newmatchset(&A, RE_NATIVE,  "a+b.d", -1),
+                newir_stmt(&A, JVST_IR_STMT_VALID)
+              ),
+              NULL
+            ),
+            newir_if(&A, newir_istok(&A, SJP_OBJECT_END),
+              newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token"),
+              newir_if(&A, newir_istok(&A, SJP_ARRAY_END),
+                newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token"),
+                newir_stmt(&A, JVST_IR_STMT_VALID)
+              )
+            )
+          ),
+          NULL
+      )
+    },
+
+    { STOP },
+  };
+
+  RUNTESTS(tests);
+}
+
 /* incomplete tests... placeholders for conversion from cnode tests */
 static void test_ir_minproperties_3(void);
 static void test_ir_maxproperties_1(void);
@@ -3707,6 +3755,8 @@ int main(void)
 
   test_ir_simplify_ands();
   test_ir_simplify_ored_schema();
+
+  test_ir_patterns();
 
   return report_tests();
 }

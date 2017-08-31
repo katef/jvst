@@ -1062,6 +1062,31 @@ void test_xlate_anyof_2(void)
   RUNTESTS(tests);
 }
 
+static void test_xlate_pattern_1(void)
+{
+  struct arena_info A = {0};
+
+  const struct cnode_test tests[] = {
+    {
+      TRANSLATE,
+      newschema_p(&A, 0, "pattern", "a+", NULL),
+
+      NULL,
+
+      newcnode_switch(&A, 1,
+        SJP_STRING, newcnode_bool(&A, JVST_CNODE_AND,
+                      newcnode_strmatch(&A, RE_NATIVE, "a+"),
+                      newcnode_valid(),
+                      NULL),
+        SJP_NONE)
+    },
+
+    { STOP },
+  };
+
+  RUNTESTS(tests);
+}
+
 static void test_simplify_ands(void)
 {
   struct arena_info A = {0};
@@ -1929,6 +1954,38 @@ void test_canonify_required(void)
   RUNTESTS(tests);
 }
 
+static void test_canonify_patterns(void)
+{
+  struct arena_info A = {0};
+
+  const struct cnode_test tests[] = {
+    {
+      CANONIFY, NULL,
+
+      newcnode_switch(&A, 1,
+        SJP_STRING, newcnode_strmatch(&A, RE_NATIVE, "a+b.d"),
+        SJP_NONE),
+
+      newcnode_switch(&A, 1,
+        SJP_STRING, newcnode_mswitch(&A,
+                      newcnode_invalid(),       // default case
+
+                      newcnode_mcase(&A,
+                        newmatchset(&A, RE_NATIVE, "a+b.d", -1),
+                        newcnode_valid()
+                      ),
+
+                      NULL
+                    ),
+        SJP_NONE)
+    },
+
+    { STOP },
+  };
+
+  RUNTESTS(tests);
+}
+
 int main(void)
 {
   test_xlate_empty_schema();
@@ -1956,6 +2013,8 @@ int main(void)
   test_xlate_anyof_allof_oneof_1();
   test_xlate_anyof_2();
 
+  test_xlate_pattern_1();
+
   test_simplify_ands();
   test_simplify_ored_schema();
   test_simplify_propsets();
@@ -1965,6 +2024,7 @@ int main(void)
   test_canonify_ored_schema();
   test_canonify_propsets();
   test_canonify_required();
+  test_canonify_patterns();
 
   return report_tests();
 }
