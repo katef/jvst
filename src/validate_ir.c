@@ -66,6 +66,9 @@ jvst_invalid_msg(enum jvst_invalid_code code)
 	case JVST_INVALID_MATCH_CASE:
 		return "invalid match case (internal error)";
 
+	case JVST_INVALID_STRING:
+		return "invalid string";
+
 	case JVST_INVALID_JSON:
 		return "encountered invalid JSON";
 
@@ -1789,49 +1792,6 @@ obj_mswitch_case_translate(struct jvst_cnode *node, struct ir_object_builder *bu
 	return mcase;
 }
 
-static int
-obj_mcase_builder(const struct fsm *dfa, const struct fsm_state *st, void *opaque)
-{
-	struct ir_object_builder *state;
-	struct jvst_cnode *node;
-	struct jvst_ir_mcase *mcase;
-	struct jvst_ir_stmt *stmt;
-
-	state = opaque;
-
-	if (!fsm_isend(dfa, st)) {
-		return 1;
-	}
-
-	node = fsm_getopaque((struct fsm *)dfa, st);
-	assert(node->type == JVST_CNODE_MATCH_CASE);
-	assert(node->u.mcase.tmp == NULL);
-
-	// XXX - this is a hack
-	// Basically, we need to keep track of whether the property
-	// value is consumed or not, and add a CONSUME statement after
-	// translation if it isn't.
-	state->consumed = false;
-	stmt = obj_mcase_translate(node->u.mcase.constraint, state);
-	if (!state->consumed) {
-		struct jvst_ir_stmt *seq, **spp;
-		seq = ir_stmt_new(JVST_IR_STMT_SEQ);
-		spp = &seq->u.stmt_list;
-		*spp = stmt;
-		spp = &(*spp)->next;
-		*spp = ir_stmt_new(JVST_IR_STMT_CONSUME);
-		
-		stmt = seq;
-	}
-	mcase = ir_mcase_new(UNASSIGNED_MATCH, stmt);
-	mcase->matchset = node->u.mcase.matchset;
-
-	node->u.mcase.tmp = mcase;
-	fsm_setopaque((struct fsm *)dfa, (struct fsm_state *)st, mcase);
-
-	return 1;
-}
-
 struct jvst_ir_stmt *
 obj_default_case(void)
 {
@@ -2662,6 +2622,119 @@ ir_translate_object(struct jvst_cnode *top, struct jvst_ir_stmt *frame)
 }
 
 static struct jvst_ir_stmt *
+ir_translate_string(struct jvst_cnode *top, struct jvst_ir_stmt *frame);
+
+static struct jvst_ir_stmt *
+str_translate_mswitch(struct jvst_cnode *top, struct jvst_ir_stmt *frame)
+{
+	struct jvst_ir_stmt *match, *matcher;
+	struct jvst_ir_mcase **mcpp;
+	struct jvst_cnode *mcase;
+	struct fsm *dfa;
+	size_t which;
+
+	assert(top != NULL);
+	assert(top->type == JVST_CNODE_MATCH_SWITCH);
+
+	match = ir_stmt_new(JVST_IR_STMT_MATCH);
+	mcpp = &match->u.match.cases;
+
+	// duplicate DFA.
+	dfa = fsm_clone(top->u.mswitch.dfa);
+
+	// build jvst_ir_mcase nodes from cases list
+	which = 0;
+	for (mcase = top->u.mswitch.cases; mcase != NULL; mcase = mcase->next) {
+		struct jvst_ir_mcase *mc;
+		struct jvst_ir_stmt *ir_constraint;
+
+		assert(mcase->type == JVST_CNODE_MATCH_CASE);
+		assert(mcase->u.mcase.tmp == NULL);
+
+		ir_constraint = ir_translate_string(mcase->u.mcase.constraint, frame);
+
+		mc = ir_mcase_new(++which, ir_constraint);
+		mc->matchset = mcase->u.mcase.matchset;
+		mcase->u.mcase.tmp = mc;
+
+		*mcpp = mc;
+		mcpp = &mc->next;
+	}
+
+	// replace MATCH_CASE opaque entries in DFA with their corresponding jvst_ir_mcase nodes
+	fsm_walk_states(dfa, NULL, obj_mcase_update_opaque);
+
+	// translate the default case
+	match->u.match.default_case = ir_translate_string(top->u.mswitch.default_case, frame);
+
+	// clear the castlist->u.mcase.tmp values in case they need to be used elsewhere
+	for (mcase = top->u.mswitch.cases; mcase != NULL; mcase = mcase->next) {
+		assert(mcase->type == JVST_CNODE_MATCH_CASE);
+		assert(mcase->u.mcase.tmp != NULL);
+		mcase->u.mcase.tmp = NULL;
+	}
+
+	matcher = ir_stmt_matcher(frame, "dfa", dfa);
+	match->u.match.dfa = dfa;
+	match->u.match.name = matcher->u.matcher.name;
+	match->u.match.ind  = matcher->u.matcher.ind;
+	
+	return match;
+}
+
+static struct jvst_ir_stmt *
+ir_translate_string(struct jvst_cnode *top, struct jvst_ir_stmt *frame)
+{
+	switch (top->type) {
+	case JVST_CNODE_MATCH_SWITCH:
+		return str_translate_mswitch(top, frame);
+
+	case JVST_CNODE_INVALID:
+		return ir_stmt_invalid(JVST_INVALID_STRING);
+
+	case JVST_CNODE_VALID:
+		return ir_stmt_valid();
+
+	case JVST_CNODE_COUNT_RANGE:
+
+	case JVST_CNODE_OR:
+	case JVST_CNODE_AND:
+
+	case JVST_CNODE_XOR:
+	case JVST_CNODE_NOT:
+
+		fprintf(stderr, "[%s:%d] string translation for cnode %s not yet implemented\n",
+				__FILE__, __LINE__, 
+				jvst_cnode_type_name(top->type));
+		abort();
+
+	case JVST_CNODE_STR_MATCH:
+		fprintf(stderr, "[%s:%d] cnode %s should be be present in canonified cnode tree\n",
+				__FILE__, __LINE__, 
+				jvst_cnode_type_name(top->type));
+		abort();
+
+
+	case JVST_CNODE_SWITCH:
+	case JVST_CNODE_NUM_RANGE:
+	case JVST_CNODE_NUM_INTEGER:
+	case JVST_CNODE_OBJ_PROP_SET:
+	case JVST_CNODE_OBJ_PROP_MATCH:
+	case JVST_CNODE_OBJ_REQUIRED:
+	case JVST_CNODE_ARR_ITEM:
+	case JVST_CNODE_ARR_ADDITIONAL:
+	case JVST_CNODE_ARR_UNIQUE:
+	case JVST_CNODE_OBJ_REQMASK:
+	case JVST_CNODE_OBJ_REQBIT:
+	case JVST_CNODE_MATCH_CASE:
+		fprintf(stderr, "[%s:%d] unexpected cnode %s in string translation\n",
+				__FILE__, __LINE__, 
+				jvst_cnode_type_name(top->type));
+		abort();
+	}
+}
+
+static struct jvst_ir_stmt *
 ir_translate_type(enum SJP_EVENT type, struct jvst_cnode *top, struct jvst_ir_stmt *frame)
 {
 	switch (type) {
@@ -2671,11 +2744,13 @@ ir_translate_type(enum SJP_EVENT type, struct jvst_cnode *top, struct jvst_ir_st
 	case SJP_OBJECT_BEG:
 		return ir_translate_object(top, frame);
 
+	case SJP_STRING:
+		return ir_translate_string(top,frame);
+
 	case SJP_NONE:
 	case SJP_NULL:
 	case SJP_TRUE:
 	case SJP_FALSE:
-	case SJP_STRING:
 	case SJP_ARRAY_BEG:
 		return ir_stmt_new(JVST_IR_STMT_NOP);
 
