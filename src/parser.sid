@@ -12,6 +12,10 @@
 
 	kw;
 	type;
+        ast-schema;
+        ast-prop-schema;
+        regexp;
+        re-dialect;
 
 %terminals%
 
@@ -81,11 +85,29 @@
 	<set-exclusive-maximum>:    (:number) -> ();
 	<set-minimum>:              (:number) -> ();
 	<set-exclusive-minimum>:    (:number) -> ();
+        <set-min-properties>:       (:number) -> ();
+        <set-max-properties>:       (:number) -> ();
 	<set-type>:                 (:type)   -> ();
 	<set-title>:                (:string) -> ();
 	<set-description>:          (:string) -> ();
+        <set-properties>:           (:ast-prop-schema) -> ();
+
+        <new-regexp>:               (:re-dialect, :string) -> (:regexp);
+        <re-literal>:               () -> (:re-dialect);
+        <re-pattern>:               () -> (:re-dialect);
 
 	<clear-types>;
+
+        <add-required-property>:    (:string) -> ();
+
+        <new-prop-schema>:          (:regexp,:ast-schema) -> (:ast-prop-schema);
+
+        <append-list-of-props>:     (:ast-prop-schema,:ast-prop-schema) -> ();
+
+        <parse-schema>:             () -> (:ast-schema);
+
+        <set-schema-true>:          () -> ();
+        <set-schema-false>:         () -> ();
 
 	<err-unimplemented>;
 	<err-syntax>;
@@ -168,6 +190,42 @@
 		<err-expected-number>;
 	};
 
+	directive-min-properties = {
+		n = NUMBER;
+		<set-min-properties>(n);
+	##
+		<err-expected-number>;
+	};
+
+	directive-max-properties = {
+		n = NUMBER;
+		<set-max-properties>(n);
+	##
+		<err-expected-number>;
+	};
+
+        directive-required [
+                required-property = {
+                        s = STRING;
+                        <add-required-property>(s);
+                };
+
+                list-of-required-properties = {
+                        required-property;
+                        {
+                                comma;
+                                list-of-required-properties;
+                        ||
+                                $;
+                        };
+                };
+
+        ] = {
+                OBRACKET;
+                list-of-required-properties;
+                CBRACKET;
+        };
+
 	directive-type [
 
 		type = {
@@ -204,6 +262,32 @@
 	##
 		<err-expected-type>;
 	};
+
+        directive-properties: (dialect :re-dialect) -> () [
+                prop-schema: (dialect :re-dialect) -> (ps :ast-prop-schema) = {
+                        s = STRING;
+                        colon;
+                        sch = <parse-schema>;
+                        re = <new-regexp>(dialect,s);
+                        ps = <new-prop-schema>(re,sch);
+                };
+
+                list-of-properties: (dialect :re-dialect) -> (ps :ast-prop-schema) = {
+                        ps = prop-schema(dialect);
+                        {
+                                comma;
+                                ps1 = list-of-properties(dialect);
+                                <append-list-of-props>(ps,ps1);
+                        ||
+                                $;
+                        };
+                };
+        ] = {
+                OCURLY;
+                ps = list-of-properties(dialect);
+                <set-properties>(ps);
+                CCURLY;
+        };
 
 	directive-title = {
 		s = STRING;
@@ -272,19 +356,21 @@
 		placeholder;
 	||
 		? = <kw-max-properties>(k);
-		placeholder;
+		directive-max-properties;
 	||
 		? = <kw-min-properties>(k);
-		placeholder;
+		directive-min-properties;
 	||
 		? = <kw-required>(k);
-		placeholder;
+                directive-required;
 	||
 		? = <kw-properties>(k);
-		placeholder;
+                dialect = <re-literal>;
+                directive-properties(dialect);
 	||
 		? = <kw-pattern-properties>(k);
-		placeholder;
+                dialect = <re-pattern>;
+		directive-properties(dialect);
 	||
 		? = <kw-additional-properties>(k);
 		placeholder;
@@ -371,8 +457,10 @@
 		! = NUMBER;
 	||
 		! = TRUE;
+                <set-schema-true>;
 	||
 		! = FALSE;
+                <set-schema-false>;
 	||
 		NULL;
 	##
@@ -388,5 +476,5 @@
 
 %entry%
 
-	file;
+	file, schema;
 

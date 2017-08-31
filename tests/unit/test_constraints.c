@@ -229,6 +229,19 @@ static void test_xlate_empty_schema(void)
   RUNTESTS(tests);
 }
 
+static void test_xlate_true_false_schemas(void)
+{
+  struct arena_info A = {0};
+
+  const struct cnode_test tests[] = {
+    { TRANSLATE, true_schema(), NULL, newcnode_switch(&A, 1, SJP_NONE) },
+    { TRANSLATE, false_schema(), NULL, newcnode_switch(&A, 0, SJP_NONE) },
+    { STOP },
+  };
+
+  RUNTESTS(tests);
+}
+
 static void test_xlate_type_number(void)
 {
   struct arena_info A = {0};
@@ -348,6 +361,34 @@ void test_xlate_properties(void)
                             NULL),
           SJP_NONE),
     },
+
+    {
+      TRANSLATE, 
+      newschema_p(&A, 0,
+        "properties", newpatternprops(&A, "a*", newschema(&A, JSON_VALUE_INTEGER), NULL),
+        "properties", newpatternprops(&A, "aaa*", newschema_p(&A, 0, "maximum", 20.0, NULL), NULL),
+        NULL
+      ),
+
+      NULL,
+      newcnode_switch(&A, 1,
+        SJP_OBJECT_BEG, newcnode_bool(&A, JVST_CNODE_AND,
+                          newcnode_propset(&A,
+                            newcnode_prop_match(&A, RE_NATIVE, "a*",
+                              newcnode_switch(&A, 0, SJP_NUMBER, newcnode(&A,JVST_CNODE_NUM_INTEGER), SJP_NONE)),
+                            newcnode_prop_match(&A, RE_NATIVE, "aaa*",
+                              newcnode_switch(&A, 1,
+                                SJP_NUMBER, newcnode_bool(&A, JVST_CNODE_AND,
+                                              newcnode_range(&A, JVST_CNODE_RANGE_MAX, 0.0, 20.0),
+                                              newcnode_valid(),
+                                              NULL),
+                                SJP_NONE)),
+                            NULL),
+                          newcnode_valid(),
+                          NULL),
+        SJP_NONE)
+    },
+
     { STOP },
   };
 
@@ -368,7 +409,7 @@ void test_xlate_minproperties_1(void)
       TRANSLATE, schema, NULL,
         newcnode_switch(&A, 1,
           SJP_OBJECT_BEG, newcnode_bool(&A,JVST_CNODE_AND,
-                            newcnode_counts(&A, 1, 0),
+                            newcnode_counts(&A, 1, 0, false),
                             newcnode_valid(),
                             NULL),
           SJP_NONE),
@@ -397,7 +438,7 @@ void test_xlate_minproperties_2(void)
       TRANSLATE, schema, NULL,
         newcnode_switch(&A, 1,
           SJP_OBJECT_BEG, newcnode_bool(&A,JVST_CNODE_AND,
-                            newcnode_counts(&A, 1, 0),
+                            newcnode_counts(&A, 1, 0, false),
                             newcnode_bool(&A,JVST_CNODE_AND,
                               newcnode_propset(&A,
                                 newcnode_prop_match(&A, RE_LITERAL, "foo",
@@ -436,13 +477,13 @@ void test_xlate_minproperties_3(void)
       TRANSLATE, schema, NULL,
         newcnode_switch(&A, 1,
           SJP_OBJECT_BEG, newcnode_bool(&A,JVST_CNODE_AND,
-                            newcnode_counts(&A, 1, 0),
+                            newcnode_counts(&A, 1, 0, false),
                             newcnode_bool(&A,JVST_CNODE_AND,
                               newcnode_propset(&A,
                                 newcnode_prop_match(&A, RE_LITERAL, "foo",
                                   newcnode_switch(&A, 0,
                                     SJP_OBJECT_BEG, newcnode_bool(&A,JVST_CNODE_AND,
-                                                      newcnode_counts(&A, 1, 0),
+                                                      newcnode_counts(&A, 1, 0, false),
                                                       newcnode_valid(),
                                                       NULL),
                                     SJP_NONE)),
@@ -474,7 +515,7 @@ void test_xlate_maxproperties_1(void)
       TRANSLATE, schema, NULL,
         newcnode_switch(&A, 1,
           SJP_OBJECT_BEG, newcnode_bool(&A,JVST_CNODE_AND,
-                            newcnode_counts(&A, 0, 2),
+                            newcnode_counts(&A, 0, 2, true),
                             newcnode_valid(),
                             NULL),
           SJP_NONE),
@@ -505,13 +546,13 @@ void test_xlate_maxproperties_2(void)
       TRANSLATE, schema, NULL,
         newcnode_switch(&A, 1,
           SJP_OBJECT_BEG, newcnode_bool(&A,JVST_CNODE_AND,
-                            newcnode_counts(&A, 0, 1),
+                            newcnode_counts(&A, 0, 1, true),
                             newcnode_bool(&A,JVST_CNODE_AND,
                               newcnode_propset(&A,
                                 newcnode_prop_match(&A, RE_LITERAL, "foo",
                                   newcnode_switch(&A, 0,
                                     SJP_OBJECT_BEG, newcnode_bool(&A,JVST_CNODE_AND,
-                                                      newcnode_counts(&A, 0, 1),
+                                                      newcnode_counts(&A, 0, 1, true),
                                                       newcnode_valid(),
                                                       NULL),
                                     SJP_NONE)),
@@ -532,7 +573,14 @@ void test_xlate_maxproperties_2(void)
 void test_xlate_minmaxproperties_1(void)
 {
   struct arena_info A = {0};
-  struct ast_schema *schema = newschema_p(&A, 0,
+
+  // initial schema is not reduced (additional constraints are ANDed
+  // together).  Reduction will occur on a later pass.
+  const struct cnode_test tests[] = {
+    {
+      TRANSLATE, 
+
+      newschema_p(&A, 0,
       "minProperties", 1,
       "maxProperties", 1,
       "properties", newprops(&A,
@@ -542,33 +590,49 @@ void test_xlate_minmaxproperties_1(void)
           NULL), // XXX - JSON_VALUE_INTEGER
         "bar", newschema(&A, JSON_VALUE_STRING),
         NULL),
-      NULL);
+      NULL),
 
-  // initial schema is not reduced (additional constraints are ANDed
-  // together).  Reduction will occur on a later pass.
-  const struct cnode_test tests[] = {
-    {
-      TRANSLATE, schema, NULL,
-        newcnode_switch(&A, 1,
-          SJP_OBJECT_BEG, newcnode_bool(&A,JVST_CNODE_AND,
-                            newcnode_counts(&A, 1, 1),
-                            newcnode_bool(&A,JVST_CNODE_AND,
-                              newcnode_propset(&A,
-                                newcnode_prop_match(&A, RE_LITERAL, "foo",
-                                  newcnode_switch(&A, 0,
-                                    SJP_OBJECT_BEG, newcnode_bool(&A,JVST_CNODE_AND,
-                                                      newcnode_counts(&A, 1, 2),
-                                                      newcnode_valid(),
-                                                      NULL),
-                                    SJP_NONE)),
-                                newcnode_prop_match(&A, RE_LITERAL, "bar",
-                                  newcnode_switch(&A, 0, SJP_STRING, newcnode_valid(), SJP_NONE)),
-                                NULL),
-                              newcnode_valid(),
+      NULL,
+
+      newcnode_switch(&A, 1,
+        SJP_OBJECT_BEG, newcnode_bool(&A,JVST_CNODE_AND,
+                          newcnode_counts(&A, 1, 1, true),
+                          newcnode_bool(&A,JVST_CNODE_AND,
+                            newcnode_propset(&A,
+                              newcnode_prop_match(&A, RE_LITERAL, "foo",
+                                newcnode_switch(&A, 0,
+                                  SJP_OBJECT_BEG, newcnode_bool(&A,JVST_CNODE_AND,
+                                                    newcnode_counts(&A, 1, 2, true),
+                                                    newcnode_valid(),
+                                                    NULL),
+                                  SJP_NONE)),
+                              newcnode_prop_match(&A, RE_LITERAL, "bar",
+                                newcnode_switch(&A, 0, SJP_STRING, newcnode_valid(), SJP_NONE)),
                               NULL),
+                            newcnode_valid(),
                             NULL),
-          SJP_NONE),
+                          NULL),
+        SJP_NONE),
     },
+
+    {
+      TRANSLATE, 
+
+      newschema_p(&A, 0,
+      "minProperties", 1,
+      "maxProperties", 0,
+      NULL),
+
+      NULL,
+
+      newcnode_switch(&A, 1,
+        SJP_OBJECT_BEG, newcnode_bool(&A,JVST_CNODE_AND,
+                          newcnode_counts(&A, 1, 0, true),
+                          newcnode_valid(),
+                          NULL),
+        SJP_NONE),
+    },
+
     { STOP },
   };
 
@@ -1730,6 +1794,48 @@ void test_canonify_propsets(void)
           SJP_NONE),
     },
 
+    {
+      CANONIFY, NULL, 
+      newcnode_switch(&A, 1,
+        SJP_OBJECT_BEG, newcnode_bool(&A, JVST_CNODE_AND,
+                          newcnode_propset(&A,
+                            newcnode_prop_match(&A, RE_NATIVE, "a*",
+                              newcnode_switch(&A, 0, SJP_NUMBER, newcnode(&A,JVST_CNODE_NUM_INTEGER), SJP_NONE)),
+                            newcnode_prop_match(&A, RE_NATIVE, "aaa*",
+                              newcnode_switch(&A, 1,
+                                SJP_NUMBER, newcnode_bool(&A, JVST_CNODE_AND,
+                                              newcnode_range(&A, JVST_CNODE_RANGE_MAX, 0.0, 20.0),
+                                              newcnode_valid(),
+                                              NULL),
+                                SJP_NONE)),
+                            NULL),
+                          newcnode_valid(),
+                          NULL),
+        SJP_NONE),
+
+      newcnode_switch(&A, 1,
+        SJP_OBJECT_BEG, newcnode_mswitch(&A,
+                          newcnode_valid(),
+
+                          newcnode_mcase(&A,
+                            newmatchset(&A, RE_NATIVE, "a*", -1),
+                            newcnode_switch(&A, 0, SJP_NUMBER, newcnode(&A,JVST_CNODE_NUM_INTEGER), SJP_NONE)
+                          ),
+
+                          newcnode_mcase(&A,
+                            newmatchset(&A, RE_NATIVE, "a*", RE_NATIVE, "aaa*", -1),
+                            newcnode_switch(&A, 0,
+                              SJP_NUMBER, newcnode_bool(&A, JVST_CNODE_AND,
+                                newcnode_range(&A, JVST_CNODE_RANGE_MAX, 0.0, 20.0),
+                                newcnode(&A,JVST_CNODE_NUM_INTEGER),
+                                NULL),
+                              SJP_NONE)
+                            ),
+                          NULL
+                        ),
+        SJP_NONE)
+    },
+
     { STOP },
   };
 
@@ -1826,6 +1932,7 @@ void test_canonify_required(void)
 int main(void)
 {
   test_xlate_empty_schema();
+  test_xlate_true_false_schemas();
 
   test_xlate_type_number();
   test_xlate_type_object();

@@ -1468,11 +1468,11 @@ ir_translate_number_expr(struct jvst_cnode *top)
 			if (top->u.num_range.flags & JVST_CNODE_RANGE_EXCL_MAX) {
 				upper = ir_expr_op(JVST_IR_EXPR_LT,
 						ir_expr_new(JVST_IR_EXPR_TOK_NUM),
-						ir_expr_num(top->u.num_range.min));
+						ir_expr_num(top->u.num_range.max));
 			} else if (top->u.num_range.flags & JVST_CNODE_RANGE_MAX) {
 				upper = ir_expr_op(JVST_IR_EXPR_LE,
 						ir_expr_new(JVST_IR_EXPR_TOK_NUM),
-						ir_expr_num(top->u.num_range.min));
+						ir_expr_num(top->u.num_range.max));
 			}
 
 			assert((lower != NULL) || (upper != NULL));
@@ -1747,6 +1747,48 @@ obj_mcase_translate(struct jvst_cnode *ctree, struct ir_object_builder *builder)
 	return stmt;
 }
 
+static struct jvst_ir_mcase *
+obj_mswitch_case_translate(struct jvst_cnode *node, struct ir_object_builder *builder)
+{
+	bool prev_consumed;
+	struct jvst_ir_stmt *stmt;
+	struct jvst_ir_mcase *mcase;
+
+	assert(node->type == JVST_CNODE_MATCH_CASE);
+	assert(node->u.mcase.tmp == NULL);
+
+	/* XXX - why isn't this logic in obj_mcase_translate? */
+	/* ---> */
+	// XXX - this is a hack
+	// Basically, we need to keep track of whether the property
+	// value is consumed or not, and add a CONSUME statement after
+	// translation if it isn't.
+	prev_consumed = builder->consumed;
+	builder->consumed = false;
+
+	stmt = obj_mcase_translate(node->u.mcase.constraint, builder);
+	if (!builder->consumed) {
+		struct jvst_ir_stmt *seq, **spp;
+		seq = ir_stmt_new(JVST_IR_STMT_SEQ);
+		spp = &seq->u.stmt_list;
+		*spp = stmt;
+		spp = &(*spp)->next;
+		*spp = ir_stmt_new(JVST_IR_STMT_CONSUME);
+		
+		stmt = seq;
+	}
+
+	builder->consumed = prev_consumed;
+
+	mcase = ir_mcase_new(UNASSIGNED_MATCH, stmt);
+	mcase->matchset = node->u.mcase.matchset;
+	/* <--- */
+
+	node->u.mcase.tmp = mcase;
+
+	return mcase;
+}
+
 static int
 obj_mcase_builder(const struct fsm *dfa, const struct fsm_state *st, void *opaque)
 {
@@ -1796,6 +1838,28 @@ obj_default_case(void)
 	return ir_stmt_new(JVST_IR_STMT_CONSUME);
 }
 
+static int
+obj_mcase_update_opaque(const struct fsm *dfa, const struct fsm_state *st, void *opaque)
+{
+	struct jvst_cnode *node;
+	struct jvst_ir_mcase *mc;
+
+	(void)opaque;
+
+	if (!fsm_isend(dfa, st)) {
+		return 1;
+	}
+
+	node = fsm_getopaque((struct fsm *)dfa, st);
+	assert(node->type == JVST_CNODE_MATCH_CASE);
+	assert(node->u.mcase.tmp != NULL);
+
+	mc = node->u.mcase.tmp;
+	fsm_setopaque((struct fsm *)dfa, (struct fsm_state *)st, mc);
+
+	return 1;
+}
+
 static void
 ir_translate_obj_inner(struct jvst_cnode *top, struct ir_object_builder *builder)
 {
@@ -1825,23 +1889,30 @@ ir_translate_obj_inner(struct jvst_cnode *top, struct ir_object_builder *builder
 			// duplicate DFA.
 			builder->matcher = fsm_clone(top->u.mswitch.dfa);
 
-			// replace MATCH_CASE opaque entries in copy with jvst_ir_mcase nodes
-			fsm_walk_states(builder->matcher, builder, obj_mcase_builder);
-
-			// assemble jvst_ir_mcase nodes into list for an MATCH_SWITCH node and number the cases
+			// build jvst_ir_mcase nodes from cases list
 			which = 0;
 			for (caselist = top->u.mswitch.cases; caselist != NULL; caselist = caselist->next) {
 				struct jvst_ir_mcase *mc;
 				assert(caselist->type == JVST_CNODE_MATCH_CASE);
-				assert(caselist->u.mcase.tmp != NULL);
+				assert(caselist->u.mcase.tmp == NULL);
 
-				mc = caselist->u.mcase.tmp;
-				caselist->u.mcase.tmp = NULL;
+				mc = obj_mswitch_case_translate(caselist, builder);
+				assert(caselist->u.mcase.tmp == mc);
 				assert(mc->next == NULL);
 
 				mc->which = ++which;
 				*builder->mcpp = mc;
 				builder->mcpp = &mc->next;
+			}
+
+			// replace MATCH_CASE opaque entries in DFA with their corresponding jvst_ir_mcase nodes
+			fsm_walk_states(builder->matcher, builder, obj_mcase_update_opaque);
+
+			// clear the castlist->u.mcase.tmp values in case they need to be used elsewhere
+			for (caselist = top->u.mswitch.cases; caselist != NULL; caselist = caselist->next) {
+				assert(caselist->type == JVST_CNODE_MATCH_CASE);
+				assert(caselist->u.mcase.tmp != NULL);
+				caselist->u.mcase.tmp = NULL;
 			}
 
 			// 4. translate the default case
@@ -1892,7 +1963,7 @@ ir_translate_obj_inner(struct jvst_cnode *top, struct ir_object_builder *builder
 				checkpp = &(*checkpp)->u.if_.br_true;
 			}
 
-			if (top->u.counts.max > 0) {
+			if (top->u.counts.upper) {
 				*checkpp = ir_stmt_if(
 					ir_expr_op(JVST_IR_EXPR_LE,
 						ir_expr_count(counter),

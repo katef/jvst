@@ -69,6 +69,32 @@ empty_schema(void)
 	return &empty;
 }
 
+struct ast_schema *
+true_schema(void)
+{
+	static struct ast_schema true_schema= {
+		.kws = KWS_VALUE,
+		.value = {
+			.type = JSON_VALUE_BOOL,
+			.u = { .v = true },
+		},
+	};
+	return &true_schema;
+}
+
+struct ast_schema *
+false_schema(void)
+{
+	static struct ast_schema false_schema= {
+		.kws = KWS_VALUE,
+		.value = {
+			.type = JSON_VALUE_BOOL,
+			.u = { .v = false },
+		},
+	};
+	return &false_schema;
+}
+
 struct json_string
 newstr(const char *s)
 {
@@ -257,18 +283,27 @@ newschema_p(struct arena_info *A, int types, ...)
 
 		// big dumb if-else chain gets the job done...
 		if (strcmp(pname, "minProperties") == 0) {
-			s->kws |= KWS_MINMAX_PROPERTIES;
+			s->kws |= KWS_MIN_PROPERTIES;
 			s->min_properties = va_arg(args, ast_count);
 		} else if (strcmp(pname, "maxProperties") == 0) {
-			s->kws |= KWS_MINMAX_PROPERTIES;
+			s->kws |= KWS_MAX_PROPERTIES;
 			s->max_properties = va_arg(args, ast_count);
 		} else if (strcmp(pname, "properties") == 0) {
-			s->properties.set = va_arg(args, struct ast_property_schema *);
+			struct ast_property_schema *prop_set, **pspp;
+
+			prop_set = va_arg(args, struct ast_property_schema *);
+			for (pspp = &s->properties.set; *pspp != NULL; pspp = &(*pspp)->next) {
+				continue;
+			}
+			*pspp = prop_set;
 		} else if (strcmp(pname, "required") == 0) {
 			s->required.set = va_arg(args, struct ast_string_set *);
 		} else if (strcmp(pname, "minimum") == 0) {
 			s->kws |= KWS_MINIMUM;
 			s->minimum = va_arg(args, double);
+		} else if (strcmp(pname, "maximum") == 0) {
+			s->kws |= KWS_MAXIMUM;
+			s->maximum = va_arg(args, double);
 		} else if (strcmp(pname, "dep_strings") == 0) {
 			s->dependencies_strings.set = va_arg(args, struct ast_property_names *);
 		} else if (strcmp(pname, "dep_schema") == 0) {
@@ -303,15 +338,12 @@ newschema_p(struct arena_info *A, int types, ...)
 	return s;
 }
 
-struct ast_property_schema *
-newprops(struct arena_info *A, ...)
+static struct ast_property_schema *
+newprops_inner(struct arena_info *A, enum re_dialect dialect, va_list args) 
 {
 	struct ast_property_schema *props = NULL;
 	struct ast_property_schema **pp   = &props;
 	size_t max			  = sizeof ar_props / sizeof ar_props[0];
-	va_list args;
-
-	va_start(args, A);
 
 	for (;;) {
 		const char *name;
@@ -334,15 +366,35 @@ newprops(struct arena_info *A, ...)
 		memset(p, 0, sizeof *p);
 
 		p->pattern.str     = newstr(name);
-		p->pattern.dialect = RE_LITERAL;
+		p->pattern.dialect = dialect;
 		p->schema	  = va_arg(args, struct ast_schema *);
 
 		*pp = p;
 		pp  = &p->next;
 	}
 
-	va_end(args);
+	return props;
+}
 
+struct ast_property_schema *
+newprops(struct arena_info *A, ...)
+{
+	struct ast_property_schema *props = NULL;
+	va_list args;
+	va_start(args, A);
+	props = newprops_inner(A, RE_LITERAL, args);
+	va_end(args);
+	return props;
+}
+
+struct ast_property_schema *
+newpatternprops(struct arena_info *A, ...)
+{
+	struct ast_property_schema *props = NULL;
+	va_list args;
+	va_start(args, A);
+	props = newprops_inner(A, RE_NATIVE, args);
+	va_end(args);
 	return props;
 }
 
@@ -520,12 +572,13 @@ newcnode_range(struct arena_info *A, enum jvst_cnode_rangeflags flags, double mi
 }
 
 struct jvst_cnode *
-newcnode_counts(struct arena_info *A, size_t min, size_t max)
+newcnode_counts(struct arena_info *A, size_t min, size_t max, bool upper)
 {
 	struct jvst_cnode *node, **pp;
 	node = newcnode(A, JVST_CNODE_COUNT_RANGE);
 	node->u.counts.min = min;
 	node->u.counts.max = max;
+	node->u.counts.upper = upper;
 	return node;
 }
 

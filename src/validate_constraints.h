@@ -104,7 +104,9 @@ struct jvst_cnode {
 		 */
 		struct {
 			size_t min;
-			size_t max; // 0 indicates no upper bound
+			size_t max;
+
+			unsigned upper:1; // indicates if max is an upper bound
 		} counts;
 
 		/* for string pattern matching or matching string sets */
@@ -145,6 +147,9 @@ struct jvst_cnode {
 
 			// temp storage used in duplication
 			void *tmp;
+
+			unsigned collected:1;
+			unsigned copied:1;
 		} mcase;
 
 		/* Nodes used for simplifying required properties */

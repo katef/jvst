@@ -50,6 +50,12 @@ struct ast_schema *
 empty_schema(void);
 
 struct ast_schema *
+true_schema(void);
+
+struct ast_schema *
+false_schema(void);
+
+struct ast_schema *
 newschema(struct arena_info *A, int types);
 
 struct ast_schema *
@@ -69,6 +75,9 @@ schema_set_count(struct ast_schema_set *s);
 
 struct ast_property_schema *
 newprops(struct arena_info *A, ...);
+
+struct ast_property_schema *
+newpatternprops(struct arena_info *A, ...);
 
 struct ast_property_names *
 newpropnames(struct arena_info *A, ...);
@@ -93,7 +102,7 @@ struct jvst_cnode *
 newcnode_range(struct arena_info *A, enum jvst_cnode_rangeflags flags, double min, double max);
 
 struct jvst_cnode *
-newcnode_counts(struct arena_info *A, size_t min, size_t max);
+newcnode_counts(struct arena_info *A, size_t min, size_t max, bool upper);
 
 struct jvst_cnode *
 newcnode_valid(void);

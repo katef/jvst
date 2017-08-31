@@ -599,8 +599,8 @@ and_or_xor:
 
 		sbuf_snprintf(buf, "x");
 
-		if (node->u.counts.max > 0) {
-			sbuf_snprintf(buf, "<= %zu", node->u.counts.min);
+		if (node->u.counts.upper > 0) {
+			sbuf_snprintf(buf, "<= %zu", node->u.counts.max);
 		}
 
 		sbuf_snprintf(buf, ")");
@@ -757,6 +757,15 @@ jvst_cnode_translate_ast(const struct ast_schema *ast)
 	enum json_valuetype types;
 
 	assert(ast != NULL);
+
+	if (ast->kws & KWS_VALUE) {
+	       	if (ast->value.type != JSON_VALUE_BOOL) {
+			fprintf(stderr, "Invalid JSON value type.  Schemas must be objects or booleans.\n");
+			abort();
+		}
+		return cnode_new_switch(ast->value.u.v);
+	}
+
 	types = ast->types;
 
 	// TODO - implement ast->some_of.set != NULL logic
@@ -860,12 +869,14 @@ jvst_cnode_translate_ast(const struct ast_schema *ast)
 		node->u.sw[SJP_OBJECT_BEG] = top_jxn;
 	}
 
-	if (ast->kws & KWS_MINMAX_PROPERTIES) {
+	if (ast->kws & (KWS_MIN_PROPERTIES | KWS_MAX_PROPERTIES)) {
 		struct jvst_cnode *range, *jxn;
 
 		range = jvst_cnode_alloc(JVST_CNODE_COUNT_RANGE);
 		range->u.counts.min = ast->min_properties;
 		range->u.counts.max = ast->max_properties;
+
+		range->u.counts.upper = !!(ast->kws & KWS_MAX_PROPERTIES);
 
 		jxn = jvst_cnode_alloc(JVST_CNODE_AND);
 		jxn->u.ctrl = range;
@@ -1019,10 +1030,18 @@ mcase_copier(const struct fsm *dfa, const struct fsm_state *st, void *opaque)
 
 	node = fsm_getopaque((struct fsm *)dfa, st);
 	assert(node->type == JVST_CNODE_MATCH_CASE);
+
+	if (node->u.mcase.copied) {
+		assert(node->u.mcase.tmp != NULL);
+		return 1;
+	}
+
 	assert(node->u.mcase.tmp == NULL);
 
 	ndup = cnode_deep_copy(node);
+	assert(ndup != NULL);
 	node->u.mcase.tmp = ndup;
+	node->u.mcase.copied = 1;
 
 	fsm_setopaque((struct fsm *)dfa, (struct fsm_state *)st, ndup);
 
@@ -1050,6 +1069,50 @@ mcase_update_opaque(const struct fsm *dfa, const struct fsm_state *st, void *opa
 	return 1;
 }
 
+static int print_mcases_walker(const struct fsm *fsm, const struct fsm_state *st, void *opaque)
+{
+	struct jvst_cnode *cn;
+
+	(void)opaque;
+	if (!fsm_isend(fsm,st)) {
+		return 1;
+	}
+
+	cn = fsm_getopaque((struct fsm *)fsm,(struct fsm_state *)st);
+	fprintf(stderr, "fsm=%p, st=%p, cnode=%p\n",
+		(void *)fsm, (void *)st, (void *)cn);
+	jvst_cnode_debug(cn);
+	fprintf(stderr, "tmp=%p collected=%d copied=%d\n",
+		cn->u.mcase.tmp,
+		cn->u.mcase.collected,
+		cn->u.mcase.copied);
+	fprintf(stderr, "\n");
+
+	return 1;
+}
+
+static void print_mcases(struct fsm *fsm)
+{
+	fsm_walk_states(fsm, NULL, print_mcases_walker);
+}
+
+static void print_mswitch(struct jvst_cnode *node)
+{
+	struct jvst_cnode *mc;
+	size_t i;
+
+	fprintf(stderr, "mcases in dfa\n");
+	print_mcases(node->u.mswitch.dfa);
+
+	fprintf(stderr, "mcases in cases list...\n");
+	for(i=0,mc = node->u.mswitch.cases; mc != NULL; i++,mc = mc->next) {
+		fprintf(stderr, "[%05zu] %p copied? %d  collected? %d  tmp=%p\n",
+			i, (void *)mc, mc->u.mcase.copied, mc->u.mcase.collected, mc->u.mcase.tmp);
+	}
+}
+
+void (*volatile foofunc)(struct jvst_cnode *) = &print_mswitch;
+
 static struct jvst_cnode *
 cnode_mswitch_copy(struct jvst_cnode *node)
 {
@@ -1068,19 +1131,40 @@ cnode_mswitch_copy(struct jvst_cnode *node)
 	// FSMs
 	dup_fsm = fsm_clone(node->u.mswitch.dfa);
 
+#if 0
+	fprintf(stderr, "original mcases in dfa\n");
+	print_mcases(node->u.mswitch.dfa);
+
+	fprintf(stderr, "duplicated mcases in dfa\n");
+	print_mcases(dup_fsm);
+#endif
+
 	tree->u.mswitch.dfa = dup_fsm;
 
 	// copy and collect all opaque states
-	fsm_walk_states(dup_fsm, NULL, mcase_copier);
-
 	mcpp = &tree->u.mswitch.cases;
 	for (mcases = node->u.mswitch.cases; mcases != NULL; mcases = mcases->next) {
-		assert(mcases->u.mcase.tmp != NULL);
-		*mcpp = mcases->u.mcase.tmp;
-		mcases->u.mcase.tmp = NULL;
-		mcpp = &(*mcpp)->next;
+		struct jvst_cnode *mcdup;
+
+		assert(mcases->u.mcase.tmp == NULL);
+		assert(!mcases->u.mcase.copied);
+
+		mcdup = cnode_deep_copy(mcases);
+
+		assert(mcdup->u.mcase.tmp == NULL);
+		assert(!mcdup->u.mcase.copied);
+
+		mcases->u.mcase.tmp = mcdup;
+		mcases->u.mcase.copied = 1;
+
+		*mcpp = mcdup;
+		mcpp = &mcdup->next;
 	}
 
+	// update the copied DFA
+	fsm_walk_states(dup_fsm, NULL, mcase_update_opaque);
+
+	// all mswitch nodes need a default case!
 	assert(node->u.mswitch.default_case != NULL);
 	tree->u.mswitch.default_case = cnode_deep_copy(node->u.mswitch.default_case);
 
@@ -1657,6 +1741,7 @@ merge_mcases(const struct fsm_state **orig, size_t n,
 
 	if (nstates == 1) {
 		assert(mcase != NULL);
+		assert(mcase->next == NULL);
 		fsm_setopaque(dfa, comb, mcase);
 		return;
 	}
@@ -1692,6 +1777,7 @@ merge_mcases(const struct fsm_state **orig, size_t n,
 		jpp = &(*jpp)->next;
 	}
 
+	assert(mcase->next == NULL);
 	fsm_setopaque(dfa, comb, mcase);
 }
 
@@ -1716,10 +1802,17 @@ mcase_collector(const struct fsm *dfa, const struct fsm_state *st, void *opaque)
 
 	node = fsm_getopaque((struct fsm *)dfa, st);
 	assert(node->type == JVST_CNODE_MATCH_CASE);
+
+	if (node->u.mcase.collected) {
+		return 1;
+	}
+
 	assert(node->next == NULL);
+	assert(collector->mcpp != &node->next);
 
 	*collector->mcpp = node;
 	collector->mcpp = &node->next;
+	node->u.mcase.collected = 1;
 
 	return 1;
 }
@@ -1804,6 +1897,18 @@ mcase_cmp(const void *p0, const void *p1)
 	for(; (ms0 != NULL) || (ms1 != NULL); ms0=ms0->next, ms1=ms1->next) {
 		int diff;
 
+		if (ms0 == ms1) {
+			return 0;
+		}
+
+		if (ms0 == NULL) {
+			return -1;
+		}
+
+		if (ms1 == NULL) {
+			return 1;
+		}
+
 		diff = matchset_cmp(&ms0,&ms1);
 		if (diff != 0) {
 			return diff;
@@ -1822,7 +1927,7 @@ sort_mcases(struct jvst_cnode **mcpp)
 {
 	struct jvst_cnode *mc, **mcv;
 	size_t i,n;
-	struct jvst_cnode *mcv0[16];
+	struct jvst_cnode *mcv0[16] = { 0 };
 
 	assert(mcpp != NULL);
 
@@ -1877,7 +1982,7 @@ cnode_canonify_propset(struct jvst_cnode *top)
 
 		.io = FSM_IO_GETC,
 		.prefix = NULL,
-		.carryopaque = merge_mcases,
+		.carryopaque = NULL,
 	};
 
 	assert(top->type == JVST_CNODE_OBJ_PROP_SET);
@@ -1898,25 +2003,50 @@ cnode_canonify_propset(struct jvst_cnode *top)
 		struct jvst_cnode_matchset *mset;
 		struct fsm *pat;
 		struct json_str_iter siter;
+		enum re_dialect dialect;
 		struct re_err err = { 0 };
 
 		cons = pm->u.prop_match.constraint;
 		mset = cnode_matchset_new(pm->u.prop_match.match, NULL);
 		mcase = cnode_new_mcase(mset, cons);
+		assert(mcase->next == NULL);
 
 		siter.str = pm->u.prop_match.match.str;
 		siter.off = 0;
+		dialect = pm->u.prop_match.match.dialect;
 
 		pat = re_comp(
-			pm->u.prop_match.match.dialect,
+			dialect,
 			json_str_getc,
 			&siter,
 			opts,
 			(enum re_flags)0,
 			&err);
 
-		// errors should be checked in parsing
-		assert(pat != NULL);
+		if (pat == NULL) {
+			struct json_string str;
+			char tmp[128], *pbuf;
+
+			// the match.str field is a json_string, which
+			// is length encoded and may not have a
+			// terminating NUL character.  Copy it so we can
+			// pass it to re_perror.
+			str = pm->u.prop_match.match.str;
+			if (str.len < sizeof tmp) {
+				pbuf = &tmp[0];
+			} else {
+				pbuf = xmalloc(str.len+1);
+			}
+
+			memcpy(pbuf, str.s, str.len);
+			pbuf[str.len] = '\0';
+
+			re_perror(dialect, &err, NULL, pbuf);
+			if (pbuf != &tmp[0]) {
+				free(pbuf);
+			}
+			abort();
+		}
 
 		fsm_setendopaque(pat, mcase);
 
@@ -1940,6 +2070,12 @@ cnode_canonify_propset(struct jvst_cnode *top)
 	// NB: combining requires copying because different end states
 	// may still have the original MATCH_CASE node.
 
+	// defer setting carryopaque until we're done compiling the REs
+	// into their own DFAs.  each RE gets a unique opaque value for
+	// all of its endstates.  When we union the DFAs together, we
+	// may need to merge these states, but not during compilation.
+	opts->carryopaque = merge_mcases;
+
 	if (!fsm_determinise(matches)) {
 		perror("cannot determinise fsm");
 		abort();
@@ -1952,6 +2088,13 @@ cnode_canonify_propset(struct jvst_cnode *top)
 	collector.mcpp = &mcases;
 
 	fsm_walk_states(matches, &collector, mcase_collector);
+
+	{
+		struct jvst_cnode *n;
+		for (n=mcases; n != NULL; n=n->next) {
+			n->u.mcase.collected = 0;
+		}
+	}
 
 	// step 4: sort the MATCH_CASE nodes.
 	//
@@ -1976,6 +2119,8 @@ cnode_canonify_propset(struct jvst_cnode *top)
 		cons = jvst_cnode_simplify(mcases->u.mcase.constraint);
 		mcases->u.mcase.constraint = jvst_cnode_canonify(cons);
 	}
+
+	// print_mswitch(msw);
 
 	return msw;
 }
@@ -2224,6 +2369,7 @@ cnode_canonify_pass2(struct jvst_cnode *tree)
 				assert(node->u.mcase.tmp == NULL);
 
 				result = jvst_cnode_canonify(node);
+				assert(result != NULL);
 				node->u.mcase.tmp = result;
 				*mcpp = result;
 				mcpp = &(*mcpp)->next;
