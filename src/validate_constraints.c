@@ -20,6 +20,8 @@
 #include "sjp_testing.h"
 #include "validate_sbuf.h"
 
+#define RE_CHEESE_ANCHORS 1
+
 #define SHOULD_NOT_REACH()							\
 	do {									\
 		fprintf(stderr, "SHOULD NOT REACH %s, line %d (function %s)\n",	\
@@ -1987,18 +1989,99 @@ sort_mcases(struct jvst_cnode **mcpp)
 	}
 }
 
+#if RE_CHEESE_ANCHORS
+static struct ast_regexp
+re_cheese_anchors(struct ast_regexp *re_orig, char **sp)
+{
+	struct ast_regexp re;
+	int leading = 0, trailing = 0;
+	char *s = NULL;
+	size_t newlen;
+
+	re = *re_orig;
+
+	if (re.dialect != RE_NATIVE) {
+		return re;
+	}
+
+	if (re.str.len > 0 && re.str.s[0] == '^') {
+		re.str.s++;
+		re.str.len--;
+	} else {
+		leading = 1;
+	}
+
+	if (re.str.len > 0 && re.str.s[re.str.len-1] == '$' && (re.str.len == 1 || re.str.s[re.str.len-2] != '\\')) {
+		re.str.len--;
+	} else {
+		trailing = 1;
+	}
+
+	if (leading && trailing && re.str.len == 0) {
+		trailing = 0;
+	}
+
+	if (!leading && !trailing) {
+		*sp = NULL;
+		return re;
+	}
+
+	newlen = re.str.len;
+
+	if (leading) {
+		newlen += 2;
+	}
+
+	if (trailing) {
+		newlen += 2;
+	}
+
+	s = xmalloc(newlen);
+	*sp = s;
+
+	re.str.s = s;
+	re.str.len = newlen;
+
+	if (leading) {
+		*s++ = '.';
+		*s++ = '*';
+	}
+
+	if (re.str.len > 0) {
+		memcpy(s, re_orig->str.s, re_orig->str.len);
+		s += re_orig->str.len;
+	}
+
+	if (trailing) {
+		*s++ = '.';
+		*s++ = '*';
+	}
+
+	return re;
+}
+#endif /* RE_CHEESE_ANCHORS */
+
 static struct fsm *
-mcase_re_compile(struct ast_regexp *re, struct fsm_options *opts, struct jvst_cnode *mcase)
+mcase_re_compile(struct ast_regexp *re_orig, struct fsm_options *opts, struct jvst_cnode *mcase)
 {
 	struct fsm *pat;
 	struct json_str_iter siter;
 	struct re_err err = { 0 };
 	char tmp[128], *pbuf;
 
-	siter.str = re->str;
+	struct ast_regexp re;
+
+	re = *re_orig;
+
+#if RE_CHEESE_ANCHORS
+	char *s0 = NULL;
+	re = re_cheese_anchors(re_orig, &s0);
+#endif
+
+	siter.str = re.str;
 	siter.off = 0;
 
-	pat = re_comp(	re->dialect,
+	pat = re_comp(	re.dialect,
 			json_str_getc,
 			&siter,
 			opts,
@@ -2006,6 +2089,12 @@ mcase_re_compile(struct ast_regexp *re, struct fsm_options *opts, struct jvst_cn
 			&err);
 
 	fsm_minimise(pat);
+
+#if RE_CHEESE_ANCHORS
+	if (s0 != NULL) {
+		free(s0);
+	}
+#endif
 
 	if (pat == NULL) {
 		goto error;
@@ -2020,16 +2109,16 @@ error:
 	// is length encoded and may not have a
 	// terminating NUL character.  Copy it so we can
 	// pass it to re_perror.
-	if (re->str.len < sizeof tmp) {
+	if (re_orig->str.len < sizeof tmp) {
 		pbuf = &tmp[0];
 	} else {
-		pbuf = xmalloc(re->str.len+1);
+		pbuf = xmalloc(re_orig->str.len+1);
 	}
 
-	memcpy(pbuf, re->str.s, re->str.len);
-	pbuf[re->str.len] = '\0';
+	memcpy(pbuf, re_orig->str.s, re_orig->str.len);
+	pbuf[re_orig->str.len] = '\0';
 
-	re_perror(re->dialect, &err, NULL, pbuf);
+	re_perror(re_orig->dialect, &err, NULL, pbuf);
 	if (pbuf != &tmp[0]) {
 		free(pbuf);
 	}
