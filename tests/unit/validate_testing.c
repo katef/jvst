@@ -320,6 +320,29 @@ newschema_p(struct arena_info *A, int types, ...)
 			s->dependencies_strings.set = va_arg(args, struct ast_property_names *);
 		} else if (strcmp(pname, "dep_schema") == 0) {
 			s->dependencies_schema.set = va_arg(args, struct ast_property_schema *);
+		} else if (strcmp(pname, "items_single") == 0) {
+			struct ast_schema *schema;
+			struct ast_schema_set *sset;
+
+			assert(s->items == NULL);
+
+			schema = va_arg(args, struct ast_schema *);
+			sset = schema_set(A, schema, NULL);
+			s->items = sset;
+			s->kws |= KWS_SINGLETON_ITEMS;
+		} else if (strcmp(pname, "items") == 0) {
+			struct ast_schema_set *sset;
+
+			assert(s->items == NULL);
+
+			sset = va_arg(args, struct ast_schema_set *);
+			s->items = sset;
+		} else if (strcmp(pname, "additionalItems") == 0) {
+			struct ast_schema *schema;
+			schema = va_arg(args, struct ast_schema *);
+			if (s->additional_items == NULL) {
+				s->additional_items = schema;
+			}
 		} else if (strcmp(pname, "anyOf") == 0) {
 			struct ast_schema_set *sset;
 			sset = va_arg(args, struct ast_schema_set *);
@@ -341,7 +364,8 @@ newschema_p(struct arena_info *A, int types, ...)
 		} else {
 			// okay to abort() a test if the test writer forgot to add a
 			// property to the big dumb if-else chain
-			fprintf(stderr, "unsupported schema property '%s'\n", pname);
+			fprintf(stderr, "%s:%d (%s) unsupported schema property '%s'\n",
+				__FILE__, __LINE__, __func__, pname);
 			abort();
 		}
 	}
@@ -607,6 +631,42 @@ newcnode_strmatch(struct arena_info *A, enum re_dialect dialect, const char *pat
 	node = newcnode(A, JVST_CNODE_STR_MATCH);
 	node->u.str_match.dialect = dialect;
 	node->u.str_match.str = newstr(pat);
+	return node;
+}
+
+struct jvst_cnode *
+newcnode_items(struct arena_info *A, ...)
+{
+	struct jvst_cnode *node, **itpp;;
+	va_list args;
+
+	node = newcnode(A, JVST_CNODE_ARR_ITEM);
+	itpp = &node->u.items;
+
+	va_start(args, A);
+	for (;;) {
+		struct jvst_cnode *it;
+
+		it = va_arg(args, struct jvst_cnode *);
+		if (it == NULL) {
+			break;
+		}
+
+		*itpp = it;
+		itpp = &it->next;
+	}
+	va_end(args);
+
+	return node;
+}
+
+struct jvst_cnode *
+newcnode_additional_items(struct arena_info *A, struct jvst_cnode *top)
+{
+	struct jvst_cnode *node;
+
+	node = newcnode(A, JVST_CNODE_ARR_ADDITIONAL);
+	node->u.items = top;
 	return node;
 }
 

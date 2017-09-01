@@ -109,6 +109,12 @@ struct jvst_cnode *
 newcnode_strmatch(struct arena_info *A, enum re_dialect dialect, const char *pat);
 
 struct jvst_cnode *
+newcnode_items(struct arena_info *A, ...);
+
+struct jvst_cnode *
+newcnode_additional_items(struct arena_info *A, struct jvst_cnode *top);
+
+struct jvst_cnode *
 newcnode_valid(void);
 
 struct jvst_cnode *

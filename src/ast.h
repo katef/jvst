@@ -115,6 +115,8 @@ struct ast_schema {
 
 		KWS_MIN_PROPERTIES        = 1 <<  9, /* .min_properties and .max_properties */
 		KWS_MAX_PROPERTIES        = 1 << 10, /* .min_properties and .max_properties */
+
+		KWS_SINGLETON_ITEMS	  = 1 << 11, /* .items was not an array */
 	} kws;
 
 	/* TODO: transform post-parse to populate AST_STRING to .pattern instead */
@@ -140,8 +142,8 @@ struct ast_schema {
 	ast_count max_properties;
 	ast_count min_properties;
 
-	struct ast_schema_array *items; /* 1 or more; empty means absent */
-	struct ast_schema_array *additional_items;
+	struct ast_schema_set *items; /* 1 or more; empty means absent */
+	struct ast_schema *additional_items;
 
 	bool unique_items; /* defaults false */
 

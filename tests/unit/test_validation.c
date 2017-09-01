@@ -704,7 +704,6 @@ void test_dependencies_1(void)
           NULL);
 
   const struct validation_test tests[] = {
-#if 0
     // "description": "empty object should be valid"
     { true, "{}", schema, },
 
@@ -745,15 +744,37 @@ void test_dependencies_1(void)
     { false, "{ \"this\" : 5, \"that\" : 0.6, \"quux\" : false }", schema, },
     { false, "{ \"this\" : 5, \"that\" : 0.6, \"quux\" : false, \"foo\" : 3 }", schema, },
     { false, "{ \"this\" : 5, \"that\" : 0.6, \"quux\" : false, \"bar\" : [1,2,3] }", schema, },
-#endif
 
     // "description": "quux,foo, bar, and this without that is invalid"
     { false, "{ \"this\" : 5, \"foo\" : 0.6, \"quux\" : false, \"bar\" : [1,2,3] }", schema, },
 
-#if 0
     // "description": "quux,foo,bar, this, and that is valid"
     { true, "{ \"this\" : 5, \"foo\" : 0.6, \"quux\" : false, \"bar\" : [1,2,3], \"that\" : { \"this\" : 5 } }", schema, },
-#endif
+
+    { false, NULL, NULL },
+  };
+
+  RUNTESTS(tests);
+}
+
+void test_items_1(void)
+{
+  struct arena_info A = {0};
+  // schema: { "items": { "type": "integer" } }
+  struct ast_schema *schema = newschema_p(&A, 0,
+      "items_single", newschema(&A, JSON_VALUE_NUMBER),
+      NULL);
+
+  const struct validation_test tests[] = {
+    // "description": "empty object should be valid"
+    { true, "[ 1, 2, 3 ]", schema, },
+
+    { false, "[ 1, \"x\" ]", schema, },
+
+    // "description": "foo by itself is valid"
+    { true, "{ \"foo\": \"bar\" }", schema }, 
+
+    { true, "{ \"0\": \"invalid\", \"length\" : 1 }", schema },
 
     { false, NULL, NULL },
   };
@@ -786,6 +807,8 @@ int main(void)
   test_anyof_2();
 
   test_dependencies_1();
+
+  test_items_1();
 
   return report_tests();
 }

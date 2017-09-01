@@ -714,9 +714,48 @@ and_or_xor:
 		sbuf_snprintf(buf, ")");
 		break;
 
-	case JVST_CNODE_NOT:
 	case JVST_CNODE_ARR_ITEM:
+		{
+			struct jvst_cnode *it;
+			size_t i;
+
+			sbuf_snprintf(buf, "ITEMS(\n");
+			i=0;
+			for (it = node->u.items; it != NULL; it = it->next) {
+				sbuf_indent(buf, indent+2);
+				sbuf_snprintf(buf, "[ITEM %3zu]\n", i++);
+				sbuf_indent(buf, indent+2);
+				jvst_cnode_dump_inner(it, buf, indent+2);
+				if (it->next) {
+					sbuf_snprintf(buf, ",\n");
+				} else {
+					sbuf_snprintf(buf, "\n");
+				}
+			}
+			sbuf_indent(buf, indent);
+			sbuf_snprintf(buf, ")");
+		}
+		break;
+
 	case JVST_CNODE_ARR_ADDITIONAL:
+		{
+			struct jvst_cnode *it;
+
+			sbuf_snprintf(buf, "ADDITIONAL(\n");
+
+			it = node->u.items;
+			assert(it->next == NULL);
+
+			sbuf_indent(buf, indent+2);
+			jvst_cnode_dump_inner(it, buf, indent+2);
+			sbuf_snprintf(buf, "\n");
+
+			sbuf_indent(buf, indent);
+			sbuf_snprintf(buf, ")");
+		}
+		break;
+
+	case JVST_CNODE_NOT:
 	case JVST_CNODE_ARR_UNIQUE:
 		fprintf(stderr, "%s:%d (%s) **not implemented**\n",
 			__FILE__, __LINE__, __func__);
@@ -892,6 +931,53 @@ jvst_cnode_translate_ast(const struct ast_schema *ast)
 		range->u.counts.upper = !!(ast->kws & KWS_MAX_LENGTH);
 
 		add_ast_constraint(node, SJP_STRING, range);
+	}
+
+	if (ast->items != NULL) {
+		struct jvst_cnode *items_constraint;
+
+		assert(ast->items != NULL);
+
+		if (ast->kws & KWS_SINGLETON_ITEMS) {
+			struct jvst_cnode *constraint;
+
+			assert(ast->items->schema != NULL);
+			assert(ast->items->next == NULL);
+
+			constraint = jvst_cnode_translate_ast(ast->items->schema);
+			items_constraint = jvst_cnode_alloc(JVST_CNODE_ARR_ADDITIONAL);
+			items_constraint->u.items = constraint;
+		} else {
+			struct jvst_cnode *itemlist, **ilpp;
+			struct ast_schema_set *sl;
+
+			itemlist = NULL;
+			ilpp = &itemlist;
+			for (sl = ast->items; sl != NULL; sl = sl->next) {
+				struct jvst_cnode *constraint;
+
+				assert(sl->schema != NULL);
+
+				constraint = jvst_cnode_translate_ast(sl->schema);
+				*ilpp = constraint;
+				ilpp = &constraint->next;
+			}
+
+			items_constraint = jvst_cnode_alloc(JVST_CNODE_ARR_ITEM);
+			items_constraint->u.items = itemlist;
+		}
+
+		add_ast_constraint(node, SJP_ARRAY_BEG, items_constraint);
+	}
+
+	if (ast->additional_items != NULL && ast->items != NULL && (ast->kws & KWS_SINGLETON_ITEMS) == 0) {
+		struct jvst_cnode *constraint, *additional;
+
+		constraint = jvst_cnode_translate_ast(ast->additional_items);
+		additional = jvst_cnode_alloc(JVST_CNODE_ARR_ADDITIONAL);
+		additional->u.items = constraint;
+
+		add_ast_constraint(node, SJP_ARRAY_BEG, additional);
 	}
 
 	if (ast->properties.set != NULL) {
