@@ -102,7 +102,8 @@ struct jvst_cnode *
 newcnode_range(struct arena_info *A, enum jvst_cnode_rangeflags flags, double min, double max);
 
 struct jvst_cnode *
-newcnode_counts(struct arena_info *A, size_t min, size_t max, bool upper);
+newcnode_counts(struct arena_info *A, enum jvst_cnode_type type,
+	size_t min, size_t max, bool upper);
 
 struct jvst_cnode *
 newcnode_strmatch(struct arena_info *A, enum re_dialect dialect, const char *pat);

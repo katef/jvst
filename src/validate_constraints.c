@@ -303,7 +303,9 @@ jvst_cnode_free_tree(struct jvst_cnode *root)
 		/* constrains with no child nodes */
 		case JVST_CNODE_NUM_INTEGER:
 		case JVST_CNODE_NUM_RANGE:
-		case JVST_CNODE_COUNT_RANGE:
+		case JVST_CNODE_LENGTH_RANGE:
+		case JVST_CNODE_PROP_RANGE:
+		case JVST_CNODE_ITEM_RANGE:
 		case JVST_CNODE_ARR_UNIQUE:
 			break;
 
@@ -357,8 +359,12 @@ jvst_cnode_type_name(enum jvst_cnode_type type)
 		return "NOT";
 	case JVST_CNODE_SWITCH:
 		return "SWITCH";
-	case JVST_CNODE_COUNT_RANGE:
-		return "COUNT_RANGE";
+	case JVST_CNODE_LENGTH_RANGE:
+		return "LENGTH_RANGE";
+	case JVST_CNODE_PROP_RANGE:
+		return "PROP_RANGE";
+	case JVST_CNODE_ITEM_RANGE:
+		return "ITEM_RANGE";
 	case JVST_CNODE_STR_MATCH:
 		return "STR_MATCH";
 	case JVST_CNODE_NUM_RANGE:
@@ -595,8 +601,10 @@ and_or_xor:
 		sbuf_snprintf(buf, ")");
 		break;
 
-	case JVST_CNODE_COUNT_RANGE:
-		sbuf_snprintf(buf, "COUNT_RANGE(");
+	case JVST_CNODE_LENGTH_RANGE:
+	case JVST_CNODE_PROP_RANGE:
+	case JVST_CNODE_ITEM_RANGE:
+		sbuf_snprintf(buf, "%s(", jvst_cnode_type_name(node->type));
 		if (node->u.counts.min > 0) {
 			sbuf_snprintf(buf, "%zu <= ", node->u.counts.min);
 		}
@@ -877,7 +885,7 @@ jvst_cnode_translate_ast(const struct ast_schema *ast)
 	if (ast->kws & (KWS_MIN_LENGTH | KWS_MAX_LENGTH)) {
 		struct jvst_cnode *range, *jxn;
 
-		range = jvst_cnode_alloc(JVST_CNODE_COUNT_RANGE);
+		range = jvst_cnode_alloc(JVST_CNODE_LENGTH_RANGE);
 		range->u.counts.min = ast->min_length;
 		range->u.counts.max = ast->max_length;
 
@@ -914,7 +922,7 @@ jvst_cnode_translate_ast(const struct ast_schema *ast)
 	if (ast->kws & (KWS_MIN_PROPERTIES | KWS_MAX_PROPERTIES)) {
 		struct jvst_cnode *range, *jxn;
 
-		range = jvst_cnode_alloc(JVST_CNODE_COUNT_RANGE);
+		range = jvst_cnode_alloc(JVST_CNODE_PROP_RANGE);
 		range->u.counts.min = ast->min_properties;
 		range->u.counts.max = ast->max_properties;
 
@@ -1252,7 +1260,9 @@ cnode_deep_copy(struct jvst_cnode *node)
 		tree->u.num_range = node->u.num_range;
 		return tree;
 
-	case JVST_CNODE_COUNT_RANGE:
+	case JVST_CNODE_LENGTH_RANGE:
+	case JVST_CNODE_PROP_RANGE:
+	case JVST_CNODE_ITEM_RANGE:
 		tree	   = jvst_cnode_alloc(node->type);
 		tree->u.counts = node->u.counts;
 		return tree;
@@ -1703,7 +1713,9 @@ jvst_cnode_simplify(struct jvst_cnode *tree)
 		return cnode_simplify_propset(tree);
 
 	case JVST_CNODE_NUM_RANGE:
-	case JVST_CNODE_COUNT_RANGE:
+	case JVST_CNODE_LENGTH_RANGE:
+	case JVST_CNODE_PROP_RANGE:
+	case JVST_CNODE_ITEM_RANGE:
 	case JVST_CNODE_STR_MATCH:
 	case JVST_CNODE_OBJ_PROP_MATCH:
 	case JVST_CNODE_OBJ_REQUIRED:
@@ -2278,7 +2290,9 @@ cnode_canonify_pass1(struct jvst_cnode *tree)
 	case JVST_CNODE_VALID:
 	case JVST_CNODE_ARR_UNIQUE:
 	case JVST_CNODE_NUM_RANGE:
-	case JVST_CNODE_COUNT_RANGE:
+	case JVST_CNODE_LENGTH_RANGE:
+	case JVST_CNODE_PROP_RANGE:
+	case JVST_CNODE_ITEM_RANGE:
 		return tree;
 
 	case JVST_CNODE_AND:
@@ -2379,7 +2393,9 @@ cnode_canonify_pass2(struct jvst_cnode *tree)
 	case JVST_CNODE_VALID:
 	case JVST_CNODE_ARR_UNIQUE:
 	case JVST_CNODE_NUM_RANGE:
-	case JVST_CNODE_COUNT_RANGE:
+	case JVST_CNODE_LENGTH_RANGE:
+	case JVST_CNODE_PROP_RANGE:
+	case JVST_CNODE_ITEM_RANGE:
 		return tree;
 
 	case JVST_CNODE_NOT:

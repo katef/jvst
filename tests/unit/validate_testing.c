@@ -584,10 +584,16 @@ newcnode_range(struct arena_info *A, enum jvst_cnode_rangeflags flags, double mi
 }
 
 struct jvst_cnode *
-newcnode_counts(struct arena_info *A, size_t min, size_t max, bool upper)
+newcnode_counts(struct arena_info *A, enum jvst_cnode_type type,
+	size_t min, size_t max, bool upper)
 {
 	struct jvst_cnode *node;
-	node = newcnode(A, JVST_CNODE_COUNT_RANGE);
+
+	assert(type == JVST_CNODE_LENGTH_RANGE || 
+		type == JVST_CNODE_PROP_RANGE ||
+		type == JVST_CNODE_ITEM_RANGE);
+
+	node = newcnode(A, type);
 	node->u.counts.min = min;
 	node->u.counts.max = max;
 	node->u.counts.upper = upper;

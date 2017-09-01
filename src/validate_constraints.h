@@ -48,9 +48,11 @@ enum jvst_cnode_type {
 	/* Token-switch node */
 	JVST_CNODE_SWITCH,
 
-	/* range for string lengths, number of object properties, number of
+	/* ranges for string lengths, number of object properties, number of
 	 * array items */
-	JVST_CNODE_COUNT_RANGE,
+	JVST_CNODE_LENGTH_RANGE,
+	JVST_CNODE_PROP_RANGE,
+	JVST_CNODE_ITEM_RANGE,
 
 	/* Constraint nodes */
 	JVST_CNODE_STR_MATCH,

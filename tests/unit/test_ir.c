@@ -932,7 +932,7 @@ void test_ir_minmax_properties_1(void)
     {
       TRANSLATE,
       newcnode_switch(&A, 1,
-        SJP_OBJECT_BEG, newcnode_counts(&A, 1, 0, false),
+        SJP_OBJECT_BEG, newcnode_counts(&A, JVST_CNODE_PROP_RANGE, 1, 0, false),
         SJP_NONE),
 
       // XXX
@@ -1005,7 +1005,7 @@ void test_ir_minmax_properties_1(void)
     {
       LINEARIZE,
       newcnode_switch(&A, 1,
-        SJP_OBJECT_BEG, newcnode_counts(&A, 1, 0, false),
+        SJP_OBJECT_BEG, newcnode_counts(&A, JVST_CNODE_PROP_RANGE, 1, 0, false),
         SJP_NONE),
 
       NULL,
@@ -1097,7 +1097,7 @@ void test_ir_minmax_properties_1(void)
     {
       TRANSLATE,
       newcnode_switch(&A, 1,
-        SJP_OBJECT_BEG, newcnode_counts(&A, 0, 2, true),
+        SJP_OBJECT_BEG, newcnode_counts(&A, JVST_CNODE_PROP_RANGE, 0, 2, true),
         SJP_NONE),
 
       // XXX - comments here are largely the same as in the previous
@@ -1155,7 +1155,7 @@ void test_ir_minmax_properties_1(void)
     {
       LINEARIZE,
       newcnode_switch(&A, 1,
-        SJP_OBJECT_BEG, newcnode_counts(&A, 0, 2, true),
+        SJP_OBJECT_BEG, newcnode_counts(&A, JVST_CNODE_PROP_RANGE, 0, 2, true),
         SJP_NONE),
 
       NULL,
@@ -1245,7 +1245,7 @@ void test_ir_minmax_properties_1(void)
     {
       TRANSLATE,
       newcnode_switch(&A, 1,
-        SJP_OBJECT_BEG, newcnode_counts(&A, 2, 5, true),
+        SJP_OBJECT_BEG, newcnode_counts(&A, JVST_CNODE_PROP_RANGE, 2, 5, true),
         SJP_NONE),
 
       // XXX - comments here are largely the same as in the first
@@ -1303,7 +1303,7 @@ void test_ir_minmax_properties_1(void)
     {
       LINEARIZE,
       newcnode_switch(&A, 1,
-        SJP_OBJECT_BEG, newcnode_counts(&A, 2, 5, true),
+        SJP_OBJECT_BEG, newcnode_counts(&A, JVST_CNODE_PROP_RANGE, 2, 5, true),
         SJP_NONE),
 
       NULL,
@@ -1412,7 +1412,7 @@ void test_ir_minmax_properties_1(void)
       TRANSLATE,
       newcnode_switch(&A, 1,
         SJP_OBJECT_BEG, newcnode_bool(&A,JVST_CNODE_AND,
-                          newcnode_counts(&A, 1, 0, true),
+                          newcnode_counts(&A, JVST_CNODE_PROP_RANGE, 1, 0, true),
                           newcnode_valid(),
                           NULL),
         SJP_NONE),
@@ -1486,7 +1486,7 @@ void test_ir_minproperties_2(void)
       TRANSLATE,
       newcnode_switch(&A, 1,
           SJP_OBJECT_BEG, newcnode_bool(&A,JVST_CNODE_AND,
-                          newcnode_counts(&A, 1, 0, false),
+                          newcnode_counts(&A, JVST_CNODE_PROP_RANGE, 1, 0, false),
                           newcnode_propset(&A,
                             newcnode_prop_match(&A, RE_LITERAL, "foo",
                               newcnode_switch(&A, 0, SJP_NUMBER, newcnode_valid(), SJP_NONE)),
@@ -1577,7 +1577,7 @@ void test_ir_minproperties_2(void)
       LINEARIZE,
       newcnode_switch(&A, 1,
           SJP_OBJECT_BEG, newcnode_bool(&A,JVST_CNODE_AND,
-                          newcnode_counts(&A, 1, 0, false),
+                          newcnode_counts(&A, JVST_CNODE_PROP_RANGE, 1, 0, false),
                           newcnode_propset(&A,
                             newcnode_prop_match(&A, RE_LITERAL, "foo",
                               newcnode_switch(&A, 0, SJP_NUMBER, newcnode_valid(), SJP_NONE)),
@@ -3723,7 +3723,7 @@ static void test_ir_minmax_length_1(void)
 
       newcnode_switch(&A, 1,
         SJP_STRING, newcnode_bool(&A, JVST_CNODE_AND,
-                      newcnode_counts(&A, 12, 0, false),
+                      newcnode_counts(&A, JVST_CNODE_LENGTH_RANGE, 12, 0, false),
                       newcnode_valid(),
                       NULL),
         SJP_NONE),
@@ -3761,7 +3761,7 @@ static void test_ir_minmax_length_1(void)
 
       newcnode_switch(&A, 1,
         SJP_STRING, newcnode_bool(&A, JVST_CNODE_AND,
-                      newcnode_counts(&A, 0, 36, true),
+                      newcnode_counts(&A, JVST_CNODE_LENGTH_RANGE, 0, 36, true),
                       newcnode_valid(),
                       NULL),
         SJP_NONE),
@@ -3800,7 +3800,7 @@ static void test_ir_minmax_length_1(void)
 
       newcnode_switch(&A, 1,
         SJP_STRING, newcnode_bool(&A, JVST_CNODE_AND,
-                      newcnode_counts(&A, 23, 50, true),
+                      newcnode_counts(&A, JVST_CNODE_LENGTH_RANGE, 23, 50, true),
                       newcnode_valid(),
                       NULL),
         SJP_NONE),
@@ -3917,13 +3917,13 @@ void test_ir_minproperties_3(void)
       TRANSLATE,
       newcnode_switch(&A, 1,
         SJP_OBJECT_BEG, newcnode_bool(&A,JVST_CNODE_AND,
-                          newcnode_counts(&A, 1, 0, false),
+                          newcnode_counts(&A, JVST_CNODE_PROP_RANGE, 1, 0, false),
                           newcnode_bool(&A,JVST_CNODE_AND,
                             newcnode_propset(&A,
                               newcnode_prop_match(&A, RE_LITERAL, "foo",
                                 newcnode_switch(&A, 0,
                                   SJP_OBJECT_BEG, newcnode_bool(&A,JVST_CNODE_AND,
-                                                    newcnode_counts(&A, 1, 0, false),
+                                                    newcnode_counts(&A, JVST_CNODE_PROP_RANGE, 1, 0, false),
                                                     newcnode_valid(),
                                                     NULL),
                                   SJP_NONE)),
@@ -3958,7 +3958,7 @@ void test_ir_maxproperties_1(void)
       TRANSLATE,
       newcnode_switch(&A, 1,
         SJP_OBJECT_BEG, newcnode_bool(&A,JVST_CNODE_AND,
-                          newcnode_counts(&A, 0, 2, true),
+                          newcnode_counts(&A, JVST_CNODE_PROP_RANGE, 0, 2, true),
                           newcnode_valid(),
                           NULL),
         SJP_NONE),
@@ -3992,13 +3992,13 @@ void test_ir_maxproperties_2(void)
       TRANSLATE,
       newcnode_switch(&A, 1,
         SJP_OBJECT_BEG, newcnode_bool(&A,JVST_CNODE_AND,
-                          newcnode_counts(&A, 0, 1, true),
+                          newcnode_counts(&A, JVST_CNODE_PROP_RANGE, 0, 1, true),
                           newcnode_bool(&A,JVST_CNODE_AND,
                             newcnode_propset(&A,
                               newcnode_prop_match(&A, RE_LITERAL, "foo",
                                 newcnode_switch(&A, 0,
                                   SJP_OBJECT_BEG, newcnode_bool(&A,JVST_CNODE_AND,
-                                                    newcnode_counts(&A, 0, 1, true),
+                                                    newcnode_counts(&A, JVST_CNODE_PROP_RANGE, 0, 1, true),
                                                     newcnode_valid(),
                                                     NULL),
                                   SJP_NONE)),
@@ -4041,13 +4041,13 @@ void test_ir_minmax_properties_2(void)
       TRANSLATE,
       newcnode_switch(&A, 1,
         SJP_OBJECT_BEG, newcnode_bool(&A,JVST_CNODE_AND,
-                          newcnode_counts(&A, 1, 1, true),
+                          newcnode_counts(&A, JVST_CNODE_PROP_RANGE, 1, 1, true),
                           newcnode_bool(&A,JVST_CNODE_AND,
                             newcnode_propset(&A,
                               newcnode_prop_match(&A, RE_LITERAL, "foo",
                                 newcnode_switch(&A, 0,
                                   SJP_OBJECT_BEG, newcnode_bool(&A,JVST_CNODE_AND,
-                                                    newcnode_counts(&A, 1, 2, true),
+                                                    newcnode_counts(&A, JVST_CNODE_PROP_RANGE, 1, 2, true),
                                                     newcnode_valid(),
                                                     NULL),
                                   SJP_NONE)),
