@@ -130,7 +130,9 @@ struct ast_schema {
 
 	struct ast_regexp pattern;
 
-	/* max of 0 means unbounded */
+	/* min/max fields are only valid when appropriate KWS_* flags
+	 * are set.  Otherwise the defaults are: min is 0, max is unbounded
+	 */
 	ast_count max_length;
 	ast_count min_length;
 	ast_count max_items;
