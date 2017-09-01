@@ -2975,10 +2975,22 @@ ir_translate_array_inner(struct jvst_cnode *top, struct ir_arr_builder *builder)
 			return NULL;
 		}
 
+	case JVST_CNODE_AND:
+		{
+			struct jvst_cnode *n;
+			for (n = top->u.ctrl; n != NULL; n = n->next) {
+				struct jvst_ir_stmt *stmt;
+				stmt = ir_translate_array_inner(n,builder);
+				assert(stmt == NULL);
+				(void)stmt;
+			}
+
+			return NULL;
+		}
+
 	case JVST_CNODE_ARR_UNIQUE:
 	case JVST_CNODE_ITEM_RANGE:
 
-	case JVST_CNODE_AND:
 	case JVST_CNODE_OR:
 	case JVST_CNODE_XOR:
 	case JVST_CNODE_NOT:
