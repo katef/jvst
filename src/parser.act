@@ -467,6 +467,10 @@
 		ast->max_properties = c;
 	@};
 
+        <set-pattern>:              (re :regexp) -> () = @{
+                ast->pattern = @re;
+        @};
+
 	<clear-types> = @{
 		if (debug & DEBUG_ACT) {
 			fprintf(stderr, "<clear-types>\n");

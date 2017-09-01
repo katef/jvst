@@ -304,6 +304,12 @@ newschema_p(struct arena_info *A, int types, ...)
 		} else if (strcmp(pname, "maximum") == 0) {
 			s->kws |= KWS_MAXIMUM;
 			s->maximum = va_arg(args, double);
+		} else if (strcmp(pname, "pattern") == 0) {
+			const char *pat;
+
+			pat = va_arg(args, const char *);
+			s->pattern.str = newstr(pat);
+			s->pattern.dialect = RE_NATIVE;
 		} else if (strcmp(pname, "dep_strings") == 0) {
 			s->dependencies_strings.set = va_arg(args, struct ast_property_names *);
 		} else if (strcmp(pname, "dep_schema") == 0) {
@@ -574,11 +580,21 @@ newcnode_range(struct arena_info *A, enum jvst_cnode_rangeflags flags, double mi
 struct jvst_cnode *
 newcnode_counts(struct arena_info *A, size_t min, size_t max, bool upper)
 {
-	struct jvst_cnode *node, **pp;
+	struct jvst_cnode *node;
 	node = newcnode(A, JVST_CNODE_COUNT_RANGE);
 	node->u.counts.min = min;
 	node->u.counts.max = max;
 	node->u.counts.upper = upper;
+	return node;
+}
+
+struct jvst_cnode *
+newcnode_strmatch(struct arena_info *A, enum re_dialect dialect, const char *pat)
+{
+	struct jvst_cnode *node;
+	node = newcnode(A, JVST_CNODE_STR_MATCH);
+	node->u.str_match.dialect = dialect;
+	node->u.str_match.str = newstr(pat);
 	return node;
 }
 

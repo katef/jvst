@@ -87,6 +87,7 @@
 	<set-exclusive-minimum>:    (:number) -> ();
         <set-min-properties>:       (:number) -> ();
         <set-max-properties>:       (:number) -> ();
+        <set-pattern>:              (:regexp) -> ();
 	<set-type>:                 (:type)   -> ();
 	<set-title>:                (:string) -> ();
 	<set-description>:          (:string) -> ();
@@ -289,6 +290,13 @@
                 CCURLY;
         };
 
+        directive-pattern = {
+                s = STRING;
+                dialect = <re-pattern>;
+                re = <new-regexp>(dialect, s);
+                <set-pattern>(re);
+        };
+
 	directive-title = {
 		s = STRING;
 		<set-title>(s);
@@ -335,7 +343,7 @@
 		placeholder;
 	||
 		? = <kw-pattern>(k);
-		placeholder;
+		directive-pattern;
 	||
 		? = <kw-items>(k);
 		placeholder;

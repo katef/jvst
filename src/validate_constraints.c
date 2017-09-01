@@ -434,6 +434,42 @@ jvst_cnode_matchset_dump(struct jvst_cnode_matchset *ms, struct sbuf *buf, int i
 	sbuf_snprintf(buf, ", \"%s\"]", str);
 }
 
+static void
+regexp_dump(struct sbuf *buf, struct ast_regexp *re)
+{
+	char *prefix = "";
+	char delim   = '/';
+	char match[256] = {0};
+
+	if (re->str.len >= sizeof match) {
+		memcpy(match, re->str.s, sizeof match - 4);
+		match[sizeof match - 4] = '.';
+		match[sizeof match - 3] = '.';
+		match[sizeof match - 2] = '.';
+	} else {
+		memcpy(match, re->str.s, re->str.len);
+	}
+
+	switch (re->dialect) {
+	case RE_LIKE:
+		prefix = "L";
+		break;
+	case RE_LITERAL:
+		delim = '"';
+		break;
+
+	case RE_GLOB:
+		prefix = "G";
+		break;
+	case RE_NATIVE:
+		break;
+	default:
+		prefix = "???";
+		break;
+	}
+	sbuf_snprintf(buf, "%s%c%s%c", prefix, delim, match, delim);
+}
+
 // returns number of bytes written
 static void
 jvst_cnode_dump_inner(struct jvst_cnode *node, struct sbuf *buf, int indent)
@@ -547,48 +583,16 @@ and_or_xor:
 		break;
 
 	case JVST_CNODE_OBJ_PROP_MATCH:
-		{
-			char match[256] = {0};
-			if (node->u.prop_match.match.str.len >= sizeof match) {
-				memcpy(match, node->u.prop_match.match.str.s, sizeof match - 4);
-				match[sizeof match - 4] = '.';
-				match[sizeof match - 3] = '.';
-				match[sizeof match - 2] = '.';
-			} else {
-				memcpy(match, node->u.prop_match.match.str.s,
-						node->u.prop_match.match.str.len);
-			}
+		sbuf_snprintf(buf, "PROP_MATCH(\n");
+		sbuf_indent(buf, indent + 2);
+		regexp_dump(buf, &node->u.prop_match.match);
+		sbuf_snprintf(buf, ",\n");
 
-			sbuf_snprintf(buf, "PROP_MATCH(\n");
-			sbuf_indent(buf, indent + 2);
-			{
-				char *prefix = "";
-				char delim   = '/';
-				switch (node->u.prop_match.match.dialect) {
-					case RE_LIKE:
-						prefix = "L";
-						break;
-					case RE_LITERAL:
-						delim = '"';
-						break;
-
-					case RE_GLOB:
-						prefix = "G";
-						break;
-					case RE_NATIVE:
-						break;
-					default:
-						prefix = "???";
-						break;
-				}
-				sbuf_snprintf(buf, "%s%c%s%c,\n", prefix, delim, match, delim);
-				sbuf_indent(buf, indent + 2);
-				jvst_cnode_dump_inner(node->u.prop_match.constraint, buf, indent + 2);
-				sbuf_snprintf(buf, "\n");
-				sbuf_indent(buf, indent);
-				sbuf_snprintf(buf, ")");
-			}
-		}
+		sbuf_indent(buf, indent + 2);
+		jvst_cnode_dump_inner(node->u.prop_match.constraint, buf, indent + 2);
+		sbuf_snprintf(buf, "\n");
+		sbuf_indent(buf, indent);
+		sbuf_snprintf(buf, ")");
 		break;
 
 	case JVST_CNODE_COUNT_RANGE:
@@ -696,12 +700,18 @@ and_or_xor:
 		}
 		break;
 
-	case JVST_CNODE_NOT:
 	case JVST_CNODE_STR_MATCH:
+		sbuf_snprintf(buf, "STRMATCH(");
+		regexp_dump(buf, &node->u.str_match);
+		sbuf_snprintf(buf, ")");
+		break;
+
+	case JVST_CNODE_NOT:
 	case JVST_CNODE_ARR_ITEM:
 	case JVST_CNODE_ARR_ADDITIONAL:
 	case JVST_CNODE_ARR_UNIQUE:
-		fprintf(stderr, "**not implemented**\n");
+		fprintf(stderr, "%s:%d (%s) **not implemented**\n",
+			__FILE__, __LINE__, __func__);
 		abort();
 	}
 }
@@ -748,6 +758,27 @@ jvst_cnode_from_ast(const struct ast_schema *ast)
 	return canonified;
 }
 
+static void
+add_ast_constraint(struct jvst_cnode *sw, enum SJP_EVENT evt, struct jvst_cnode *constraint)
+{
+	struct jvst_cnode *curr, *jxn;
+	
+	assert(sw != NULL);
+	assert(sw->type == JVST_CNODE_SWITCH);
+
+	assert(constraint->next == NULL);
+
+	assert(evt >= 0 && evt < ARRAYLEN(sw->u.sw));
+
+	curr = sw->u.sw[evt];
+
+	// add an AND for this constraint and the current one
+	jxn = jvst_cnode_alloc(JVST_CNODE_AND);
+	jxn->u.ctrl = constraint;
+	constraint->next = curr;
+	sw->u.sw[evt] = jxn;
+}
+
 // Just do a raw translation without doing any optimization of the
 // constraint tree
 struct jvst_cnode *
@@ -790,10 +821,6 @@ jvst_cnode_translate_ast(const struct ast_schema *ast)
 			node->u.sw[SJP_STRING] = valid;
 		}
 
-		if (types & JSON_VALUE_STRING) {
-			node->u.sw[SJP_STRING] = valid;
-		}
-
 		if (types & JSON_VALUE_NUMBER) {
 			node->u.sw[SJP_NUMBER] = valid;
 		}
@@ -815,7 +842,7 @@ jvst_cnode_translate_ast(const struct ast_schema *ast)
 	if (ast->kws & (KWS_MINIMUM | KWS_MAXIMUM)) {
 		enum jvst_cnode_rangeflags flags = 0;
 		double min = 0, max = 0;
-		struct jvst_cnode *range, *jxn;
+		struct jvst_cnode *range;
 
 		if (ast->kws & KWS_MINIMUM) {
 			flags |= (ast->exclusive_minimum ? JVST_CNODE_RANGE_EXCL_MIN
@@ -834,17 +861,23 @@ jvst_cnode_translate_ast(const struct ast_schema *ast)
 		range->u.num_range.min = min;
 		range->u.num_range.max = max;
 
-		jxn = jvst_cnode_alloc(JVST_CNODE_AND);
-		jxn->u.ctrl = range;
-		range->next = node->u.sw[SJP_NUMBER];
-		node->u.sw[SJP_NUMBER] = jxn;
+		add_ast_constraint(node, SJP_NUMBER, range);
+	}
+
+	if (ast->pattern.str.s != NULL) {
+		struct jvst_cnode *strmatch, *topjxn;
+
+		strmatch = jvst_cnode_alloc(JVST_CNODE_STR_MATCH);
+		// FIXME: I think this will leak!
+		strmatch->u.str_match = ast->pattern;
+
+		add_ast_constraint(node, SJP_STRING, strmatch);
 	}
 
 	if (ast->properties.set != NULL) {
-		struct jvst_cnode **plist, *phead, *prop_set, *top_jxn;
+		struct jvst_cnode **plist, *phead, *prop_set;
 		struct ast_property_schema *pset;
 
-		top_jxn = NULL;
 		prop_set = NULL;
 		phead = NULL;
 		plist = &phead;
@@ -852,6 +885,7 @@ jvst_cnode_translate_ast(const struct ast_schema *ast)
 		for (pset = ast->properties.set; pset != NULL; pset = pset->next) {
 			struct jvst_cnode *pnode;
 			pnode = jvst_cnode_alloc(JVST_CNODE_OBJ_PROP_MATCH);
+			// FIXME: I think this will leak!
 			pnode->u.prop_match.match = pset->pattern;
 			pnode->u.prop_match.constraint = jvst_cnode_translate_ast(pset->schema);
 			*plist = pnode;
@@ -862,11 +896,7 @@ jvst_cnode_translate_ast(const struct ast_schema *ast)
 		prop_set->u.prop_set = phead;
 		assert(phead != NULL);
 
-		top_jxn		= jvst_cnode_alloc(JVST_CNODE_AND);
-		top_jxn->u.ctrl = prop_set;
-		prop_set->next  = node->u.sw[SJP_OBJECT_BEG];
-
-		node->u.sw[SJP_OBJECT_BEG] = top_jxn;
+		add_ast_constraint(node, SJP_OBJECT_BEG, prop_set);
 	}
 
 	if (ast->kws & (KWS_MIN_PROPERTIES | KWS_MAX_PROPERTIES)) {
@@ -878,10 +908,7 @@ jvst_cnode_translate_ast(const struct ast_schema *ast)
 
 		range->u.counts.upper = !!(ast->kws & KWS_MAX_PROPERTIES);
 
-		jxn = jvst_cnode_alloc(JVST_CNODE_AND);
-		jxn->u.ctrl = range;
-		range->next = node->u.sw[SJP_OBJECT_BEG];
-		node->u.sw[SJP_OBJECT_BEG] = jxn;
+		add_ast_constraint(node, SJP_OBJECT_BEG, range);
 	}
 
 	if (ast->required.set != NULL) {
@@ -890,10 +917,7 @@ jvst_cnode_translate_ast(const struct ast_schema *ast)
 		req = jvst_cnode_alloc(JVST_CNODE_OBJ_REQUIRED);
 		req->u.required = ast->required.set;
 
-		jxn = jvst_cnode_alloc(JVST_CNODE_AND);
-		jxn->u.ctrl = req;
-		req->next = node->u.sw[SJP_OBJECT_BEG];
-		node->u.sw[SJP_OBJECT_BEG] = jxn;
+		add_ast_constraint(node, SJP_OBJECT_BEG, req);
 	}
 
 	if (ast->dependencies_strings.set != NULL) {
@@ -1601,6 +1625,7 @@ cnode_simplify_andor(struct jvst_cnode *top)
 	if (top->type == JVST_CNODE_AND) {
 		top = cnode_simplify_and_propsets(top);
 	}
+
 	if (top->type == JVST_CNODE_AND) {
 		top = cnode_simplify_and_required(top);
 	}
@@ -1962,6 +1987,55 @@ sort_mcases(struct jvst_cnode **mcpp)
 	}
 }
 
+static struct fsm *
+mcase_re_compile(struct ast_regexp *re, struct fsm_options *opts, struct jvst_cnode *mcase)
+{
+	struct fsm *pat;
+	struct json_str_iter siter;
+	struct re_err err = { 0 };
+	char tmp[128], *pbuf;
+
+	siter.str = re->str;
+	siter.off = 0;
+
+	pat = re_comp(	re->dialect,
+			json_str_getc,
+			&siter,
+			opts,
+			(enum re_flags)0,
+			&err);
+
+	fsm_minimise(pat);
+
+	if (pat == NULL) {
+		goto error;
+	}
+
+	fsm_setendopaque(pat, mcase);
+
+	return pat;
+
+error:
+	// the match.str field is a json_string, which
+	// is length encoded and may not have a
+	// terminating NUL character.  Copy it so we can
+	// pass it to re_perror.
+	if (re->str.len < sizeof tmp) {
+		pbuf = &tmp[0];
+	} else {
+		pbuf = xmalloc(re->str.len+1);
+	}
+
+	memcpy(pbuf, re->str.s, re->str.len);
+	pbuf[re->str.len] = '\0';
+
+	re_perror(re->dialect, &err, NULL, pbuf);
+	if (pbuf != &tmp[0]) {
+		free(pbuf);
+	}
+	abort();
+}
+
 static struct jvst_cnode *
 cnode_canonify_propset(struct jvst_cnode *top)
 {
@@ -2002,53 +2076,13 @@ cnode_canonify_propset(struct jvst_cnode *top)
 		struct jvst_cnode *cons, *mcase;
 		struct jvst_cnode_matchset *mset;
 		struct fsm *pat;
-		struct json_str_iter siter;
-		enum re_dialect dialect;
-		struct re_err err = { 0 };
 
 		cons = pm->u.prop_match.constraint;
 		mset = cnode_matchset_new(pm->u.prop_match.match, NULL);
 		mcase = cnode_new_mcase(mset, cons);
 		assert(mcase->next == NULL);
 
-		siter.str = pm->u.prop_match.match.str;
-		siter.off = 0;
-		dialect = pm->u.prop_match.match.dialect;
-
-		pat = re_comp(
-			dialect,
-			json_str_getc,
-			&siter,
-			opts,
-			(enum re_flags)0,
-			&err);
-
-		if (pat == NULL) {
-			struct json_string str;
-			char tmp[128], *pbuf;
-
-			// the match.str field is a json_string, which
-			// is length encoded and may not have a
-			// terminating NUL character.  Copy it so we can
-			// pass it to re_perror.
-			str = pm->u.prop_match.match.str;
-			if (str.len < sizeof tmp) {
-				pbuf = &tmp[0];
-			} else {
-				pbuf = xmalloc(str.len+1);
-			}
-
-			memcpy(pbuf, str.s, str.len);
-			pbuf[str.len] = '\0';
-
-			re_perror(dialect, &err, NULL, pbuf);
-			if (pbuf != &tmp[0]) {
-				free(pbuf);
-			}
-			abort();
-		}
-
-		fsm_setendopaque(pat, mcase);
+		pat = mcase_re_compile(&pm->u.prop_match.match, opts, mcase);
 
 		if (matches == NULL) {
 			matches = pat;
@@ -2167,6 +2201,57 @@ cnode_canonify_required(struct jvst_cnode *req)
 	return jxn;
 }
 
+static struct jvst_cnode *
+cnode_canonify_strmatch(struct jvst_cnode *top)
+{
+	struct jvst_cnode *mcase, *msw, *cons;
+	struct jvst_cnode_matchset *mset;
+	struct fsm_options *opts;
+	struct fsm *match;
+
+	// FIXME: this is a leak...
+	opts = xmalloc(sizeof *opts);
+	*opts = (struct fsm_options) {
+		.tidy = false,
+		.anonymous_states = false,
+		.consolidate_edges = true,
+		.fragment = true,
+		.comments = true,
+		.case_ranges = true,
+
+		.io = FSM_IO_GETC,
+		.prefix = NULL,
+		.carryopaque = NULL,
+	};
+
+	assert(top->type == JVST_CNODE_STR_MATCH);
+	assert(top->u.str_match.str.s != NULL);
+
+	cons = jvst_cnode_alloc(JVST_CNODE_VALID);
+	mset = cnode_matchset_new(top->u.str_match, NULL);
+	mcase = cnode_new_mcase(mset, cons);
+	assert(mcase->next == NULL);
+
+	match = mcase_re_compile(&top->u.str_match, opts, NULL);
+
+	if (!fsm_determinise(match)) {
+		perror("cannot determinise fsm");
+		abort();
+	}
+
+	fsm_setendopaque(match, mcase);
+
+	// build the MATCH_SWITCH container to hold the case and the
+	// DFA.  The default case is INVALID.
+	msw = jvst_cnode_alloc(JVST_CNODE_MATCH_SWITCH);
+	msw->u.mswitch.dfa = match;
+	msw->u.mswitch.opts = opts;
+	msw->u.mswitch.cases = mcase;
+	msw->u.mswitch.default_case = jvst_cnode_alloc(JVST_CNODE_INVALID);
+
+	return msw;
+}
+
 // Initial canonification before DFAs are constructed
 static struct jvst_cnode *
 cnode_canonify_pass1(struct jvst_cnode *tree)
@@ -2226,8 +2311,10 @@ cnode_canonify_pass1(struct jvst_cnode *tree)
 	case JVST_CNODE_OBJ_REQUIRED:
 		return cnode_canonify_required(tree);
 
-	case JVST_CNODE_NUM_INTEGER:
 	case JVST_CNODE_STR_MATCH:
+		return cnode_canonify_strmatch(tree);
+
+	case JVST_CNODE_NUM_INTEGER:
 	case JVST_CNODE_OBJ_PROP_MATCH:
 	case JVST_CNODE_ARR_ITEM:
 	case JVST_CNODE_ARR_ADDITIONAL:
