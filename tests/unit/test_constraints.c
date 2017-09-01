@@ -2153,6 +2153,126 @@ static void test_canonify_patterns(void)
   RUNTESTS(tests);
 }
 
+static void test_xlate_minmax_items(void)
+{
+  struct arena_info A = {0};
+
+  const struct cnode_test tests[] = {
+    {
+      TRANSLATE,
+      newschema_p(&A, 0, "minItems", 3, NULL),
+
+      NULL,
+
+      newcnode_switch(&A, 1,
+          SJP_ARRAY_BEG, newcnode_bool(&A, JVST_CNODE_AND,
+                           newcnode_counts(&A, JVST_CNODE_ITEM_RANGE, 3, 0, false),
+                           newcnode_valid(),
+                           NULL),
+            SJP_NONE)
+    },
+
+    {
+      TRANSLATE,
+      newschema_p(&A, 0, "maxItems", 3, NULL),
+
+      NULL,
+
+      newcnode_switch(&A, 1,
+          SJP_ARRAY_BEG, newcnode_bool(&A, JVST_CNODE_AND,
+                           newcnode_counts(&A, JVST_CNODE_ITEM_RANGE, 0, 3, true),
+                           newcnode_valid(),
+                           NULL),
+            SJP_NONE)
+    },
+
+    {
+      TRANSLATE,
+      newschema_p(&A, 0,
+          "minItems", 1,
+          "maxItems", 5,
+          NULL),
+
+      NULL,
+
+      newcnode_switch(&A, 1,
+          SJP_ARRAY_BEG, newcnode_bool(&A, JVST_CNODE_AND,
+                           newcnode_counts(&A, JVST_CNODE_ITEM_RANGE, 1, 5, true),
+                           newcnode_valid(),
+                           NULL),
+            SJP_NONE)
+    },
+
+
+    {
+      TRANSLATE,
+      newschema_p(&A, 0,
+          "items_single", newschema_p(&A, JSON_VALUE_INTEGER, NULL),
+          "maxItems", 5,
+          NULL),
+
+      NULL,
+
+      newcnode_switch(&A, 1,
+          SJP_ARRAY_BEG, newcnode_bool(&A, JVST_CNODE_AND,
+                           newcnode_counts(&A, JVST_CNODE_ITEM_RANGE, 0, 5, true),
+                           newcnode_bool(&A, JVST_CNODE_AND, 
+                             newcnode_additional_items(&A,
+                               newcnode_switch(&A, 0,
+                                 SJP_NUMBER, newcnode(&A,JVST_CNODE_NUM_INTEGER),
+                                 SJP_NONE)
+                             ),
+                             newcnode_valid(),
+                             NULL),
+                           NULL),
+            SJP_NONE)
+    },
+
+    {
+      TRANSLATE,
+      newschema_p(&A, 0,
+          "items", schema_set(&A, 
+             newschema_p(&A, JSON_VALUE_STRING, NULL),
+             newschema_p(&A, JSON_VALUE_STRING, NULL),
+             NULL),
+          "additionalItems", newschema_p(&A, JSON_VALUE_INTEGER, NULL),
+          "minItems", 1,
+          "maxItems", 7,
+          NULL),
+
+      NULL,
+
+      newcnode_switch(&A, 1,
+          SJP_ARRAY_BEG, newcnode_bool(&A, JVST_CNODE_AND,
+                           newcnode_counts(&A, JVST_CNODE_ITEM_RANGE, 1, 7, true),
+                           newcnode_bool(&A, JVST_CNODE_AND,
+                             newcnode_additional_items(&A,
+                               newcnode_switch(&A, 0,
+                                 SJP_NUMBER, newcnode(&A,JVST_CNODE_NUM_INTEGER),
+                                 SJP_NONE)
+                               ),
+                             newcnode_bool(&A, JVST_CNODE_AND,
+                               newcnode_items(&A,
+                                 newcnode_switch(&A, 0,
+                                   SJP_STRING, newcnode_valid(),
+                                   SJP_NONE),
+                                 newcnode_switch(&A, 0,
+                                   SJP_STRING, newcnode_valid(),
+                                   SJP_NONE),
+                                 NULL),
+                               newcnode_valid(),
+                               NULL),
+                             NULL),
+                           NULL),
+            SJP_NONE)
+    },
+
+    { STOP },
+  };
+
+  RUNTESTS(tests);
+}
+
 int main(void)
 {
   test_xlate_empty_schema();
@@ -2184,6 +2304,8 @@ int main(void)
   test_xlate_minmax_length_1();
 
   test_xlate_items_1();
+
+  test_xlate_minmax_items();
 
   test_simplify_ands();
   test_simplify_ored_schema();
