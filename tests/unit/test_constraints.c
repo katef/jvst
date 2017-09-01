@@ -1087,6 +1087,60 @@ static void test_xlate_pattern_1(void)
   RUNTESTS(tests);
 }
 
+//
+static void test_xlate_minmax_length_1(void)
+{
+  struct arena_info A = {0};
+
+  const struct cnode_test tests[] = {
+    {
+      TRANSLATE,
+      newschema_p(&A, 0, "minLength", 12, NULL),
+
+      NULL,
+
+      newcnode_switch(&A, 1,
+        SJP_STRING, newcnode_bool(&A, JVST_CNODE_AND,
+                      newcnode_counts(&A, 12, 0, false),
+                      newcnode_valid(),
+                      NULL),
+        SJP_NONE)
+    },
+
+    {
+      TRANSLATE,
+      newschema_p(&A, 0, "maxLength", 36, NULL),
+
+      NULL,
+
+      newcnode_switch(&A, 1,
+        SJP_STRING, newcnode_bool(&A, JVST_CNODE_AND,
+                      newcnode_counts(&A, 0, 36, true),
+                      newcnode_valid(),
+                      NULL),
+        SJP_NONE)
+    },
+
+    {
+      TRANSLATE,
+      newschema_p(&A, 0, "minLength", 23, "maxLength", 50, NULL),
+
+      NULL,
+
+      newcnode_switch(&A, 1,
+        SJP_STRING, newcnode_bool(&A, JVST_CNODE_AND,
+                      newcnode_counts(&A, 23, 50, true),
+                      newcnode_valid(),
+                      NULL),
+        SJP_NONE)
+    },
+
+    { STOP },
+  };
+
+  RUNTESTS(tests);
+}
+
 static void test_simplify_ands(void)
 {
   struct arena_info A = {0};
@@ -2014,6 +2068,7 @@ int main(void)
   test_xlate_anyof_2();
 
   test_xlate_pattern_1();
+  test_xlate_minmax_length_1();
 
   test_simplify_ands();
   test_simplify_ored_schema();

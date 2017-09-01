@@ -83,6 +83,12 @@ jvst_invalid_msg(enum jvst_invalid_code code)
 
 	case JVST_INVALID_VM_INVALID_OP:
 		return "VM invalid op";
+
+	case JVST_INVALID_LENGTH_TOO_SHORT:
+		return "length is too short";
+
+	case JVST_INVALID_LENGTH_TOO_LONG:
+		return "length is too long";
 	}
 
 	return "Unknown error";
@@ -2621,11 +2627,19 @@ ir_translate_object(struct jvst_cnode *top, struct jvst_ir_stmt *frame)
 	}
 }
 
+
+struct ir_str_builder {
+	struct jvst_ir_stmt *frame;
+	struct jvst_ir_stmt *seq;
+	struct jvst_ir_stmt **ipp;
+	bool consumed;
+};
+
 static struct jvst_ir_stmt *
 ir_translate_string(struct jvst_cnode *top, struct jvst_ir_stmt *frame);
 
 static struct jvst_ir_stmt *
-str_translate_mswitch(struct jvst_cnode *top, struct jvst_ir_stmt *frame)
+str_translate_mswitch(struct jvst_cnode *top, struct ir_str_builder *builder)
 {
 	struct jvst_ir_stmt *match, *matcher;
 	struct jvst_ir_mcase **mcpp;
@@ -2651,7 +2665,7 @@ str_translate_mswitch(struct jvst_cnode *top, struct jvst_ir_stmt *frame)
 		assert(mcase->type == JVST_CNODE_MATCH_CASE);
 		assert(mcase->u.mcase.tmp == NULL);
 
-		ir_constraint = ir_translate_string(mcase->u.mcase.constraint, frame);
+		ir_constraint = ir_translate_string(mcase->u.mcase.constraint, builder->frame);
 
 		mc = ir_mcase_new(++which, ir_constraint);
 		mc->matchset = mcase->u.mcase.matchset;
@@ -2665,7 +2679,7 @@ str_translate_mswitch(struct jvst_cnode *top, struct jvst_ir_stmt *frame)
 	fsm_walk_states(dfa, NULL, obj_mcase_update_opaque);
 
 	// translate the default case
-	match->u.match.default_case = ir_translate_string(top->u.mswitch.default_case, frame);
+	match->u.match.default_case = ir_translate_string(top->u.mswitch.default_case, builder->frame);
 
 	// clear the castlist->u.mcase.tmp values in case they need to be used elsewhere
 	for (mcase = top->u.mswitch.cases; mcase != NULL; mcase = mcase->next) {
@@ -2674,20 +2688,20 @@ str_translate_mswitch(struct jvst_cnode *top, struct jvst_ir_stmt *frame)
 		mcase->u.mcase.tmp = NULL;
 	}
 
-	matcher = ir_stmt_matcher(frame, "dfa", dfa);
+	matcher = ir_stmt_matcher(builder->frame, "dfa", dfa);
 	match->u.match.dfa = dfa;
 	match->u.match.name = matcher->u.matcher.name;
 	match->u.match.ind  = matcher->u.matcher.ind;
-	
+
 	return match;
 }
 
 static struct jvst_ir_stmt *
-ir_translate_string(struct jvst_cnode *top, struct jvst_ir_stmt *frame)
+ir_translate_string_inner(struct jvst_cnode *top, struct ir_str_builder *builder)
 {
 	switch (top->type) {
 	case JVST_CNODE_MATCH_SWITCH:
-		return str_translate_mswitch(top, frame);
+		return str_translate_mswitch(top, builder);
 
 	case JVST_CNODE_INVALID:
 		return ir_stmt_invalid(JVST_INVALID_STRING);
@@ -2696,24 +2710,71 @@ ir_translate_string(struct jvst_cnode *top, struct jvst_ir_stmt *frame)
 		return ir_stmt_valid();
 
 	case JVST_CNODE_COUNT_RANGE:
+		{
+			struct jvst_ir_stmt *stmt, **spp;
+
+			stmt = NULL;
+			spp = &stmt;
+
+			if (!builder->consumed) {
+				struct jvst_ir_stmt *seq;
+				seq = ir_stmt_new(JVST_IR_STMT_SEQ);
+
+				*spp = seq;
+				spp = &seq->u.stmt_list;
+				
+				*spp = ir_stmt_new(JVST_IR_STMT_CONSUME);
+				spp = &(*spp)->next;
+			}
+
+			if (top->u.counts.min > 0) {
+				struct jvst_ir_expr *cond;
+				struct jvst_ir_stmt *br;
+
+				cond = ir_expr_op(JVST_IR_EXPR_GE,
+						ir_expr_new(JVST_IR_EXPR_TOK_LEN),
+						ir_expr_size(top->u.counts.min));
+				br = ir_stmt_if(cond, NULL, 
+					ir_stmt_invalid(JVST_INVALID_LENGTH_TOO_SHORT));
+
+				*spp = br;
+				spp = &br->u.if_.br_true;
+			}
+
+			if (top->u.counts.upper) {
+				struct jvst_ir_expr *cond;
+				struct jvst_ir_stmt *br;
+
+				cond = ir_expr_op(JVST_IR_EXPR_LE,
+						ir_expr_new(JVST_IR_EXPR_TOK_LEN),
+						ir_expr_size(top->u.counts.max));
+
+				br = ir_stmt_if(cond, NULL, 
+					ir_stmt_invalid(JVST_INVALID_LENGTH_TOO_LONG));
+
+				*spp = br;
+				spp = &br->u.if_.br_true;
+			}
+
+			*spp = ir_stmt_new(JVST_IR_STMT_VALID);
+			return stmt;
+		}
 
 	case JVST_CNODE_OR:
 	case JVST_CNODE_AND:
 
 	case JVST_CNODE_XOR:
 	case JVST_CNODE_NOT:
-
 		fprintf(stderr, "[%s:%d] string translation for cnode %s not yet implemented\n",
 				__FILE__, __LINE__, 
 				jvst_cnode_type_name(top->type));
 		abort();
 
 	case JVST_CNODE_STR_MATCH:
-		fprintf(stderr, "[%s:%d] cnode %s should be be present in canonified cnode tree\n",
+		fprintf(stderr, "[%s:%d] cnode %s should not be be present in canonified cnode tree\n",
 				__FILE__, __LINE__, 
 				jvst_cnode_type_name(top->type));
 		abort();
-
 
 	case JVST_CNODE_SWITCH:
 	case JVST_CNODE_NUM_RANGE:
@@ -2735,6 +2796,15 @@ ir_translate_string(struct jvst_cnode *top, struct jvst_ir_stmt *frame)
 }
 
 static struct jvst_ir_stmt *
+ir_translate_string(struct jvst_cnode *top, struct jvst_ir_stmt *frame)
+{
+	struct ir_str_builder builder = { 0 };
+	builder.frame = frame;
+
+	return ir_translate_string_inner(top, &builder);
+}	
+
+static struct jvst_ir_stmt *
 ir_translate_type(enum SJP_EVENT type, struct jvst_cnode *top, struct jvst_ir_stmt *frame)
 {
 	switch (type) {
@@ -2752,7 +2822,10 @@ ir_translate_type(enum SJP_EVENT type, struct jvst_cnode *top, struct jvst_ir_st
 	case SJP_TRUE:
 	case SJP_FALSE:
 	case SJP_ARRAY_BEG:
-		return ir_stmt_new(JVST_IR_STMT_NOP);
+		fprintf(stderr, "%s:%d IR translation for event type %s not yet implemented\n",
+			__FILE__, __LINE__, evt2name(type));
+		abort();
+		// return ir_stmt_new(JVST_IR_STMT_NOP);
 
 	case SJP_OBJECT_END:
 	case SJP_ARRAY_END:

@@ -310,6 +310,12 @@ newschema_p(struct arena_info *A, int types, ...)
 			pat = va_arg(args, const char *);
 			s->pattern.str = newstr(pat);
 			s->pattern.dialect = RE_NATIVE;
+		} else if (strcmp(pname, "minLength") == 0) {
+			s->min_length = va_arg(args, int);
+			s->kws |= KWS_MIN_LENGTH;
+		} else if (strcmp(pname, "maxLength") == 0) {
+			s->max_length = va_arg(args, int);
+			s->kws |= KWS_MAX_LENGTH;
 		} else if (strcmp(pname, "dep_strings") == 0) {
 			s->dependencies_strings.set = va_arg(args, struct ast_property_names *);
 		} else if (strcmp(pname, "dep_schema") == 0) {

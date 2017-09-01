@@ -874,6 +874,18 @@ jvst_cnode_translate_ast(const struct ast_schema *ast)
 		add_ast_constraint(node, SJP_STRING, strmatch);
 	}
 
+	if (ast->kws & (KWS_MIN_LENGTH | KWS_MAX_LENGTH)) {
+		struct jvst_cnode *range, *jxn;
+
+		range = jvst_cnode_alloc(JVST_CNODE_COUNT_RANGE);
+		range->u.counts.min = ast->min_length;
+		range->u.counts.max = ast->max_length;
+
+		range->u.counts.upper = !!(ast->kws & KWS_MAX_LENGTH);
+
+		add_ast_constraint(node, SJP_STRING, range);
+	}
+
 	if (ast->properties.set != NULL) {
 		struct jvst_cnode **plist, *phead, *prop_set;
 		struct ast_property_schema *pset;
