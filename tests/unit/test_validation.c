@@ -704,7 +704,6 @@ void test_dependencies_1(void)
           NULL);
 
   const struct validation_test tests[] = {
-#if 0
     // "description": "empty object should be valid"
     { true, "{}", schema, },
 
@@ -745,15 +744,12 @@ void test_dependencies_1(void)
     { false, "{ \"this\" : 5, \"that\" : 0.6, \"quux\" : false }", schema, },
     { false, "{ \"this\" : 5, \"that\" : 0.6, \"quux\" : false, \"foo\" : 3 }", schema, },
     { false, "{ \"this\" : 5, \"that\" : 0.6, \"quux\" : false, \"bar\" : [1,2,3] }", schema, },
-#endif
 
     // "description": "quux,foo, bar, and this without that is invalid"
     { false, "{ \"this\" : 5, \"foo\" : 0.6, \"quux\" : false, \"bar\" : [1,2,3] }", schema, },
 
-#if 0
     // "description": "quux,foo,bar, this, and that is valid"
     { true, "{ \"this\" : 5, \"foo\" : 0.6, \"quux\" : false, \"bar\" : [1,2,3], \"that\" : { \"this\" : 5 } }", schema, },
-#endif
 
     { false, NULL, NULL },
   };
