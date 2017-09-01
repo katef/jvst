@@ -1458,6 +1458,12 @@ jvst_ir_dump(struct jvst_ir_stmt *ir, char *buf, size_t nb)
 	return (b.len < b.cap) ? 0 : -1;
 }
 
+
+/* IR translation code */
+
+static struct jvst_ir_stmt *
+ir_translate_notoken(struct jvst_cnode *ctree);
+
 static struct jvst_ir_expr *
 ir_translate_number_expr(struct jvst_cnode *top)
 {
@@ -2947,7 +2953,7 @@ ir_translate_array_inner(struct jvst_cnode *top, struct ir_arr_builder *builder)
 			assert(top->u.items != NULL);
 			assert(top->u.items->next == NULL);  // only one additional items
 
-			additional = jvst_ir_translate(top->u.items);
+			additional = ir_translate_notoken(top->u.items);
 			builder->additional = additional;
 
 			return NULL;
@@ -2961,7 +2967,7 @@ ir_translate_array_inner(struct jvst_cnode *top, struct ir_arr_builder *builder)
 			for (it = top->u.items; it != NULL; it = it->next) {
 				struct jvst_ir_stmt *item;
 
-				item = jvst_ir_translate(it);
+				item = ir_translate_notoken(it);
 				*builder->itemspp = item;
 				builder->itemspp = &item->next;
 			}
@@ -3044,8 +3050,8 @@ ir_translate_type(enum SJP_EVENT type, struct jvst_cnode *top, struct jvst_ir_st
 	}
 }
 
-struct jvst_ir_stmt *
-jvst_ir_translate(struct jvst_cnode *ctree)
+static struct jvst_ir_stmt *
+ir_translate(struct jvst_cnode *ctree, bool first_token)
 {
 	struct jvst_ir_stmt *frame, **spp;
 	int count_valid, count_invalid, count_other;
@@ -3061,9 +3067,11 @@ jvst_ir_translate(struct jvst_cnode *ctree)
 	frame = ir_stmt_frame();
 	spp = &frame->u.frame.stmts;
 
-	// 1) Emit TOKEN
-	*spp = ir_stmt_new(JVST_IR_STMT_TOKEN);
-	spp = &(*spp)->next;
+	// 1) Emit TOKEN unless we don't want to...
+	if (first_token) {
+		*spp = ir_stmt_new(JVST_IR_STMT_TOKEN);
+		spp = &(*spp)->next;
+	}
 
 	// 2) count clauses that are VALID / INVALID / neither
 	count_valid = 0;
@@ -3122,6 +3130,18 @@ jvst_ir_translate(struct jvst_cnode *ctree)
 		;
 
 	return frame;
+}
+
+static struct jvst_ir_stmt *
+ir_translate_notoken(struct jvst_cnode *ctree)
+{
+	return ir_translate(ctree, false);
+}
+
+struct jvst_ir_stmt *
+jvst_ir_translate(struct jvst_cnode *ctree)
+{
+	return ir_translate(ctree, true);
 }
 
 struct addr_fixup_list;

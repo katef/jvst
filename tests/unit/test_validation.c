@@ -757,6 +757,31 @@ void test_dependencies_1(void)
   RUNTESTS(tests);
 }
 
+void test_items_1(void)
+{
+  struct arena_info A = {0};
+  // schema: { "items": { "type": "integer" } }
+  struct ast_schema *schema = newschema_p(&A, 0,
+      "items_single", newschema(&A, JSON_VALUE_NUMBER),
+      NULL);
+
+  const struct validation_test tests[] = {
+    // "description": "empty object should be valid"
+    { true, "[ 1, 2, 3 ]", schema, },
+
+    { false, "[ 1, \"x\" ]", schema, },
+
+    // "description": "foo by itself is valid"
+    { true, "{ \"foo\": \"bar\" }", schema }, 
+
+    { true, "{ \"0\": \"invalid\", \"length\" : 1 }", schema },
+
+    { false, NULL, NULL },
+  };
+
+  RUNTESTS(tests);
+}
+
 int main(void)
 {
   test_empty_schema();
@@ -782,6 +807,8 @@ int main(void)
   test_anyof_2();
 
   test_dependencies_1();
+
+  test_items_1();
 
   return report_tests();
 }

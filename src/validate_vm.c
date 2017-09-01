@@ -500,7 +500,7 @@ vm_dumpstack(FILE *f, const struct jvst_vm *vm)
 	n = sp - fp;
 	for (i=0; i < n; i++) {
 		char rname[16];
-		fprintf(f, "[%5d] %-3s ", i, stackname(i,rname));
+		fprintf(f, "[%5d] %-3s ", fp+i, stackname(i,rname));
 		if (i == JVST_VM_TNUM) {
 			fprintf(f, "%f\n", vm->stack[i].f);
 		} else {
@@ -1091,7 +1091,7 @@ loop:
 
 	case JVST_OP_PROC:
 		{
-			uint32_t a;
+			uint32_t a, fp0;
 			int i,n,nsl;
 			a = jvst_vm_decode_arg0(opcode);
 			assert(jvst_vm_arg_islit(a));
@@ -1108,6 +1108,7 @@ loop:
 			n = nsl + JVST_VM_NUMREG;
 
 			// setup frame
+			fp0 = fp;
 			fp = sp;
 
 			// allocate stack slots
@@ -1115,6 +1116,12 @@ loop:
 			for (i=0; i < n; i++) {
 				vm->stack[sp++].u = 0;
 			}
+
+			// copy registers
+			vm->stack[fp+JVST_VM_TT  ].i = vm->stack[fp0+JVST_VM_TT  ].i;
+			vm->stack[fp+JVST_VM_TNUM].f = vm->stack[fp0+JVST_VM_TNUM].f;
+			vm->stack[fp+JVST_VM_TLEN].i = vm->stack[fp0+JVST_VM_TLEN].i;
+			vm->stack[fp+JVST_VM_M   ].i = vm->stack[fp0+JVST_VM_M   ].i;
 
 			vm->r_fp = fp;
 			vm->r_sp = sp;
