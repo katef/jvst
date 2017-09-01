@@ -172,6 +172,7 @@ struct jvst_cnode {
 			size_t bit;
 		} reqbit;
 
+		struct jvst_cnode *items;
 	} u;
 };
 

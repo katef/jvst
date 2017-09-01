@@ -1160,6 +1160,71 @@ static void test_xlate_minmax_length_1(void)
   RUNTESTS(tests);
 }
 
+static void test_xlate_items_1(void)
+{
+  struct arena_info A = {0};
+
+  const struct cnode_test tests[] = {
+    {
+      TRANSLATE,
+      newschema_p(&A, 0, "items_single",
+          newschema_p(&A, JSON_VALUE_INTEGER, NULL),
+          NULL),
+
+      NULL,
+
+      newcnode_switch(&A, 1,
+          SJP_ARRAY_BEG, newcnode_bool(&A, JVST_CNODE_AND,
+                           newcnode_additional_items(&A,
+                             newcnode_switch(&A, 0,
+                               SJP_NUMBER, newcnode(&A,JVST_CNODE_NUM_INTEGER),
+                               SJP_NONE)
+                           ),
+                           newcnode_valid(),
+                           NULL),
+            SJP_NONE)
+    },
+
+    {
+      TRANSLATE,
+      newschema_p(&A, 0,
+          "items", schema_set(&A, 
+             newschema_p(&A, JSON_VALUE_STRING, NULL),
+             newschema_p(&A, JSON_VALUE_STRING, NULL),
+             NULL),
+          "additionalItems", newschema_p(&A, JSON_VALUE_INTEGER, NULL),
+          NULL),
+
+      NULL,
+
+      newcnode_switch(&A, 1,
+          SJP_ARRAY_BEG, newcnode_bool(&A, JVST_CNODE_AND,
+                           newcnode_items(&A,
+                             newcnode_switch(&A, 0,
+                               SJP_STRING, newcnode_valid(),
+                               SJP_NONE),
+                             newcnode_switch(&A, 0,
+                               SJP_STRING, newcnode_valid(),
+                               SJP_NONE),
+                             NULL),
+                           newcnode_bool(&A, JVST_CNODE_AND,
+                             newcnode_additional_items(&A,
+                               newcnode_switch(&A, 0,
+                                 SJP_NUMBER, newcnode(&A,JVST_CNODE_NUM_INTEGER),
+                                 SJP_NONE)
+                               ),
+                             newcnode_valid(),
+                             NULL),
+                           NULL),
+            SJP_NONE)
+    },
+
+    { STOP },
+  };
+
+  RUNTESTS(tests);
+}
+
 static void test_simplify_ands(void)
 {
   struct arena_info A = {0};
@@ -2117,6 +2182,8 @@ int main(void)
 
   test_xlate_pattern_1();
   test_xlate_minmax_length_1();
+
+  test_xlate_items_1();
 
   test_simplify_ands();
   test_simplify_ored_schema();

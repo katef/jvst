@@ -140,8 +140,8 @@ struct ast_schema {
 	ast_count max_properties;
 	ast_count min_properties;
 
-	struct ast_schema_array *items; /* 1 or more; empty means absent */
-	struct ast_schema_array *additional_items;
+	struct ast_schema_set *items; /* 1 or more; empty means absent */
+	struct ast_schema *additional_items;
 
 	bool unique_items; /* defaults false */
 

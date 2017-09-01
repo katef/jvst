@@ -3906,6 +3906,215 @@ static void test_ir_str_constraints(void)
   RUNTESTS(tests);
 }
 
+static void test_ir_items_1(void)
+{
+  struct arena_info A = {0};
+
+  const struct ir_test tests[] = {
+    {
+      TRANSLATE,
+      newcnode_switch(&A, 1,
+          SJP_ARRAY_BEG, newcnode_bool(&A, JVST_CNODE_AND,
+                           newcnode_additional_items(&A,
+                             newcnode_switch(&A, 0,
+                               SJP_NUMBER, newcnode(&A,JVST_CNODE_NUM_INTEGER),
+                               SJP_NONE)
+                           ),
+                           newcnode_valid(),
+                           NULL),
+            SJP_NONE),
+
+      newir_frame(&A,
+        newir_stmt(&A, JVST_IR_STMT_TOKEN),
+        newir_if(&A, newir_istok(&A, SJP_OBJECT_END),
+          newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token"),
+          newir_if(&A, newir_istok(&A, SJP_ARRAY_BEG),
+            newir_seq(&A,
+              newir_loop(&A, "ARR_OUTER", 0,
+                newir_loop(&A, "ARR_INNER", 1,
+                  newir_stmt(&A, JVST_IR_STMT_TOKEN),
+                  newir_if(&A, newir_istok(&A, SJP_ARRAY_END),
+                    newir_break(&A, "ARR_OUTER", 0),
+                    newir_frame(&A,
+                      newir_stmt(&A, JVST_IR_STMT_TOKEN),
+                      newir_if(&A, newir_istok(&A, SJP_NUMBER),
+                        newir_if(&A, newir_isint(&A, newir_expr(&A, JVST_IR_EXPR_TOK_NUM)),
+                          newir_stmt(&A, JVST_IR_STMT_VALID),
+                          newir_invalid(&A, JVST_INVALID_NOT_INTEGER, "number is not an integer")),
+                        newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token")
+                      ),
+                      NULL
+                    )
+                  ),
+                  NULL
+                ),
+                NULL
+              ),
+              newir_stmt(&A, JVST_IR_STMT_VALID),
+              NULL
+            ),
+
+            newir_if(&A, newir_istok(&A, SJP_ARRAY_END),
+              newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token"),
+              newir_stmt(&A, JVST_IR_STMT_VALID)
+            )
+          )
+        ),
+        NULL
+      )
+    },
+
+    {
+      TRANSLATE,
+
+      newcnode_switch(&A, 1,
+          SJP_ARRAY_BEG, newcnode_bool(&A, JVST_CNODE_AND,
+                           newcnode_items(&A,
+                             newcnode_switch(&A, 0,
+                               SJP_STRING, newcnode_valid(),
+                               SJP_NONE),
+                             newcnode_switch(&A, 0,
+                               SJP_STRING, newcnode_valid(),
+                               SJP_NONE),
+                             NULL),
+                           newcnode_valid(),
+                           NULL),
+            SJP_NONE),
+
+      newir_frame(&A,
+        newir_stmt(&A, JVST_IR_STMT_TOKEN),
+        newir_if(&A, newir_istok(&A, SJP_OBJECT_END),
+          newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token"),
+          newir_if(&A, newir_istok(&A, SJP_ARRAY_BEG),
+            newir_seq(&A,
+              newir_loop(&A, "ARR_OUTER", 0,
+                newir_stmt(&A, JVST_IR_STMT_TOKEN),
+                newir_if(&A, newir_istok(&A, SJP_ARRAY_END),
+                  newir_break(&A, "ARR_OUTER", 0),
+                  newir_seq(&A,
+                    newir_frame(&A,
+                      newir_stmt(&A, JVST_IR_STMT_TOKEN),
+                      newir_if(&A, newir_istok(&A, SJP_STRING),
+                        newir_stmt(&A, JVST_IR_STMT_VALID),
+                        newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token")
+                      ),
+                      NULL
+                    ),
+                    newir_stmt(&A, JVST_IR_STMT_TOKEN),
+                    newir_if(&A, newir_istok(&A, SJP_ARRAY_END),
+                      newir_break(&A, "ARR_OUTER", 0),
+                      newir_seq(&A,
+                        newir_frame(&A,
+                          newir_stmt(&A, JVST_IR_STMT_TOKEN),
+                          newir_if(&A, newir_istok(&A, SJP_STRING),
+                            newir_stmt(&A, JVST_IR_STMT_VALID),
+                            newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token")
+                            ),
+                          NULL
+                        ),
+                        newir_loop(&A, "ARR_INNER", 1,
+                          newir_stmt(&A, JVST_IR_STMT_TOKEN),
+                          newir_if(&A, newir_istok(&A, SJP_ARRAY_END),
+                            newir_break(&A, "ARR_OUTER", 0),
+                            newir_stmt(&A, JVST_IR_STMT_CONSUME)
+                          ),
+                          NULL
+                        ),
+                        NULL
+                      )
+                    ),
+                    NULL
+                  )
+                ),
+                NULL
+              ),
+              newir_stmt(&A, JVST_IR_STMT_VALID),
+              NULL
+            ),
+            newir_if(&A, newir_istok(&A, SJP_ARRAY_END),
+              newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token"),
+              newir_stmt(&A, JVST_IR_STMT_VALID)
+            )
+          )
+        ),
+        NULL
+      )
+    },
+
+#if 0
+    {
+      TRANSLATE,
+
+      newcnode_switch(&A, 1,
+          SJP_ARRAY_BEG, newcnode_bool(&A, JVST_CNODE_AND,
+                           newcnode_items(&A,
+                             newcnode_switch(&A, 0,
+                               SJP_STRING, newcnode_valid(),
+                               SJP_NONE),
+                             newcnode_switch(&A, 0,
+                               SJP_STRING, newcnode_valid(),
+                               SJP_NONE),
+                             NULL),
+                           newcnode_bool(&A, JVST_CNODE_AND,
+                             newcnode_additional_items(&A,
+                               newcnode_switch(&A, 0,
+                                 SJP_NUMBER, newcnode(&A,JVST_CNODE_NUM_INTEGER),
+                                 SJP_NONE)
+                               ),
+                             newcnode_valid(),
+                             NULL),
+                           NULL),
+            SJP_NONE),
+
+      newir_frame(&A,
+        newir_stmt(&A, JVST_IR_STMT_TOKEN),
+        newir_if(&A, newir_istok(&A, SJP_OBJECT_END),
+          newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token"),
+          newir_if(&A, newir_istok(&A, SJP_ARRAY_BEG),
+            newir_seq(&A,
+              newir_loop(&A, "ARR_OUTER", 0,
+                newir_loop(&A, "ARR_INNER", 1,
+                  newir_stmt(&A, JVST_IR_STMT_TOKEN),
+                  newir_if(&A, newir_istok(&A, SJP_ARRAY_END),
+                    newir_break(&A, "ARR_OUTER", 0),
+                    newir_frame(&A,
+                      newir_stmt(&A, JVST_IR_STMT_TOKEN),
+                      newir_if(&A, newir_istok(&A, SJP_NUMBER),
+                        newir_if(&A, newir_isint(&A, newir_expr(&A, JVST_IR_EXPR_TOK_NUM)),
+                          newir_stmt(&A, JVST_IR_STMT_VALID),
+                          newir_invalid(&A, JVST_INVALID_NOT_INTEGER, "number is not an integer")),
+                        newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token")
+                      ),
+                      NULL
+                    )
+                  ),
+                  NULL
+                ),
+                NULL
+              ),
+              newir_stmt(&A, JVST_IR_STMT_VALID),
+              NULL
+            ),
+
+            newir_if(&A, newir_istok(&A, SJP_ARRAY_END),
+              newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token"),
+              newir_stmt(&A, JVST_IR_STMT_VALID)
+            )
+          )
+        ),
+        NULL
+      )
+    },
+#endif
+
+    { STOP },
+  };
+
+  RUNTESTS(tests);
+}
+
+
+
 /* incomplete tests... placeholders for conversion from cnode tests */
 static void test_ir_minproperties_3(void);
 static void test_ir_maxproperties_1(void);
@@ -3952,6 +4161,8 @@ int main(void)
   test_ir_patterns();
   test_ir_minmax_length_1();
   test_ir_str_constraints();
+
+  test_ir_items_1();
 
   return report_tests();
 }

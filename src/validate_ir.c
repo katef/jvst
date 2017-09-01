@@ -89,6 +89,16 @@ jvst_invalid_msg(enum jvst_invalid_code code)
 
 	case JVST_INVALID_LENGTH_TOO_LONG:
 		return "length is too long";
+
+	case JVST_INVALID_ARRAY:
+		return "array is invalid";
+
+	case JVST_INVALID_TOO_FEW_ITEMS:
+		return "array has too few items";
+
+	case JVST_INVALID_TOO_MANY_ITEMS:
+		return "array has too many items";
+
 	}
 
 	return "Unknown error";
@@ -1186,8 +1196,8 @@ jvst_ir_dump_inner(struct sbuf *buf, struct jvst_ir_stmt *ir, int indent)
 	case JVST_IR_STMT_LOOP:		
 		{
 			assert(ir->u.loop.stmts != NULL);
-			sbuf_snprintf(buf, "LOOP(\"%s\",\n",
-				ir->u.loop.name);
+			sbuf_snprintf(buf, "LOOP(\"%s_%zu\",\n",
+				ir->u.loop.name, ir->u.loop.ind);
 			dump_stmt_list_inner(buf, ir->u.loop.stmts, indent);
 			sbuf_indent(buf, indent);
 			sbuf_snprintf(buf, ")");
@@ -2821,6 +2831,181 @@ ir_translate_string(struct jvst_cnode *top, struct jvst_ir_stmt *frame)
 	return ir_translate_string_inner(top, &builder);
 }	
 
+struct ir_arr_builder {
+	struct jvst_ir_stmt *frame;
+	struct jvst_ir_stmt *items;
+	struct jvst_ir_stmt *additional;
+	struct jvst_ir_stmt *each;
+	struct jvst_ir_stmt *postloop;
+
+	struct jvst_ir_stmt **itemspp;
+	struct jvst_ir_stmt **eachpp;
+	struct jvst_ir_stmt **postpp;
+};
+
+static struct jvst_ir_stmt *
+ir_translate_array_inner(struct jvst_cnode *top, struct ir_arr_builder *builder);
+
+static struct jvst_ir_stmt *
+ir_translate_array(struct jvst_cnode *top, struct jvst_ir_stmt *frame)
+{
+	struct ir_arr_builder builder = { 0 };
+	struct jvst_ir_stmt *stmt, **spp, *it, *next, *outer_loop;
+
+	builder.frame = frame;
+
+	builder.itemspp = &builder.items;
+	builder.eachpp  = &builder.each;
+	builder.postpp  = &builder.postloop;
+
+	// find/assemble all the components
+	stmt = ir_translate_array_inner(top, &builder);
+
+	// simple schema (VALID/INVALID), return directly
+	if (stmt != NULL) {
+		return stmt;
+	}
+
+	// put all the components together...
+
+	// LOOP here isn't really a loop.  we need a fast exit to the 
+	// end-of-array case, and there's currently no direct way to do
+	// this in the tree IR (maybe fix that?).
+	stmt = ir_stmt_new(JVST_IR_STMT_SEQ);
+	outer_loop = ir_stmt_loop(builder.frame, "ARR_OUTER");
+	outer_loop->next = (builder.postloop != NULL) ? builder.postloop : ir_stmt_valid();
+
+	stmt->u.stmt_list = outer_loop;
+
+	spp = &outer_loop->u.loop.stmts;
+
+	for (it = builder.items; it != NULL; it = next) {
+		struct jvst_ir_stmt *seq;
+
+		next = it->next;
+
+		// draw next token, check if the array has ended
+		*spp = ir_stmt_new(JVST_IR_STMT_TOKEN);
+		spp = &(*spp)->next;
+
+		*spp = ir_stmt_if(
+				ir_expr_istok(SJP_ARRAY_END),
+				ir_stmt_break(outer_loop),
+				NULL);
+		spp = &(*spp)->u.if_.br_false;
+
+		seq = ir_stmt_new(JVST_IR_STMT_SEQ);
+		seq->u.stmt_list = it;
+		it->next = NULL;
+		*spp = seq;
+		spp = &it->next;
+	}
+
+	{
+		struct jvst_ir_stmt *inner_loop;
+
+		inner_loop = ir_stmt_loop(builder.frame, "ARR_INNER");
+		*spp = inner_loop;
+		spp = &inner_loop->u.loop.stmts;
+
+		*spp = ir_stmt_new(JVST_IR_STMT_TOKEN);
+		spp = &(*spp)->next;
+
+		*spp = ir_stmt_if(
+				ir_expr_istok(SJP_ARRAY_END),
+				ir_stmt_break(outer_loop),
+				NULL);
+		spp = &(*spp)->u.if_.br_false;
+
+		if (builder.additional) {
+			assert(builder.additional->next == NULL);
+			*spp = builder.additional;
+		} else {
+			*spp = ir_stmt_new(JVST_IR_STMT_CONSUME);
+		}
+	}
+
+	return stmt;
+}
+
+static struct jvst_ir_stmt *
+ir_translate_array_inner(struct jvst_cnode *top, struct ir_arr_builder *builder)
+{
+	(void)builder;
+
+	switch (top->type) {
+	case JVST_CNODE_INVALID:
+		return ir_stmt_invalid(JVST_INVALID_ARRAY);
+
+	case JVST_CNODE_VALID:
+		return ir_stmt_valid();
+
+	case JVST_CNODE_ARR_ADDITIONAL:
+		{
+			struct jvst_ir_stmt *additional;
+
+			assert(top->u.items != NULL);
+			assert(top->u.items->next == NULL);  // only one additional items
+
+			additional = jvst_ir_translate(top->u.items);
+			builder->additional = additional;
+
+			return NULL;
+		}
+
+	case JVST_CNODE_ARR_ITEM:
+		{
+			struct jvst_cnode *it;
+			assert(top->u.items != NULL);
+
+			for (it = top->u.items; it != NULL; it = it->next) {
+				struct jvst_ir_stmt *item;
+
+				item = jvst_ir_translate(it);
+				*builder->itemspp = item;
+				builder->itemspp = &item->next;
+			}
+
+			return NULL;
+		}
+
+	case JVST_CNODE_ARR_UNIQUE:
+	case JVST_CNODE_ITEM_RANGE:
+
+	case JVST_CNODE_AND:
+	case JVST_CNODE_OR:
+	case JVST_CNODE_XOR:
+	case JVST_CNODE_NOT:
+		fprintf(stderr, "[%s:%d] array translation for cnode %s not yet implemented\n",
+				__FILE__, __LINE__, 
+				jvst_cnode_type_name(top->type));
+		abort();
+
+	case JVST_CNODE_OBJ_REQUIRED:
+	case JVST_CNODE_OBJ_PROP_SET:
+	case JVST_CNODE_OBJ_PROP_MATCH:
+	case JVST_CNODE_STR_MATCH:
+		fprintf(stderr, "[%s:%d] cnode %s should not be be present in canonified cnode tree\n",
+				__FILE__, __LINE__, 
+				jvst_cnode_type_name(top->type));
+		abort();
+
+	case JVST_CNODE_LENGTH_RANGE:
+	case JVST_CNODE_MATCH_SWITCH:
+	case JVST_CNODE_MATCH_CASE:
+	case JVST_CNODE_PROP_RANGE:
+	case JVST_CNODE_SWITCH:
+	case JVST_CNODE_NUM_RANGE:
+	case JVST_CNODE_NUM_INTEGER:
+	case JVST_CNODE_OBJ_REQMASK:
+	case JVST_CNODE_OBJ_REQBIT:
+		fprintf(stderr, "[%s:%d] unexpected cnode %s in string translation\n",
+				__FILE__, __LINE__, 
+				jvst_cnode_type_name(top->type));
+		abort();
+	}
+}
+
 static struct jvst_ir_stmt *
 ir_translate_type(enum SJP_EVENT type, struct jvst_cnode *top, struct jvst_ir_stmt *frame)
 {
@@ -2834,25 +3019,27 @@ ir_translate_type(enum SJP_EVENT type, struct jvst_cnode *top, struct jvst_ir_st
 	case SJP_STRING:
 		return ir_translate_string(top,frame);
 
-	case SJP_NONE:
+	case SJP_ARRAY_BEG:
+		return ir_translate_array(top,frame);
+
 	case SJP_NULL:
 	case SJP_TRUE:
 	case SJP_FALSE:
-	case SJP_ARRAY_BEG:
-		fprintf(stderr, "%s:%d IR translation for event type %s not yet implemented\n",
-			__FILE__, __LINE__, evt2name(type));
+		fprintf(stderr, "%s:%d (%s) IR translation for event type %s not yet implemented\n",
+			__FILE__, __LINE__, __func__, evt2name(type));
 		abort();
 		// return ir_stmt_new(JVST_IR_STMT_NOP);
 
+	case SJP_NONE:
 	case SJP_OBJECT_END:
 	case SJP_ARRAY_END:
-		fprintf(stderr, "%s:%d Invalid event type %d\n",
-			__FILE__, __LINE__, type);
+		fprintf(stderr, "%s:%d (%s) Invalid event type %s\n",
+			__FILE__, __LINE__, __func__, evt2name(type));
 		abort();
 
 	default:
-		fprintf(stderr, "%s:%d Unknown event type %d\n",
-			__FILE__, __LINE__, type);
+		fprintf(stderr, "%s:%d (%s) Unknown event type %d\n",
+			__FILE__, __LINE__, __func__, type);
 		abort();
 	}
 }
