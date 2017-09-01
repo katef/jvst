@@ -2649,6 +2649,9 @@ static struct jvst_ir_stmt *
 ir_translate_string(struct jvst_cnode *top, struct jvst_ir_stmt *frame);
 
 static struct jvst_ir_stmt *
+ir_translate_string_inner(struct jvst_cnode *top, struct ir_str_builder *builder);
+
+static struct jvst_ir_stmt *
 str_translate_mswitch(struct jvst_cnode *top, struct ir_str_builder *builder)
 {
 	struct jvst_ir_stmt *match, *matcher;
@@ -2666,6 +2669,8 @@ str_translate_mswitch(struct jvst_cnode *top, struct ir_str_builder *builder)
 	// duplicate DFA.
 	dfa = fsm_clone(top->u.mswitch.dfa);
 
+	builder->consumed = true;
+
 	// build jvst_ir_mcase nodes from cases list
 	which = 0;
 	for (mcase = top->u.mswitch.cases; mcase != NULL; mcase = mcase->next) {
@@ -2675,7 +2680,7 @@ str_translate_mswitch(struct jvst_cnode *top, struct ir_str_builder *builder)
 		assert(mcase->type == JVST_CNODE_MATCH_CASE);
 		assert(mcase->u.mcase.tmp == NULL);
 
-		ir_constraint = ir_translate_string(mcase->u.mcase.constraint, builder->frame);
+		ir_constraint = ir_translate_string_inner(mcase->u.mcase.constraint, builder);
 
 		mc = ir_mcase_new(++which, ir_constraint);
 		mc->matchset = mcase->u.mcase.matchset;

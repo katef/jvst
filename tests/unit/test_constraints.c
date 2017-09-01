@@ -1081,13 +1081,32 @@ static void test_xlate_pattern_1(void)
         SJP_NONE)
     },
 
+    {
+      TRANSLATE,
+      newschema_p(&A, 0,
+          "pattern", "a+b.d",
+          "minLength", 12,
+          NULL),
+
+      NULL,
+
+      newcnode_switch(&A, 1,
+        SJP_STRING, newcnode_bool(&A, JVST_CNODE_AND,
+                      newcnode_counts(&A, JVST_CNODE_LENGTH_RANGE, 12, 0, false),
+                      newcnode_bool(&A, JVST_CNODE_AND,
+                        newcnode_strmatch(&A, RE_NATIVE, "a+b.d"),
+                        newcnode_valid(),
+                        NULL),
+                      NULL),
+        SJP_NONE),
+    },
+
     { STOP },
   };
 
   RUNTESTS(tests);
 }
 
-//
 static void test_xlate_minmax_length_1(void)
 {
   struct arena_info A = {0};
@@ -2027,6 +2046,35 @@ static void test_canonify_patterns(void)
                       newcnode_mcase(&A,
                         newmatchset(&A, RE_NATIVE, "a+b.d", -1),
                         newcnode_valid()
+                      ),
+
+                      NULL
+                    ),
+        SJP_NONE)
+    },
+
+    {
+      CANONIFY,
+      newschema_p(&A, 0,
+          "pattern", "a+",
+          "minLength", 12,
+          NULL),
+
+      newcnode_switch(&A, 1,
+        SJP_STRING, newcnode_bool(&A, JVST_CNODE_AND,
+                      newcnode_strmatch(&A, RE_NATIVE, "a+b.d"),
+                      newcnode_counts(&A, JVST_CNODE_LENGTH_RANGE, 12, 0, false),
+                      newcnode_valid(),
+                      NULL),
+        SJP_NONE),
+
+      newcnode_switch(&A, 1,
+        SJP_STRING, newcnode_mswitch(&A,
+                      newcnode_invalid(),       // default case
+
+                      newcnode_mcase(&A,
+                        newmatchset(&A, RE_NATIVE, "a+b.d", -1),
+                        newcnode_counts(&A, JVST_CNODE_LENGTH_RANGE, 12, 0, false)
                       ),
 
                       NULL
