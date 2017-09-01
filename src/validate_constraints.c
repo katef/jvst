@@ -970,7 +970,7 @@ jvst_cnode_translate_ast(const struct ast_schema *ast)
 		add_ast_constraint(node, SJP_ARRAY_BEG, items_constraint);
 	}
 
-	if (ast->additional_items != NULL && (ast->kws & KWS_SINGLETON_ITEMS) == 0) {
+	if (ast->additional_items != NULL && ast->items != NULL && (ast->kws & KWS_SINGLETON_ITEMS) == 0) {
 		struct jvst_cnode *constraint, *additional;
 
 		constraint = jvst_cnode_translate_ast(ast->additional_items);

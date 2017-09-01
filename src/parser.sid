@@ -13,6 +13,7 @@
 	kw;
 	type;
         ast-schema;
+        ast-schema-list;
         ast-prop-schema;
         regexp;
         re-dialect;
@@ -95,6 +96,10 @@
 	<set-description>:          (:string) -> ();
         <set-properties>:           (:ast-prop-schema) -> ();
 
+        <set-items-list>:           (:ast-schema-list) -> ();
+        <set-items-single>:         (:ast-schema) -> ();
+        <set-additional-items>:     (:ast-schema) -> ();
+
         <new-regexp>:               (:re-dialect, :string) -> (:regexp);
         <re-literal>:               () -> (:re-dialect);
         <re-pattern>:               () -> (:re-dialect);
@@ -106,6 +111,11 @@
         <new-prop-schema>:          (:regexp,:ast-schema) -> (:ast-prop-schema);
 
         <append-list-of-props>:     (:ast-prop-schema,:ast-prop-schema) -> ();
+
+        <append-schema-to-list>:    (:ast-schema-list, :ast-schema) -> ();
+        <new-schema-list>:          () -> (:ast-schema-list);
+
+        <free-schema-list>:         (:ast-schema-list) -> ();
 
         <parse-schema>:             () -> (:ast-schema);
 
@@ -313,6 +323,42 @@
 		<err-expected-number>;
 	};
 
+        schema-list: () -> (lst :ast-schema-list) [
+                next-schema: (lst :ast-schema-list) -> () = {
+                        sch = <parse-schema>;
+                        <append-schema-to-list>(lst,sch);
+                };
+
+                list-of-schema: (lst :ast-schema-list) -> () = {
+                        next-schema(lst);
+                        {
+                                comma;
+                                list-of-schema(lst);
+                        ||
+                                $;
+                        };
+                };
+        ] = {
+                lst = <new-schema-list>;
+                OBRACKET;
+                list-of-schema(lst);
+                CBRACKET;
+        };
+
+        directive-items = {
+                lst = schema-list;
+                <set-items-list>(lst);
+                <free-schema-list>(lst);
+        ||
+                sch = <parse-schema>;
+                <set-items-single>(sch);
+        };
+
+        directive-additional-items = {
+                sch = <parse-schema>;
+                <set-additional-items>(sch);
+        };
+
 	directive-title = {
 		s = STRING;
 		<set-title>(s);
@@ -362,10 +408,10 @@
 		directive-pattern;
 	||
 		? = <kw-items>(k);
-		placeholder;
+                directive-items;
 	||
 		? = <kw-additional-items>(k);
-		placeholder;
+                directive-additional-items;
 	||
 		? = <kw-max-items>(k);
 		placeholder;

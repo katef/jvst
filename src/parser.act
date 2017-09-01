@@ -30,6 +30,8 @@
         ast-prop-schema -> ast_prop_schema_t;
         ast-schema -> ast_schema_t;
 
+        ast-schema-list -> ast_schema_list_t;
+
 %header% @{
 
 	#include <assert.h>
@@ -61,6 +63,11 @@
 
         typedef struct ast_schema *ast_schema_t;
         typedef struct ast_property_schema *ast_prop_schema_t;
+
+        typedef struct {
+                struct ast_schema_set *head;
+                struct ast_schema_set **tail;
+        } *ast_schema_list_t;
 
 	#define CURRENT_TERMINAL act_state->t.type
 	#define ERROR_TERMINAL   SJP_TOK_NONE /* XXX: NONE is not an error */
@@ -358,6 +365,88 @@
 			fprintf(stderr, "<set-properties>: %p\n", (void *) @ps);
 		}
                 ast->properties.set = @ps;
+        @};
+
+        <new-schema-list>: () -> (lst :ast-schema-list) = @{
+                ast_schema_list_t l;
+                l = xmalloc(sizeof *l);
+
+                l->head = NULL;
+                l->tail = &l->head;
+
+                @lst = l;
+        @};
+
+        <free-schema-list>: (lst :ast-schema-list) -> () = @{
+                free(@lst);
+        @};
+
+        <append-schema-to-list>: (lst :ast-schema-list, sch :ast-schema) -> () = @{
+                struct ast_schema_set *sset;
+                struct ast_schema *s;
+                ast_schema_list_t l;
+
+                l = @lst;
+                assert(l != NULL);
+                assert(l->tail != NULL);
+
+                s = @sch;
+                assert(s != NULL);
+
+                sset = xmalloc(sizeof *sset);
+                sset->schema = s;
+                sset->next = NULL;
+                
+                *l->tail = sset;
+                l->tail = &sset->next;
+        @};
+
+        <set-items-single>: (sch :ast-schema) -> () = @{
+                struct ast_schema_set *lst;
+                struct ast_schema *s;
+
+                s = @sch;
+                assert(s != NULL);
+
+                lst = xmalloc(sizeof *lst);
+                lst->schema = s;
+                lst->next = NULL;
+
+                ast->items = lst;
+                ast->kws |= KWS_SINGLETON_ITEMS;
+
+		if (debug & DEBUG_ACT) {
+			fprintf(stderr, "<set-items-single>:\n");
+                        // FIXME: print out schema
+                }
+        @};
+
+        <set-additional-items>: (sch :ast-schema) -> () = @{
+                struct ast_schema *s = @sch;
+                assert(s != NULL);
+
+                ast->additional_items = s;
+
+		if (debug & DEBUG_ACT) {
+			fprintf(stderr, "<set-additional-items>:\n");
+                        // FIXME: print out schema
+                }
+        @};
+
+        <set-items-list>: (lst :ast-schema-list) -> () = @{
+                ast_schema_list_t items;
+
+                items = @lst;
+                assert(items->head != NULL);
+
+                ast->items = items->head;
+
+                ast->kws &= ~KWS_SINGLETON_ITEMS;
+
+		if (debug & DEBUG_ACT) {
+			fprintf(stderr, "<set-items-list>:\n");
+                        // FIXME: print out list of items
+                }
         @};
 
 	<set-schema>: (s :string) -> () = @{
