@@ -467,6 +467,40 @@
 		ast->max_properties = c;
 	@};
 
+	<set-min-length>: (n :number) -> () = @{
+                ast_count c;
+
+		if (!(@n > 0)) {
+			xerr(lex_state, KW_MIN_PROPERTIES, "expected > 0, got %f", @n);
+		}
+
+                c = (ast_count)@n;
+
+		if (debug & DEBUG_ACT) {
+			fprintf(stderr, "<set-min-length>: %ld\n", (long)c);
+		}
+
+		ast->kws |= KWS_MIN_LENGTH;
+		ast->min_length= c;
+	@};
+
+	<set-max-length>: (n :number) -> () = @{
+                ast_count c;
+
+		if (!(@n > 0)) {
+			xerr(lex_state, KW_MIN_PROPERTIES, "expected > 0, got %f", @n);
+		}
+
+                c = (ast_count)@n;
+
+		if (debug & DEBUG_ACT) {
+			fprintf(stderr, "<set-max-length>: %ld\n", (long)c);
+		}
+
+		ast->kws |= KWS_MAX_LENGTH;
+		ast->max_length= c;
+	@};
+
         <set-pattern>:              (re :regexp) -> () = @{
                 ast->pattern = @re;
         @};
