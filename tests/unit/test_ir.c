@@ -932,7 +932,7 @@ void test_ir_minmax_properties_1(void)
     {
       TRANSLATE,
       newcnode_switch(&A, 1,
-        SJP_OBJECT_BEG, newcnode_counts(&A, 1, 0, false),
+        SJP_OBJECT_BEG, newcnode_counts(&A, JVST_CNODE_PROP_RANGE, 1, 0, false),
         SJP_NONE),
 
       // XXX
@@ -1005,7 +1005,7 @@ void test_ir_minmax_properties_1(void)
     {
       LINEARIZE,
       newcnode_switch(&A, 1,
-        SJP_OBJECT_BEG, newcnode_counts(&A, 1, 0, false),
+        SJP_OBJECT_BEG, newcnode_counts(&A, JVST_CNODE_PROP_RANGE, 1, 0, false),
         SJP_NONE),
 
       NULL,
@@ -1097,7 +1097,7 @@ void test_ir_minmax_properties_1(void)
     {
       TRANSLATE,
       newcnode_switch(&A, 1,
-        SJP_OBJECT_BEG, newcnode_counts(&A, 0, 2, true),
+        SJP_OBJECT_BEG, newcnode_counts(&A, JVST_CNODE_PROP_RANGE, 0, 2, true),
         SJP_NONE),
 
       // XXX - comments here are largely the same as in the previous
@@ -1155,7 +1155,7 @@ void test_ir_minmax_properties_1(void)
     {
       LINEARIZE,
       newcnode_switch(&A, 1,
-        SJP_OBJECT_BEG, newcnode_counts(&A, 0, 2, true),
+        SJP_OBJECT_BEG, newcnode_counts(&A, JVST_CNODE_PROP_RANGE, 0, 2, true),
         SJP_NONE),
 
       NULL,
@@ -1245,7 +1245,7 @@ void test_ir_minmax_properties_1(void)
     {
       TRANSLATE,
       newcnode_switch(&A, 1,
-        SJP_OBJECT_BEG, newcnode_counts(&A, 2, 5, true),
+        SJP_OBJECT_BEG, newcnode_counts(&A, JVST_CNODE_PROP_RANGE, 2, 5, true),
         SJP_NONE),
 
       // XXX - comments here are largely the same as in the first
@@ -1303,7 +1303,7 @@ void test_ir_minmax_properties_1(void)
     {
       LINEARIZE,
       newcnode_switch(&A, 1,
-        SJP_OBJECT_BEG, newcnode_counts(&A, 2, 5, true),
+        SJP_OBJECT_BEG, newcnode_counts(&A, JVST_CNODE_PROP_RANGE, 2, 5, true),
         SJP_NONE),
 
       NULL,
@@ -1412,7 +1412,7 @@ void test_ir_minmax_properties_1(void)
       TRANSLATE,
       newcnode_switch(&A, 1,
         SJP_OBJECT_BEG, newcnode_bool(&A,JVST_CNODE_AND,
-                          newcnode_counts(&A, 1, 0, true),
+                          newcnode_counts(&A, JVST_CNODE_PROP_RANGE, 1, 0, true),
                           newcnode_valid(),
                           NULL),
         SJP_NONE),
@@ -1486,7 +1486,7 @@ void test_ir_minproperties_2(void)
       TRANSLATE,
       newcnode_switch(&A, 1,
           SJP_OBJECT_BEG, newcnode_bool(&A,JVST_CNODE_AND,
-                          newcnode_counts(&A, 1, 0, false),
+                          newcnode_counts(&A, JVST_CNODE_PROP_RANGE, 1, 0, false),
                           newcnode_propset(&A,
                             newcnode_prop_match(&A, RE_LITERAL, "foo",
                               newcnode_switch(&A, 0, SJP_NUMBER, newcnode_valid(), SJP_NONE)),
@@ -1577,7 +1577,7 @@ void test_ir_minproperties_2(void)
       LINEARIZE,
       newcnode_switch(&A, 1,
           SJP_OBJECT_BEG, newcnode_bool(&A,JVST_CNODE_AND,
-                          newcnode_counts(&A, 1, 0, false),
+                          newcnode_counts(&A, JVST_CNODE_PROP_RANGE, 1, 0, false),
                           newcnode_propset(&A,
                             newcnode_prop_match(&A, RE_LITERAL, "foo",
                               newcnode_switch(&A, 0, SJP_NUMBER, newcnode_valid(), SJP_NONE)),
@@ -3713,6 +3713,199 @@ void test_ir_patterns(void)
   RUNTESTS(tests);
 }
 
+static void test_ir_minmax_length_1(void)
+{
+  struct arena_info A = {0};
+
+  const struct ir_test tests[] = {
+    {
+      TRANSLATE,
+
+      newcnode_switch(&A, 1,
+        SJP_STRING, newcnode_bool(&A, JVST_CNODE_AND,
+                      newcnode_counts(&A, JVST_CNODE_LENGTH_RANGE, 12, 0, false),
+                      newcnode_valid(),
+                      NULL),
+        SJP_NONE),
+
+      newir_frame(&A,
+        newir_stmt(&A, JVST_IR_STMT_TOKEN),
+        newir_if(&A, newir_istok(&A, SJP_STRING),
+          newir_seq(&A,
+            newir_stmt(&A, JVST_IR_STMT_CONSUME),
+            newir_if(&A,
+              newir_op(&A, JVST_IR_EXPR_GE, 
+                newir_expr(&A, JVST_IR_EXPR_TOK_LEN),
+                newir_size(&A, 12)
+              ),
+              newir_stmt(&A, JVST_IR_STMT_VALID),
+              newir_invalid(&A, JVST_INVALID_LENGTH_TOO_SHORT, "length is too short")
+            ),
+            NULL
+          ),
+
+          newir_if(&A, newir_istok(&A, SJP_OBJECT_END),
+            newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token"),
+            newir_if(&A, newir_istok(&A, SJP_ARRAY_END),
+              newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token"),
+              newir_stmt(&A, JVST_IR_STMT_VALID)
+            )
+          )
+        ),
+        NULL
+      )
+    },
+
+    {
+      TRANSLATE,
+
+      newcnode_switch(&A, 1,
+        SJP_STRING, newcnode_bool(&A, JVST_CNODE_AND,
+                      newcnode_counts(&A, JVST_CNODE_LENGTH_RANGE, 0, 36, true),
+                      newcnode_valid(),
+                      NULL),
+        SJP_NONE),
+
+      newir_frame(&A,
+        newir_stmt(&A, JVST_IR_STMT_TOKEN),
+        newir_if(&A, newir_istok(&A, SJP_STRING),
+          newir_seq(&A,
+            newir_stmt(&A, JVST_IR_STMT_CONSUME),
+            newir_if(&A,
+              newir_op(&A, JVST_IR_EXPR_LE, 
+                newir_expr(&A, JVST_IR_EXPR_TOK_LEN),
+                newir_size(&A, 36)
+              ),
+              newir_stmt(&A, JVST_IR_STMT_VALID),
+              newir_invalid(&A, JVST_INVALID_LENGTH_TOO_LONG, "length is too long")
+            ),
+            NULL
+          ),
+
+          newir_if(&A, newir_istok(&A, SJP_OBJECT_END),
+            newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token"),
+            newir_if(&A, newir_istok(&A, SJP_ARRAY_END),
+              newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token"),
+              newir_stmt(&A, JVST_IR_STMT_VALID)
+            )
+          )
+        ),
+        NULL
+      )
+    },
+
+    {
+      TRANSLATE,
+      // newschema_p(&A, 0, "minLength", 23, "maxLength", 50, NULL),
+
+      newcnode_switch(&A, 1,
+        SJP_STRING, newcnode_bool(&A, JVST_CNODE_AND,
+                      newcnode_counts(&A, JVST_CNODE_LENGTH_RANGE, 23, 50, true),
+                      newcnode_valid(),
+                      NULL),
+        SJP_NONE),
+
+      newir_frame(&A,
+        newir_stmt(&A, JVST_IR_STMT_TOKEN),
+        newir_if(&A, newir_istok(&A, SJP_STRING),
+          newir_seq(&A,
+            newir_stmt(&A, JVST_IR_STMT_CONSUME),
+            newir_if(&A,
+              newir_op(&A, JVST_IR_EXPR_GE, 
+                newir_expr(&A, JVST_IR_EXPR_TOK_LEN),
+                newir_size(&A, 23)
+              ),
+              newir_if(&A,
+                newir_op(&A, JVST_IR_EXPR_LE, 
+                  newir_expr(&A, JVST_IR_EXPR_TOK_LEN),
+                  newir_size(&A, 50)
+                ),
+                newir_stmt(&A, JVST_IR_STMT_VALID),
+                newir_invalid(&A, JVST_INVALID_LENGTH_TOO_LONG, "length is too long")
+              ),
+              newir_invalid(&A, JVST_INVALID_LENGTH_TOO_SHORT, "length is too short")
+            ),
+
+            NULL
+          ),
+
+          newir_if(&A, newir_istok(&A, SJP_OBJECT_END),
+            newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token"),
+            newir_if(&A, newir_istok(&A, SJP_ARRAY_END),
+              newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token"),
+              newir_stmt(&A, JVST_IR_STMT_VALID)
+            )
+          )
+        ),
+        NULL
+      )
+    },
+
+    { STOP },
+  };
+
+  RUNTESTS(tests);
+}
+
+static void test_ir_str_constraints(void)
+{
+  struct arena_info A = {0};
+
+  const struct ir_test tests[] = {
+    {
+      TRANSLATE,
+
+      newcnode_switch(&A, 1,
+        SJP_STRING, newcnode_bool(&A, JVST_CNODE_AND,
+                      newcnode_strmatch(&A, RE_NATIVE, "a+b.d"),
+                      newcnode_counts(&A, JVST_CNODE_LENGTH_RANGE, 12, 0, false),
+                      newcnode_valid(),
+                      NULL),
+        SJP_NONE),
+
+      newir_frame(&A,
+          newir_matcher(&A, 0, "dfa"),
+          newir_stmt(&A, JVST_IR_STMT_TOKEN),
+          newir_if(&A, newir_istok(&A, SJP_STRING),
+            newir_match(&A, 0,
+              newir_case(&A, 0, 
+                NULL,
+                newir_invalid(&A, JVST_INVALID_STRING, "invalid string")
+              ),
+
+              // match "bar"
+              newir_case(&A, 1,
+                newmatchset(&A, RE_NATIVE,  "a+b.d", -1),
+                newir_if(&A,
+                  newir_op(&A, JVST_IR_EXPR_GE, 
+                    newir_expr(&A, JVST_IR_EXPR_TOK_LEN),
+                    newir_size(&A, 12)
+                  ),
+                  newir_stmt(&A, JVST_IR_STMT_VALID),
+                  newir_invalid(&A, JVST_INVALID_LENGTH_TOO_SHORT, "length is too short")
+                )
+              ),
+              NULL
+            ),
+            newir_if(&A, newir_istok(&A, SJP_OBJECT_END),
+              newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token"),
+              newir_if(&A, newir_istok(&A, SJP_ARRAY_END),
+                newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token"),
+                newir_stmt(&A, JVST_IR_STMT_VALID)
+              )
+            )
+          ),
+          NULL
+      )
+
+    },
+
+    { STOP },
+  };
+
+  RUNTESTS(tests);
+}
+
 /* incomplete tests... placeholders for conversion from cnode tests */
 static void test_ir_minproperties_3(void);
 static void test_ir_maxproperties_1(void);
@@ -3757,6 +3950,8 @@ int main(void)
   test_ir_simplify_ored_schema();
 
   test_ir_patterns();
+  test_ir_minmax_length_1();
+  test_ir_str_constraints();
 
   return report_tests();
 }
@@ -3782,13 +3977,13 @@ void test_ir_minproperties_3(void)
       TRANSLATE,
       newcnode_switch(&A, 1,
         SJP_OBJECT_BEG, newcnode_bool(&A,JVST_CNODE_AND,
-                          newcnode_counts(&A, 1, 0, false),
+                          newcnode_counts(&A, JVST_CNODE_PROP_RANGE, 1, 0, false),
                           newcnode_bool(&A,JVST_CNODE_AND,
                             newcnode_propset(&A,
                               newcnode_prop_match(&A, RE_LITERAL, "foo",
                                 newcnode_switch(&A, 0,
                                   SJP_OBJECT_BEG, newcnode_bool(&A,JVST_CNODE_AND,
-                                                    newcnode_counts(&A, 1, 0, false),
+                                                    newcnode_counts(&A, JVST_CNODE_PROP_RANGE, 1, 0, false),
                                                     newcnode_valid(),
                                                     NULL),
                                   SJP_NONE)),
@@ -3823,7 +4018,7 @@ void test_ir_maxproperties_1(void)
       TRANSLATE,
       newcnode_switch(&A, 1,
         SJP_OBJECT_BEG, newcnode_bool(&A,JVST_CNODE_AND,
-                          newcnode_counts(&A, 0, 2, true),
+                          newcnode_counts(&A, JVST_CNODE_PROP_RANGE, 0, 2, true),
                           newcnode_valid(),
                           NULL),
         SJP_NONE),
@@ -3857,13 +4052,13 @@ void test_ir_maxproperties_2(void)
       TRANSLATE,
       newcnode_switch(&A, 1,
         SJP_OBJECT_BEG, newcnode_bool(&A,JVST_CNODE_AND,
-                          newcnode_counts(&A, 0, 1, true),
+                          newcnode_counts(&A, JVST_CNODE_PROP_RANGE, 0, 1, true),
                           newcnode_bool(&A,JVST_CNODE_AND,
                             newcnode_propset(&A,
                               newcnode_prop_match(&A, RE_LITERAL, "foo",
                                 newcnode_switch(&A, 0,
                                   SJP_OBJECT_BEG, newcnode_bool(&A,JVST_CNODE_AND,
-                                                    newcnode_counts(&A, 0, 1, true),
+                                                    newcnode_counts(&A, JVST_CNODE_PROP_RANGE, 0, 1, true),
                                                     newcnode_valid(),
                                                     NULL),
                                   SJP_NONE)),
@@ -3906,13 +4101,13 @@ void test_ir_minmax_properties_2(void)
       TRANSLATE,
       newcnode_switch(&A, 1,
         SJP_OBJECT_BEG, newcnode_bool(&A,JVST_CNODE_AND,
-                          newcnode_counts(&A, 1, 1, true),
+                          newcnode_counts(&A, JVST_CNODE_PROP_RANGE, 1, 1, true),
                           newcnode_bool(&A,JVST_CNODE_AND,
                             newcnode_propset(&A,
                               newcnode_prop_match(&A, RE_LITERAL, "foo",
                                 newcnode_switch(&A, 0,
                                   SJP_OBJECT_BEG, newcnode_bool(&A,JVST_CNODE_AND,
-                                                    newcnode_counts(&A, 1, 2, true),
+                                                    newcnode_counts(&A, JVST_CNODE_PROP_RANGE, 1, 2, true),
                                                     newcnode_valid(),
                                                     NULL),
                                   SJP_NONE)),

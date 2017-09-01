@@ -88,6 +88,8 @@
         <set-min-properties>:       (:number) -> ();
         <set-max-properties>:       (:number) -> ();
         <set-pattern>:              (:regexp) -> ();
+        <set-min-length>:           (:number) -> ();
+        <set-max-length>:           (:number) -> ();
 	<set-type>:                 (:type)   -> ();
 	<set-title>:                (:string) -> ();
 	<set-description>:          (:string) -> ();
@@ -297,6 +299,20 @@
                 <set-pattern>(re);
         };
 
+	directive-min-length = {
+		n = NUMBER;
+		<set-min-length>(n);
+	##
+		<err-expected-number>;
+	};
+
+	directive-max-length = {
+		n = NUMBER;
+		<set-max-length>(n);
+	##
+		<err-expected-number>;
+	};
+
 	directive-title = {
 		s = STRING;
 		<set-title>(s);
@@ -337,10 +353,10 @@
 		directive-exclusive-minimum;
 	||
 		? = <kw-max-length>(k);
-		placeholder;
+                directive-max-length;
 	||
 		? = <kw-min-length>(k);
-		placeholder;
+                directive-min-length;
 	||
 		? = <kw-pattern>(k);
 		directive-pattern;

@@ -409,7 +409,7 @@ void test_xlate_minproperties_1(void)
       TRANSLATE, schema, NULL,
         newcnode_switch(&A, 1,
           SJP_OBJECT_BEG, newcnode_bool(&A,JVST_CNODE_AND,
-                            newcnode_counts(&A, 1, 0, false),
+                            newcnode_counts(&A, JVST_CNODE_PROP_RANGE, 1, 0, false),
                             newcnode_valid(),
                             NULL),
           SJP_NONE),
@@ -438,7 +438,7 @@ void test_xlate_minproperties_2(void)
       TRANSLATE, schema, NULL,
         newcnode_switch(&A, 1,
           SJP_OBJECT_BEG, newcnode_bool(&A,JVST_CNODE_AND,
-                            newcnode_counts(&A, 1, 0, false),
+                            newcnode_counts(&A, JVST_CNODE_PROP_RANGE, 1, 0, false),
                             newcnode_bool(&A,JVST_CNODE_AND,
                               newcnode_propset(&A,
                                 newcnode_prop_match(&A, RE_LITERAL, "foo",
@@ -477,13 +477,13 @@ void test_xlate_minproperties_3(void)
       TRANSLATE, schema, NULL,
         newcnode_switch(&A, 1,
           SJP_OBJECT_BEG, newcnode_bool(&A,JVST_CNODE_AND,
-                            newcnode_counts(&A, 1, 0, false),
+                            newcnode_counts(&A, JVST_CNODE_PROP_RANGE, 1, 0, false),
                             newcnode_bool(&A,JVST_CNODE_AND,
                               newcnode_propset(&A,
                                 newcnode_prop_match(&A, RE_LITERAL, "foo",
                                   newcnode_switch(&A, 0,
                                     SJP_OBJECT_BEG, newcnode_bool(&A,JVST_CNODE_AND,
-                                                      newcnode_counts(&A, 1, 0, false),
+                                                      newcnode_counts(&A, JVST_CNODE_PROP_RANGE, 1, 0, false),
                                                       newcnode_valid(),
                                                       NULL),
                                     SJP_NONE)),
@@ -515,7 +515,7 @@ void test_xlate_maxproperties_1(void)
       TRANSLATE, schema, NULL,
         newcnode_switch(&A, 1,
           SJP_OBJECT_BEG, newcnode_bool(&A,JVST_CNODE_AND,
-                            newcnode_counts(&A, 0, 2, true),
+                            newcnode_counts(&A, JVST_CNODE_PROP_RANGE, 0, 2, true),
                             newcnode_valid(),
                             NULL),
           SJP_NONE),
@@ -546,13 +546,13 @@ void test_xlate_maxproperties_2(void)
       TRANSLATE, schema, NULL,
         newcnode_switch(&A, 1,
           SJP_OBJECT_BEG, newcnode_bool(&A,JVST_CNODE_AND,
-                            newcnode_counts(&A, 0, 1, true),
+                            newcnode_counts(&A, JVST_CNODE_PROP_RANGE, 0, 1, true),
                             newcnode_bool(&A,JVST_CNODE_AND,
                               newcnode_propset(&A,
                                 newcnode_prop_match(&A, RE_LITERAL, "foo",
                                   newcnode_switch(&A, 0,
                                     SJP_OBJECT_BEG, newcnode_bool(&A,JVST_CNODE_AND,
-                                                      newcnode_counts(&A, 0, 1, true),
+                                                      newcnode_counts(&A, JVST_CNODE_PROP_RANGE, 0, 1, true),
                                                       newcnode_valid(),
                                                       NULL),
                                     SJP_NONE)),
@@ -596,13 +596,13 @@ void test_xlate_minmaxproperties_1(void)
 
       newcnode_switch(&A, 1,
         SJP_OBJECT_BEG, newcnode_bool(&A,JVST_CNODE_AND,
-                          newcnode_counts(&A, 1, 1, true),
+                          newcnode_counts(&A, JVST_CNODE_PROP_RANGE, 1, 1, true),
                           newcnode_bool(&A,JVST_CNODE_AND,
                             newcnode_propset(&A,
                               newcnode_prop_match(&A, RE_LITERAL, "foo",
                                 newcnode_switch(&A, 0,
                                   SJP_OBJECT_BEG, newcnode_bool(&A,JVST_CNODE_AND,
-                                                    newcnode_counts(&A, 1, 2, true),
+                                                    newcnode_counts(&A, JVST_CNODE_PROP_RANGE, 1, 2, true),
                                                     newcnode_valid(),
                                                     NULL),
                                   SJP_NONE)),
@@ -627,7 +627,7 @@ void test_xlate_minmaxproperties_1(void)
 
       newcnode_switch(&A, 1,
         SJP_OBJECT_BEG, newcnode_bool(&A,JVST_CNODE_AND,
-                          newcnode_counts(&A, 1, 0, true),
+                          newcnode_counts(&A, JVST_CNODE_PROP_RANGE, 1, 0, true),
                           newcnode_valid(),
                           NULL),
         SJP_NONE),
@@ -1076,6 +1076,79 @@ static void test_xlate_pattern_1(void)
       newcnode_switch(&A, 1,
         SJP_STRING, newcnode_bool(&A, JVST_CNODE_AND,
                       newcnode_strmatch(&A, RE_NATIVE, "a+"),
+                      newcnode_valid(),
+                      NULL),
+        SJP_NONE)
+    },
+
+    {
+      TRANSLATE,
+      newschema_p(&A, 0,
+          "pattern", "a+b.d",
+          "minLength", 12,
+          NULL),
+
+      NULL,
+
+      newcnode_switch(&A, 1,
+        SJP_STRING, newcnode_bool(&A, JVST_CNODE_AND,
+                      newcnode_counts(&A, JVST_CNODE_LENGTH_RANGE, 12, 0, false),
+                      newcnode_bool(&A, JVST_CNODE_AND,
+                        newcnode_strmatch(&A, RE_NATIVE, "a+b.d"),
+                        newcnode_valid(),
+                        NULL),
+                      NULL),
+        SJP_NONE),
+    },
+
+    { STOP },
+  };
+
+  RUNTESTS(tests);
+}
+
+static void test_xlate_minmax_length_1(void)
+{
+  struct arena_info A = {0};
+
+  const struct cnode_test tests[] = {
+    {
+      TRANSLATE,
+      newschema_p(&A, 0, "minLength", 12, NULL),
+
+      NULL,
+
+      newcnode_switch(&A, 1,
+        SJP_STRING, newcnode_bool(&A, JVST_CNODE_AND,
+                      newcnode_counts(&A, JVST_CNODE_LENGTH_RANGE, 12, 0, false),
+                      newcnode_valid(),
+                      NULL),
+        SJP_NONE)
+    },
+
+    {
+      TRANSLATE,
+      newschema_p(&A, 0, "maxLength", 36, NULL),
+
+      NULL,
+
+      newcnode_switch(&A, 1,
+        SJP_STRING, newcnode_bool(&A, JVST_CNODE_AND,
+                      newcnode_counts(&A, JVST_CNODE_LENGTH_RANGE, 0, 36, true),
+                      newcnode_valid(),
+                      NULL),
+        SJP_NONE)
+    },
+
+    {
+      TRANSLATE,
+      newschema_p(&A, 0, "minLength", 23, "maxLength", 50, NULL),
+
+      NULL,
+
+      newcnode_switch(&A, 1,
+        SJP_STRING, newcnode_bool(&A, JVST_CNODE_AND,
+                      newcnode_counts(&A, JVST_CNODE_LENGTH_RANGE, 23, 50, true),
                       newcnode_valid(),
                       NULL),
         SJP_NONE)
@@ -1980,6 +2053,35 @@ static void test_canonify_patterns(void)
         SJP_NONE)
     },
 
+    {
+      CANONIFY,
+      newschema_p(&A, 0,
+          "pattern", "a+",
+          "minLength", 12,
+          NULL),
+
+      newcnode_switch(&A, 1,
+        SJP_STRING, newcnode_bool(&A, JVST_CNODE_AND,
+                      newcnode_strmatch(&A, RE_NATIVE, "a+b.d"),
+                      newcnode_counts(&A, JVST_CNODE_LENGTH_RANGE, 12, 0, false),
+                      newcnode_valid(),
+                      NULL),
+        SJP_NONE),
+
+      newcnode_switch(&A, 1,
+        SJP_STRING, newcnode_mswitch(&A,
+                      newcnode_invalid(),       // default case
+
+                      newcnode_mcase(&A,
+                        newmatchset(&A, RE_NATIVE, "a+b.d", -1),
+                        newcnode_counts(&A, JVST_CNODE_LENGTH_RANGE, 12, 0, false)
+                      ),
+
+                      NULL
+                    ),
+        SJP_NONE)
+    },
+
     { STOP },
   };
 
@@ -2014,6 +2116,7 @@ int main(void)
   test_xlate_anyof_2();
 
   test_xlate_pattern_1();
+  test_xlate_minmax_length_1();
 
   test_simplify_ands();
   test_simplify_ored_schema();

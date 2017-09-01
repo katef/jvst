@@ -303,7 +303,9 @@ jvst_cnode_free_tree(struct jvst_cnode *root)
 		/* constrains with no child nodes */
 		case JVST_CNODE_NUM_INTEGER:
 		case JVST_CNODE_NUM_RANGE:
-		case JVST_CNODE_COUNT_RANGE:
+		case JVST_CNODE_LENGTH_RANGE:
+		case JVST_CNODE_PROP_RANGE:
+		case JVST_CNODE_ITEM_RANGE:
 		case JVST_CNODE_ARR_UNIQUE:
 			break;
 
@@ -357,8 +359,12 @@ jvst_cnode_type_name(enum jvst_cnode_type type)
 		return "NOT";
 	case JVST_CNODE_SWITCH:
 		return "SWITCH";
-	case JVST_CNODE_COUNT_RANGE:
-		return "COUNT_RANGE";
+	case JVST_CNODE_LENGTH_RANGE:
+		return "LENGTH_RANGE";
+	case JVST_CNODE_PROP_RANGE:
+		return "PROP_RANGE";
+	case JVST_CNODE_ITEM_RANGE:
+		return "ITEM_RANGE";
 	case JVST_CNODE_STR_MATCH:
 		return "STR_MATCH";
 	case JVST_CNODE_NUM_RANGE:
@@ -595,8 +601,10 @@ and_or_xor:
 		sbuf_snprintf(buf, ")");
 		break;
 
-	case JVST_CNODE_COUNT_RANGE:
-		sbuf_snprintf(buf, "COUNT_RANGE(");
+	case JVST_CNODE_LENGTH_RANGE:
+	case JVST_CNODE_PROP_RANGE:
+	case JVST_CNODE_ITEM_RANGE:
+		sbuf_snprintf(buf, "%s(", jvst_cnode_type_name(node->type));
 		if (node->u.counts.min > 0) {
 			sbuf_snprintf(buf, "%zu <= ", node->u.counts.min);
 		}
@@ -874,6 +882,18 @@ jvst_cnode_translate_ast(const struct ast_schema *ast)
 		add_ast_constraint(node, SJP_STRING, strmatch);
 	}
 
+	if (ast->kws & (KWS_MIN_LENGTH | KWS_MAX_LENGTH)) {
+		struct jvst_cnode *range, *jxn;
+
+		range = jvst_cnode_alloc(JVST_CNODE_LENGTH_RANGE);
+		range->u.counts.min = ast->min_length;
+		range->u.counts.max = ast->max_length;
+
+		range->u.counts.upper = !!(ast->kws & KWS_MAX_LENGTH);
+
+		add_ast_constraint(node, SJP_STRING, range);
+	}
+
 	if (ast->properties.set != NULL) {
 		struct jvst_cnode **plist, *phead, *prop_set;
 		struct ast_property_schema *pset;
@@ -902,7 +922,7 @@ jvst_cnode_translate_ast(const struct ast_schema *ast)
 	if (ast->kws & (KWS_MIN_PROPERTIES | KWS_MAX_PROPERTIES)) {
 		struct jvst_cnode *range, *jxn;
 
-		range = jvst_cnode_alloc(JVST_CNODE_COUNT_RANGE);
+		range = jvst_cnode_alloc(JVST_CNODE_PROP_RANGE);
 		range->u.counts.min = ast->min_properties;
 		range->u.counts.max = ast->max_properties;
 
@@ -1155,14 +1175,6 @@ cnode_mswitch_copy(struct jvst_cnode *node)
 	// FSMs
 	dup_fsm = fsm_clone(node->u.mswitch.dfa);
 
-#if 0
-	fprintf(stderr, "original mcases in dfa\n");
-	print_mcases(node->u.mswitch.dfa);
-
-	fprintf(stderr, "duplicated mcases in dfa\n");
-	print_mcases(dup_fsm);
-#endif
-
 	tree->u.mswitch.dfa = dup_fsm;
 
 	// copy and collect all opaque states
@@ -1240,7 +1252,9 @@ cnode_deep_copy(struct jvst_cnode *node)
 		tree->u.num_range = node->u.num_range;
 		return tree;
 
-	case JVST_CNODE_COUNT_RANGE:
+	case JVST_CNODE_LENGTH_RANGE:
+	case JVST_CNODE_PROP_RANGE:
+	case JVST_CNODE_ITEM_RANGE:
 		tree	   = jvst_cnode_alloc(node->type);
 		tree->u.counts = node->u.counts;
 		return tree;
@@ -1569,6 +1583,133 @@ cnode_simplify_ctrl_combine_like(struct jvst_cnode *top)
 }
 
 static struct jvst_cnode *
+cnode_simplify_and_mswitch(struct jvst_cnode *top)
+{
+	struct jvst_cnode *msw, *conds;
+	struct jvst_cnode **mswpp, **npp, **cpp;
+
+	assert(top->type == JVST_CNODE_AND);
+
+	// collect all MATCH_SWITCH children and nodes we want to push
+	// into MATCH_SWITCH cases
+	msw = NULL;
+	mswpp = &msw;
+
+	conds = NULL;
+	cpp = &conds;
+
+	for (npp = &top->u.ctrl; *npp != NULL; ) {
+		switch ((*npp)->type) {
+		case JVST_CNODE_MATCH_SWITCH:
+			*mswpp = *npp;
+			*npp = (*npp)->next;
+
+			mswpp = &(*mswpp)->next;
+			*mswpp = NULL;
+			break;
+
+		case JVST_CNODE_LENGTH_RANGE:
+			*cpp = *npp;
+			*npp = (*npp)->next;
+
+			cpp = &(*cpp)->next;
+			*cpp = NULL;
+			break;
+
+		default:
+			npp = &(*npp)->next;
+			continue;
+		}
+	}
+
+	// no match_switch nodes, so nothing to simplify here
+	if (msw == NULL) {
+		*npp = conds;
+		return top;
+	}
+
+	// two or more
+	if (msw->next != NULL) {
+		// XXX - should combine match_switch nodes!
+		//
+		// it's an AND operation... this requires a bit of care
+		// because of the default case.
+		//
+		// Let's merge two match_switch nodes.  Let DFA1 be the
+		// first and DFA2 be the second.  Let DC1 and DC2 be the
+		// default cases for the first and second, respectively.
+		//
+		// 1. We want things that match both DFA1 and DFA2 to
+		//    have neither default case.
+		// 2. Things that match DFA1 and not DFA2 should have
+		//    their matching cases ANDed with DC2.
+		// 3. Things that match DFA2 and not DFA2 should have
+		//    their matching cases ANDed with DC1.
+		// 4. Things that match neither DFA1 nor DFA2 should
+		//    have AND(DC1,DC2)
+		//
+		// #1 is equivalent to intersection(DFA1,DFA2)
+		// #2 is DFA1 - DFA2, or DFA1 - intersection(DFA1,DFA2)
+		// #3 is DFA2 - DFA1, or DFA2 - intersection(DFA1,DFA2)
+		// #4 is the new default case
+
+		// XXX - to do this, we have to replace the carryopaque
+		//       function in the fsm opts.  But... there's no
+		//       easy way to access this at the moment.
+	}
+
+	// push string conditionals into MATCH
+	// XXX - this is currently the first match_switch node, but
+	//       should work fine when we combine multiple match_switch
+	//       nodes
+	if (conds != NULL) {
+		struct jvst_cnode *jxn, *mc, *dft;
+
+		jxn = jvst_cnode_alloc(JVST_CNODE_AND);
+		jxn->u.ctrl = conds;
+
+		for (mc = msw->u.mswitch.cases; mc != NULL; mc = mc->next) {
+			struct jvst_cnode *case_jxn, *cons;
+
+			assert(mc->type == JVST_CNODE_MATCH_CASE);
+
+			cons = mc->u.mcase.constraint;
+			assert(cons != NULL);
+			assert(cons->next == NULL);
+
+			case_jxn = cnode_deep_copy(jxn);
+			cons->next = case_jxn->u.ctrl;
+			case_jxn->u.ctrl = cons;
+			
+			mc->u.mcase.constraint = case_jxn;
+		}
+
+		dft = msw->u.mswitch.default_case;
+		assert(dft != NULL);
+		assert(dft->next == NULL);
+
+		dft->next = jxn->u.ctrl;
+		jxn->u.ctrl = dft;
+		msw->u.mswitch.default_case = jxn;
+	}
+
+	*npp = msw;
+
+	return top;
+}
+
+static struct jvst_cnode *
+cnode_simplify_andor_strmatch(struct jvst_cnode *top)
+{
+	/* TODO: strmatch cases (like propsets) can be combined more
+	 * easily than match_switches, so we should try to combine them if they're
+	 * AND'd or OR'd:
+	 */
+
+	return top;
+}
+
+static struct jvst_cnode *
 cnode_simplify_andor(struct jvst_cnode *top)
 {
 	struct jvst_cnode *node, *next, **pp;
@@ -1626,12 +1767,30 @@ cnode_simplify_andor(struct jvst_cnode *top)
 		top = cnode_simplify_and_propsets(top);
 	}
 
+	if (top->type == JVST_CNODE_AND || top->type == JVST_CNODE_OR) {
+		top = cnode_simplify_andor_strmatch(top);
+	}
+
 	if (top->type == JVST_CNODE_AND) {
 		top = cnode_simplify_and_required(top);
 	}
 
 	if ((top->type == JVST_CNODE_AND) || (top->type == JVST_CNODE_OR)) {
 		top = cnode_simplify_andor_switches(top);
+	}
+
+	/* combine AND'd match_switch nodes, moves any AND'd COUNT_RANGE nodes */
+	if (top->type == JVST_CNODE_AND) {
+		top = cnode_simplify_and_mswitch(top);
+	}
+
+	/* XXX - can also combine OR'd match_switch nodes */
+
+	if (top->type == JVST_CNODE_AND || top->type == JVST_CNODE_OR) {
+		if (top->u.ctrl->next == NULL) {
+			// only one child
+			return top->u.ctrl;
+		}
 	}
 
 	return top;
@@ -1691,7 +1850,9 @@ jvst_cnode_simplify(struct jvst_cnode *tree)
 		return cnode_simplify_propset(tree);
 
 	case JVST_CNODE_NUM_RANGE:
-	case JVST_CNODE_COUNT_RANGE:
+	case JVST_CNODE_LENGTH_RANGE:
+	case JVST_CNODE_PROP_RANGE:
+	case JVST_CNODE_ITEM_RANGE:
 	case JVST_CNODE_STR_MATCH:
 	case JVST_CNODE_OBJ_PROP_MATCH:
 	case JVST_CNODE_OBJ_REQUIRED:
@@ -2266,7 +2427,9 @@ cnode_canonify_pass1(struct jvst_cnode *tree)
 	case JVST_CNODE_VALID:
 	case JVST_CNODE_ARR_UNIQUE:
 	case JVST_CNODE_NUM_RANGE:
-	case JVST_CNODE_COUNT_RANGE:
+	case JVST_CNODE_LENGTH_RANGE:
+	case JVST_CNODE_PROP_RANGE:
+	case JVST_CNODE_ITEM_RANGE:
 		return tree;
 
 	case JVST_CNODE_AND:
@@ -2367,7 +2530,9 @@ cnode_canonify_pass2(struct jvst_cnode *tree)
 	case JVST_CNODE_VALID:
 	case JVST_CNODE_ARR_UNIQUE:
 	case JVST_CNODE_NUM_RANGE:
-	case JVST_CNODE_COUNT_RANGE:
+	case JVST_CNODE_LENGTH_RANGE:
+	case JVST_CNODE_PROP_RANGE:
+	case JVST_CNODE_ITEM_RANGE:
 		return tree;
 
 	case JVST_CNODE_NOT:
