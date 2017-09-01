@@ -1175,14 +1175,6 @@ cnode_mswitch_copy(struct jvst_cnode *node)
 	// FSMs
 	dup_fsm = fsm_clone(node->u.mswitch.dfa);
 
-#if 0
-	fprintf(stderr, "original mcases in dfa\n");
-	print_mcases(node->u.mswitch.dfa);
-
-	fprintf(stderr, "duplicated mcases in dfa\n");
-	print_mcases(dup_fsm);
-#endif
-
 	tree->u.mswitch.dfa = dup_fsm;
 
 	// copy and collect all opaque states
