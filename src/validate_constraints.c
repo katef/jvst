@@ -933,7 +933,44 @@ jvst_cnode_translate_ast(const struct ast_schema *ast)
 		add_ast_constraint(node, SJP_STRING, range);
 	}
 
-	if (ast->additional_items != NULL) {
+	if (ast->items != NULL) {
+		struct jvst_cnode *items_constraint;
+
+		assert(ast->items != NULL);
+
+		if (ast->kws & KWS_SINGLETON_ITEMS) {
+			struct jvst_cnode *constraint;
+
+			assert(ast->items->schema != NULL);
+			assert(ast->items->next == NULL);
+
+			constraint = jvst_cnode_translate_ast(ast->items->schema);
+			items_constraint = jvst_cnode_alloc(JVST_CNODE_ARR_ADDITIONAL);
+			items_constraint->u.items = constraint;
+		} else {
+			struct jvst_cnode *itemlist, **ilpp;
+			struct ast_schema_set *sl;
+
+			itemlist = NULL;
+			ilpp = &itemlist;
+			for (sl = ast->items; sl != NULL; sl = sl->next) {
+				struct jvst_cnode *constraint;
+
+				assert(sl->schema != NULL);
+
+				constraint = jvst_cnode_translate_ast(sl->schema);
+				*ilpp = constraint;
+				ilpp = &constraint->next;
+			}
+
+			items_constraint = jvst_cnode_alloc(JVST_CNODE_ARR_ITEM);
+			items_constraint->u.items = itemlist;
+		}
+
+		add_ast_constraint(node, SJP_ARRAY_BEG, items_constraint);
+	}
+
+	if (ast->additional_items != NULL && (ast->kws & KWS_SINGLETON_ITEMS) == 0) {
 		struct jvst_cnode *constraint, *additional;
 
 		constraint = jvst_cnode_translate_ast(ast->additional_items);
@@ -941,26 +978,6 @@ jvst_cnode_translate_ast(const struct ast_schema *ast)
 		additional->u.items = constraint;
 
 		add_ast_constraint(node, SJP_ARRAY_BEG, additional);
-	}
-
-	if (ast->items != NULL) {
-		struct jvst_cnode *itemlist, **ilpp, *items_constraint;
-		struct ast_schema_set *sl;
-
-		itemlist = NULL;
-		ilpp = &itemlist;
-		for (sl = ast->items; sl != NULL; sl = sl->next) {
-			struct jvst_cnode *constraint;
-
-			constraint = jvst_cnode_translate_ast(sl->schema);
-			*ilpp = constraint;
-			ilpp = &constraint->next;
-		}
-
-		items_constraint = jvst_cnode_alloc(JVST_CNODE_ARR_ITEM);
-		items_constraint->u.items = itemlist;
-
-		add_ast_constraint(node, SJP_ARRAY_BEG, items_constraint);
 	}
 
 	if (ast->properties.set != NULL) {

@@ -322,10 +322,19 @@ newschema_p(struct arena_info *A, int types, ...)
 			s->dependencies_schema.set = va_arg(args, struct ast_property_schema *);
 		} else if (strcmp(pname, "items_single") == 0) {
 			struct ast_schema *schema;
+			struct ast_schema_set *sset;
+
+			assert(s->items == NULL);
+
 			schema = va_arg(args, struct ast_schema *);
-			s->additional_items = schema;
+			sset = schema_set(A, schema, NULL);
+			s->items = sset;
+			s->kws |= KWS_SINGLETON_ITEMS;
 		} else if (strcmp(pname, "items") == 0) {
 			struct ast_schema_set *sset;
+
+			assert(s->items == NULL);
+
 			sset = va_arg(args, struct ast_schema_set *);
 			s->items = sset;
 		} else if (strcmp(pname, "additionalItems") == 0) {
