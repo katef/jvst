@@ -4141,6 +4141,400 @@ static void test_ir_items_1(void)
   RUNTESTS(tests);
 }
 
+static void test_ir_minmax_items(void)
+{
+  struct arena_info A = {0};
+
+  const struct ir_test tests[] = {
+    {
+      TRANSLATE,
+      // newschema_p(&A, 0, "minItems", 3, NULL),
+      newcnode_switch(&A, 1,
+          SJP_ARRAY_BEG, newcnode_bool(&A, JVST_CNODE_AND,
+                           newcnode_counts(&A, JVST_CNODE_ITEM_RANGE, 3, 0, false),
+                           newcnode_valid(),
+                           NULL),
+            SJP_NONE),
+
+      newir_frame(&A,
+        newir_counter(&A, 0, "num_items"),
+        newir_stmt(&A, JVST_IR_STMT_TOKEN),
+        newir_if(&A, newir_istok(&A, SJP_OBJECT_END),
+          newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token"),
+          newir_if(&A, newir_istok(&A, SJP_ARRAY_BEG),
+            newir_seq(&A,
+              newir_loop(&A, "ARR_OUTER", 0,
+                newir_loop(&A, "ARR_INNER", 1,
+                  newir_stmt(&A, JVST_IR_STMT_TOKEN),
+                  newir_if(&A, newir_istok(&A, SJP_ARRAY_END),
+                    newir_break(&A, "ARR_OUTER", 0),
+                    newir_seq(&A,
+                      newir_incr(&A, 0, "num_items"),
+                      newir_stmt(&A, JVST_IR_STMT_CONSUME),
+                      NULL
+                    )
+                  ),
+                  NULL
+                ),
+                NULL
+              ),
+
+              // Post-loop check of number of items
+              newir_if(&A,
+                newir_op(&A, JVST_IR_EXPR_GE, 
+                  newir_count(&A, 0, "num_items"),
+                  newir_size(&A, 3)
+                  ),
+                newir_stmt(&A, JVST_IR_STMT_VALID),
+                newir_invalid(&A, JVST_INVALID_TOO_FEW_ITEMS, "array has too few items")
+              ),
+              NULL
+            ),
+
+            newir_if(&A, newir_istok(&A, SJP_ARRAY_END),
+              newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token"),
+              newir_stmt(&A, JVST_IR_STMT_VALID)
+            )
+          )
+        ),
+        NULL
+      )
+    },
+
+    {
+      TRANSLATE,
+      // newschema_p(&A, 0, "maxItems", 3, NULL),
+      newcnode_switch(&A, 1,
+          SJP_ARRAY_BEG, newcnode_bool(&A, JVST_CNODE_AND,
+                           newcnode_counts(&A, JVST_CNODE_ITEM_RANGE, 0, 3, true),
+                           newcnode_valid(),
+                           NULL),
+            SJP_NONE),
+
+      newir_frame(&A,
+        newir_counter(&A, 0, "num_items"),
+        newir_stmt(&A, JVST_IR_STMT_TOKEN),
+        newir_if(&A, newir_istok(&A, SJP_OBJECT_END),
+          newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token"),
+          newir_if(&A, newir_istok(&A, SJP_ARRAY_BEG),
+            newir_seq(&A,
+              newir_loop(&A, "ARR_OUTER", 0,
+                newir_loop(&A, "ARR_INNER", 1,
+                  newir_stmt(&A, JVST_IR_STMT_TOKEN),
+                  newir_if(&A, newir_istok(&A, SJP_ARRAY_END),
+                    newir_break(&A, "ARR_OUTER", 0),
+                    newir_seq(&A,
+                      newir_incr(&A, 0, "num_items"),
+                      newir_stmt(&A, JVST_IR_STMT_CONSUME),
+                      NULL
+                    )
+                  ),
+                  NULL
+                ),
+                NULL
+              ),
+
+              // Post-loop check of number of items
+              newir_if(&A,
+                newir_op(&A, JVST_IR_EXPR_LE, 
+                  newir_count(&A, 0, "num_items"),
+                  newir_size(&A, 3)
+                  ),
+                newir_stmt(&A, JVST_IR_STMT_VALID),
+                newir_invalid(&A, JVST_INVALID_TOO_MANY_ITEMS, "array has too many items")
+              ),
+              NULL
+            ),
+
+            newir_if(&A, newir_istok(&A, SJP_ARRAY_END),
+              newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token"),
+              newir_stmt(&A, JVST_IR_STMT_VALID)
+            )
+          )
+        ),
+        NULL
+      )
+    },
+
+    {
+      TRANSLATE,
+      /*
+      newschema_p(&A, 0,
+          "minItems", 1,
+          "maxItems", 5,
+          NULL),
+      */
+      newcnode_switch(&A, 1,
+          SJP_ARRAY_BEG, newcnode_bool(&A, JVST_CNODE_AND,
+                           newcnode_counts(&A, JVST_CNODE_ITEM_RANGE, 1, 5, true),
+                           newcnode_valid(),
+                           NULL),
+            SJP_NONE),
+
+      newir_frame(&A,
+        newir_counter(&A, 0, "num_items"),
+        newir_stmt(&A, JVST_IR_STMT_TOKEN),
+        newir_if(&A, newir_istok(&A, SJP_OBJECT_END),
+          newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token"),
+          newir_if(&A, newir_istok(&A, SJP_ARRAY_BEG),
+            newir_seq(&A,
+              newir_loop(&A, "ARR_OUTER", 0,
+                newir_loop(&A, "ARR_INNER", 1,
+                  newir_stmt(&A, JVST_IR_STMT_TOKEN),
+                  newir_if(&A, newir_istok(&A, SJP_ARRAY_END),
+                    newir_break(&A, "ARR_OUTER", 0),
+                    newir_seq(&A,
+                      newir_incr(&A, 0, "num_items"),
+                      newir_stmt(&A, JVST_IR_STMT_CONSUME),
+                      NULL
+                    )
+                  ),
+                  NULL
+                ),
+                NULL
+              ),
+
+              // Post-loop check of number of items
+              newir_if(&A,
+                newir_op(&A, JVST_IR_EXPR_GE, 
+                  newir_count(&A, 0, "num_items"),
+                  newir_size(&A, 1)
+                ),
+                newir_if(&A,
+                  newir_op(&A, JVST_IR_EXPR_LE, 
+                    newir_count(&A, 0, "num_items"),
+                    newir_size(&A, 5)
+                  ),
+                  newir_stmt(&A, JVST_IR_STMT_VALID),
+                  newir_invalid(&A, JVST_INVALID_TOO_MANY_ITEMS, "array has too many items")
+                ),
+                newir_invalid(&A, JVST_INVALID_TOO_FEW_ITEMS, "array has too few items")
+              ),
+              NULL
+            ),
+
+            newir_if(&A, newir_istok(&A, SJP_ARRAY_END),
+              newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token"),
+              newir_stmt(&A, JVST_IR_STMT_VALID)
+            )
+          )
+        ),
+        NULL
+      )
+    },
+
+    {
+      TRANSLATE,
+      /*
+      newschema_p(&A, 0,
+          "items_single", newschema_p(&A, JSON_VALUE_INTEGER, NULL),
+          "maxItems", 5,
+          NULL),
+      */
+      newcnode_switch(&A, 1,
+          SJP_ARRAY_BEG, newcnode_bool(&A, JVST_CNODE_AND,
+                           newcnode_counts(&A, JVST_CNODE_ITEM_RANGE, 0, 5, true),
+                           newcnode_bool(&A, JVST_CNODE_AND, 
+                             newcnode_additional_items(&A,
+                               newcnode_switch(&A, 0,
+                                 SJP_NUMBER, newcnode(&A,JVST_CNODE_NUM_INTEGER),
+                                 SJP_NONE)
+                             ),
+                             newcnode_valid(),
+                             NULL),
+                           NULL),
+            SJP_NONE),
+
+      newir_frame(&A,
+        newir_counter(&A, 0, "num_items"),
+        newir_stmt(&A, JVST_IR_STMT_TOKEN),
+        newir_if(&A, newir_istok(&A, SJP_OBJECT_END),
+          newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token"),
+          newir_if(&A, newir_istok(&A, SJP_ARRAY_BEG),
+            newir_seq(&A,
+              newir_loop(&A, "ARR_OUTER", 0,
+                newir_loop(&A, "ARR_INNER", 1,
+                  newir_stmt(&A, JVST_IR_STMT_TOKEN),
+                  newir_if(&A, newir_istok(&A, SJP_ARRAY_END),
+                    newir_break(&A, "ARR_OUTER", 0),
+                    newir_seq(&A,
+                      newir_incr(&A, 0, "num_items"),
+                      newir_frame(&A,
+                        // don't request a token!
+                        newir_if(&A, newir_istok(&A, SJP_NUMBER),
+                          newir_if(&A, newir_isint(&A, newir_expr(&A, JVST_IR_EXPR_TOK_NUM)),
+                            newir_stmt(&A, JVST_IR_STMT_VALID),
+                            newir_invalid(&A, JVST_INVALID_NOT_INTEGER, "number is not an integer")),
+                          newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token")
+                        ),
+                        NULL
+                      ),
+                      NULL
+                    )
+                  ),
+                  NULL
+                ),
+                NULL
+              ),
+
+              // Post-loop check of number of items
+              newir_if(&A,
+                newir_op(&A, JVST_IR_EXPR_LE, 
+                  newir_count(&A, 0, "num_items"),
+                  newir_size(&A, 5)
+                ),
+                newir_stmt(&A, JVST_IR_STMT_VALID),
+                newir_invalid(&A, JVST_INVALID_TOO_MANY_ITEMS, "array has too many items")
+              ),
+              NULL
+            ),
+
+            newir_if(&A, newir_istok(&A, SJP_ARRAY_END),
+              newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token"),
+              newir_stmt(&A, JVST_IR_STMT_VALID)
+            )
+          )
+        ),
+        NULL
+      )
+    },
+
+    {
+      TRANSLATE,
+      /*
+      newschema_p(&A, 0,
+          "items", schema_set(&A, 
+             newschema_p(&A, JSON_VALUE_STRING, NULL),
+             newschema_p(&A, JSON_VALUE_STRING, NULL),
+             NULL),
+          "additionalItems", newschema_p(&A, JSON_VALUE_INTEGER, NULL),
+          "minItems", 1,
+          "maxItems", 7,
+          NULL),
+      */
+
+      newcnode_switch(&A, 1,
+          SJP_ARRAY_BEG, newcnode_bool(&A, JVST_CNODE_AND,
+                           newcnode_counts(&A, JVST_CNODE_ITEM_RANGE, 1, 7, true),
+                           newcnode_bool(&A, JVST_CNODE_AND,
+                             newcnode_additional_items(&A,
+                               newcnode_switch(&A, 0,
+                                 SJP_NUMBER, newcnode(&A,JVST_CNODE_NUM_INTEGER),
+                                 SJP_NONE)
+                               ),
+                             newcnode_bool(&A, JVST_CNODE_AND,
+                               newcnode_items(&A,
+                                 newcnode_switch(&A, 0,
+                                   SJP_STRING, newcnode_valid(),
+                                   SJP_NONE),
+                                 newcnode_switch(&A, 0,
+                                   SJP_STRING, newcnode_valid(),
+                                   SJP_NONE),
+                                 NULL),
+                               newcnode_valid(),
+                               NULL),
+                             NULL),
+                           NULL),
+            SJP_NONE),
+
+      newir_frame(&A,
+        newir_counter(&A, 0, "num_items"),
+        newir_stmt(&A, JVST_IR_STMT_TOKEN),
+        newir_if(&A, newir_istok(&A, SJP_OBJECT_END),
+          newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token"),
+          newir_if(&A, newir_istok(&A, SJP_ARRAY_BEG),
+            newir_seq(&A,
+              newir_loop(&A, "ARR_OUTER", 0,
+                newir_stmt(&A, JVST_IR_STMT_TOKEN),
+                newir_if(&A, newir_istok(&A, SJP_ARRAY_END),
+                  newir_break(&A, "ARR_OUTER", 0),
+                  newir_seq(&A,
+                    newir_incr(&A, 0, "num_items"),
+                    newir_frame(&A,
+                      // don't request a token!
+                      newir_if(&A, newir_istok(&A, SJP_STRING),
+                        newir_stmt(&A, JVST_IR_STMT_VALID),
+                        newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token")
+                      ),
+                      NULL
+                    ),
+                    newir_stmt(&A, JVST_IR_STMT_TOKEN),
+                    newir_if(&A, newir_istok(&A, SJP_ARRAY_END),
+                      newir_break(&A, "ARR_OUTER", 0),
+                      newir_seq(&A,
+                        newir_incr(&A, 0, "num_items"),
+                        newir_frame(&A,
+                          // don't request a token!
+                          newir_if(&A, newir_istok(&A, SJP_STRING),
+                            newir_stmt(&A, JVST_IR_STMT_VALID),
+                            newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token")
+                            ),
+                          NULL
+                        ),
+                        newir_loop(&A, "ARR_INNER", 1,
+                          newir_stmt(&A, JVST_IR_STMT_TOKEN),
+                          newir_if(&A, newir_istok(&A, SJP_ARRAY_END),
+                            newir_break(&A, "ARR_OUTER", 0),
+                            newir_seq(&A,
+                              newir_incr(&A, 0, "num_items"),
+                              newir_frame(&A,
+                                // don't request a token!
+                                newir_if(&A, newir_istok(&A, SJP_NUMBER),
+                                  newir_if(&A, newir_isint(&A, newir_expr(&A, JVST_IR_EXPR_TOK_NUM)),
+                                    newir_stmt(&A, JVST_IR_STMT_VALID),
+                                    newir_invalid(&A, JVST_INVALID_NOT_INTEGER, "number is not an integer")),
+                                  newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token")
+                                ),
+                                NULL
+                              ),
+                              NULL
+                            )
+                          ),
+                          NULL
+                        ),
+                        NULL
+                      )
+                    ),
+                    NULL
+                  )
+                ),
+                NULL
+              ),
+
+              // Post-loop check of number of items
+              newir_if(&A,
+                newir_op(&A, JVST_IR_EXPR_GE, 
+                  newir_count(&A, 0, "num_items"),
+                  newir_size(&A, 1)
+                ),
+                newir_if(&A,
+                  newir_op(&A, JVST_IR_EXPR_LE, 
+                    newir_count(&A, 0, "num_items"),
+                    newir_size(&A, 7)
+                  ),
+                  newir_stmt(&A, JVST_IR_STMT_VALID),
+                  newir_invalid(&A, JVST_INVALID_TOO_MANY_ITEMS, "array has too many items")
+                ),
+                newir_invalid(&A, JVST_INVALID_TOO_FEW_ITEMS, "array has too few items")
+              ),
+
+              NULL
+            ),
+            newir_if(&A, newir_istok(&A, SJP_ARRAY_END),
+              newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token"),
+              newir_stmt(&A, JVST_IR_STMT_VALID)
+            )
+          )
+        ),
+        NULL
+      )
+    },
+
+    { STOP },
+  };
+
+  RUNTESTS(tests);
+}
 
 
 /* incomplete tests... placeholders for conversion from cnode tests */
@@ -4191,6 +4585,7 @@ int main(void)
   test_ir_str_constraints();
 
   test_ir_items_1();
+  test_ir_minmax_items();
 
   return report_tests();
 }
