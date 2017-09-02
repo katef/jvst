@@ -449,6 +449,40 @@
                 }
         @};
 
+	<set-min-items>: (n :number) -> () = @{
+                ast_count c;
+
+		if (!(@n >= 0)) {
+			xerr(lex_state, KW_MIN_ITEMS, "expected > 0, got %f", @n);
+		}
+
+                c = (ast_count)@n;
+
+		if (debug & DEBUG_ACT) {
+			fprintf(stderr, "<set-min-items>: %ld\n", (long)c);
+		}
+
+		ast->kws |= KWS_MIN_ITEMS;
+		ast->min_items = c;
+	@};
+
+	<set-max-items>: (n :number) -> () = @{
+                ast_count c;
+
+		if (!(@n >= 0)) {
+			xerr(lex_state, KW_MAX_ITEMS, "expected > 0, got %f", @n);
+		}
+
+                c = (ast_count)@n;
+
+		if (debug & DEBUG_ACT) {
+			fprintf(stderr, "<set-max-items>: %ld\n", (long)c);
+		}
+
+		ast->kws |= KWS_MAX_ITEMS;
+		ast->max_items = c;
+	@};
+
 	<set-schema>: (s :string) -> () = @{
 		assert(@s.s != NULL);
 
