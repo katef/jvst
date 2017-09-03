@@ -63,7 +63,7 @@ xcalloc(size_t count, size_t sz)
 {
 	void *p;
 	if (p = calloc(count, sz), p == NULL) {
-		perror("malloc");
+		perror("calloc");
 		abort();
 	}
 
