@@ -296,6 +296,15 @@ newschema_p(struct arena_info *A, int types, ...)
 				continue;
 			}
 			*pspp = prop_set;
+		} else if (strcmp(pname, "additionalProperties") == 0) {
+			struct ast_schema *sch;
+			struct ast_schema_set *sset;
+
+			sch = va_arg(args, struct ast_schema *);
+			sset = schema_set(A, sch, NULL);
+
+			sset->next = s->additional_properties;
+			s->additional_properties = sset;
 		} else if (strcmp(pname, "required") == 0) {
 			s->required.set = va_arg(args, struct ast_string_set *);
 		} else if (strcmp(pname, "minimum") == 0) {
@@ -598,6 +607,17 @@ newcnode_prop_match(struct arena_info *A, enum re_dialect dialect, const char *p
 	node->u.prop_match.match.str     = newstr(pat);
 	node->u.prop_match.match.fsm     = NULL;
 	node->u.prop_match.constraint    = constraint;
+
+	return node;
+}
+
+struct jvst_cnode *
+newcnode_prop_default(struct arena_info *A, struct jvst_cnode *dft)
+{
+	struct jvst_cnode *node;
+
+	node = newcnode(A, JVST_CNODE_OBJ_PROP_DEFAULT);
+	node->u.prop_default = dft;
 
 	return node;
 }

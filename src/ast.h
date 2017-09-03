@@ -164,12 +164,9 @@ struct ast_schema {
 	} properties;
 
 	/*
-	 * "additionalProperties": keyed by string literal
+	 * "additionalProperties": schema set
 	 */
-	struct {
-		struct ast_property_schema *set;
-		struct fsm *fsm; /* union to one dfa */
-	} additional_properties;
+	struct ast_schema_set *additional_properties;
 
 	/* "dependencies": array form */
 	struct {
