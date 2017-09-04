@@ -2120,6 +2120,28 @@ jvst_cnode_simplify(struct jvst_cnode *tree)
 			return pset;
 		}
 
+	case JVST_CNODE_ARR_ITEM:
+	case JVST_CNODE_ARR_ADDITIONAL:
+		{
+			struct jvst_cnode *it, *next, *simplified_items, **spp;
+
+			simplified_items = NULL;
+			spp = &simplified_items;
+			for (it = tree->u.items; it != NULL; it = next) {
+				struct jvst_cnode *simplified;
+
+				next = it->next;
+
+				simplified = jvst_cnode_simplify(it);
+				*spp = simplified;
+				spp = &(*spp)->next;
+				*spp = NULL;
+			}
+
+			tree->u.items = simplified_items;
+			return tree;
+		}
+
 	case JVST_CNODE_MATCH_SWITCH:
 		{
 			struct jvst_cnode *mc, *next;
@@ -2146,8 +2168,6 @@ jvst_cnode_simplify(struct jvst_cnode *tree)
 	case JVST_CNODE_STR_MATCH:
 	case JVST_CNODE_OBJ_PROP_MATCH:
 	case JVST_CNODE_OBJ_REQUIRED:
-	case JVST_CNODE_ARR_ITEM:
-	case JVST_CNODE_ARR_ADDITIONAL:
 	case JVST_CNODE_OBJ_REQMASK:
 	case JVST_CNODE_OBJ_REQBIT:
 		// TODO: basic optimization for these nodes
