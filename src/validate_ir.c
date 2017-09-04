@@ -2874,19 +2874,35 @@ ir_translate_array(struct jvst_cnode *top, struct jvst_ir_stmt *frame)
 
 	// put all the components together...
 
+	// If we have more than one thing to do each-item, wrap them in
+	// a SEQ.
+	if (builder.each != NULL) {
+		if (builder.each->next != NULL) {
+			struct jvst_ir_stmt *seq;
+
+			seq = ir_stmt_new(JVST_IR_STMT_SEQ);
+			seq->u.stmt_list = builder.each;
+			builder.each = seq;
+		}
+	}
+
 	// LOOP here isn't really a loop.  we need a fast exit to the 
 	// end-of-array case, and there's currently no direct way to do
 	// this in the tree IR (maybe fix that?).
 	stmt = ir_stmt_new(JVST_IR_STMT_SEQ);
 	outer_loop = ir_stmt_loop(builder.frame, "ARR_OUTER");
-	outer_loop->next = (builder.postloop != NULL) ? builder.postloop : ir_stmt_valid();
+
+	if (*builder.postpp == NULL) {
+		*builder.postpp = ir_stmt_valid();
+	}
+	outer_loop->next = builder.postloop;
 
 	stmt->u.stmt_list = outer_loop;
 
 	spp = &outer_loop->u.loop.stmts;
 
 	for (it = builder.items; it != NULL; it = next) {
-		struct jvst_ir_stmt *seq;
+		struct jvst_ir_stmt *seq, *each;
 
 		next = it->next;
 
@@ -2901,14 +2917,24 @@ ir_translate_array(struct jvst_cnode *top, struct jvst_ir_stmt *frame)
 		spp = &(*spp)->u.if_.br_false;
 
 		seq = ir_stmt_new(JVST_IR_STMT_SEQ);
-		seq->u.stmt_list = it;
-		it->next = NULL;
 		*spp = seq;
+		spp = &seq->u.stmt_list;
+
+		if (builder.each) {
+			each = jvst_ir_stmt_copy(builder.each);
+			assert(each->next == NULL);
+
+			*spp = each;
+			spp = &each->next;
+		}
+
+		*spp = it;
+		it->next = NULL;
 		spp = &it->next;
 	}
 
 	{
-		struct jvst_ir_stmt *inner_loop;
+		struct jvst_ir_stmt *inner_loop, *stmts, **ilpp;
 
 		inner_loop = ir_stmt_loop(builder.frame, "ARR_INNER");
 		*spp = inner_loop;
@@ -2923,12 +2949,34 @@ ir_translate_array(struct jvst_cnode *top, struct jvst_ir_stmt *frame)
 				NULL);
 		spp = &(*spp)->u.if_.br_false;
 
+		stmts = NULL;
+		ilpp = &stmts;
+
+		if (builder.each) {
+			assert(builder.each->next == NULL);
+			*ilpp = builder.each;
+			ilpp = &builder.each->next;
+		}
+
 		if (builder.additional) {
 			assert(builder.additional->next == NULL);
-			*spp = builder.additional;
+			*ilpp = builder.additional;
 		} else {
-			*spp = ir_stmt_new(JVST_IR_STMT_CONSUME);
+			*ilpp = ir_stmt_new(JVST_IR_STMT_CONSUME);
 		}
+
+		assert(stmts != NULL);
+		if (stmts->next != NULL) {
+			struct jvst_ir_stmt *seq;
+
+			// wrap stmts in a SEQ
+			seq = ir_stmt_new(JVST_IR_STMT_SEQ);
+			seq->u.stmt_list = stmts;
+			
+			stmts = seq;
+		}
+
+		*spp = stmts;
 	}
 
 	return stmt;
@@ -2988,8 +3036,48 @@ ir_translate_array_inner(struct jvst_cnode *top, struct ir_arr_builder *builder)
 			return NULL;
 		}
 
-	case JVST_CNODE_ARR_UNIQUE:
 	case JVST_CNODE_ITEM_RANGE:
+		{
+			struct jvst_ir_stmt *counter, *incr, *check, **checkpp;
+
+			// 1. have allocate counter on frame
+			counter = ir_stmt_counter(builder->frame, "num_items");
+
+			// 2. on each item, incr counter
+			incr = ir_stmt_counter_op(JVST_IR_STMT_INCR, counter);
+			*builder->eachpp = incr;
+			builder->eachpp = &incr->next;
+
+			// 3. post-loop check counter
+			check = NULL;
+			checkpp = &check;
+			if (top->u.counts.min > 0) {
+				*checkpp = ir_stmt_if(
+					ir_expr_op(JVST_IR_EXPR_GE,
+						ir_expr_count(counter),
+						ir_expr_size(top->u.counts.min)),
+					NULL,
+					ir_stmt_invalid(JVST_INVALID_TOO_FEW_ITEMS));
+				checkpp = &(*checkpp)->u.if_.br_true;
+			}
+
+			if (top->u.counts.upper) {
+				*checkpp = ir_stmt_if(
+					ir_expr_op(JVST_IR_EXPR_LE,
+						ir_expr_count(counter),
+						ir_expr_size(top->u.counts.max)),
+					NULL,
+					ir_stmt_invalid(JVST_INVALID_TOO_MANY_ITEMS));
+				checkpp = &(*checkpp)->u.if_.br_true;
+			}
+
+			*builder->postpp = check;
+			builder->postpp = checkpp;
+
+			return NULL;
+		}
+
+	case JVST_CNODE_ARR_UNIQUE:
 
 	case JVST_CNODE_OR:
 	case JVST_CNODE_XOR:
@@ -3504,10 +3592,11 @@ jvst_ir_stmt_copy_inner(struct jvst_ir_stmt *ir, struct addr_fixup_list *fixups)
 		{
 			assert(ir->u.counter_op.counter != NULL);
 			assert(ir->u.counter_op.counter->type == JVST_IR_STMT_COUNTER);
-			assert(ir->u.counter_op.counter->data != NULL);
 
 			copy->u.counter_op = ir->u.counter_op;
-			copy->u.counter_op.counter = copy->u.counter_op.counter->data;
+			if (ir->u.counter_op.counter->data != NULL) {
+				copy->u.counter_op.counter = copy->u.counter_op.counter->data;
+			}
 
 			return copy;
 		}
@@ -3516,11 +3605,13 @@ jvst_ir_stmt_copy_inner(struct jvst_ir_stmt *ir, struct addr_fixup_list *fixups)
 		{
 			assert(ir->u.bitop.bitvec != NULL);
 			assert(ir->u.bitop.bitvec->type == JVST_IR_STMT_BITVECTOR);
-			assert(ir->u.bitop.bitvec->data != NULL);
 			assert(((struct jvst_ir_stmt *)ir->u.bitop.bitvec->data)->type == JVST_IR_STMT_BITVECTOR);
 
 			copy->u.bitop = ir->u.bitop;
-			copy->u.bitop.bitvec = copy->u.bitop.bitvec->data;
+
+			if (ir->u.bitop.bitvec->data != NULL) {
+				copy->u.bitop.bitvec = copy->u.bitop.bitvec->data;
+			}
 
 			return copy;
 		}
@@ -3529,11 +3620,12 @@ jvst_ir_stmt_copy_inner(struct jvst_ir_stmt *ir, struct addr_fixup_list *fixups)
 		{
 			assert(ir->u.splitvec.bitvec != NULL);
 			assert(ir->u.splitvec.bitvec->type == JVST_IR_STMT_BITVECTOR);
-			assert(ir->u.splitvec.bitvec->data != NULL);
 			assert(((struct jvst_ir_stmt *)ir->u.splitvec.bitvec->data)->type == JVST_IR_STMT_BITVECTOR);
 
 			copy->u.splitvec = ir->u.splitvec;
-			copy->u.splitvec.bitvec = copy->u.splitvec.bitvec->data;
+			if (ir->u.splitvec.bitvec->data != NULL) {
+				copy->u.splitvec.bitvec = copy->u.splitvec.bitvec->data;
+			}
 
 			return copy;
 		}
@@ -3601,9 +3693,10 @@ jvst_ir_stmt_copy_inner(struct jvst_ir_stmt *ir, struct addr_fixup_list *fixups)
 
 	case JVST_IR_STMT_LOOP:
 	case JVST_IR_STMT_BREAK:
+	case JVST_IR_STMT_MATCH:
+
 	case JVST_IR_STMT_BCLEAR:
 	case JVST_IR_STMT_DECR:
-	case JVST_IR_STMT_MATCH:
 		fprintf(stderr, "%s:%d (%s) copying IR statement %s not yet implemented\n",
 				__FILE__, __LINE__, __func__, 
 				jvst_ir_stmt_type_name(ir->type));

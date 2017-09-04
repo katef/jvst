@@ -99,6 +99,8 @@
         <set-items-list>:           (:ast-schema-list) -> ();
         <set-items-single>:         (:ast-schema) -> ();
         <set-additional-items>:     (:ast-schema) -> ();
+        <set-min-items>:            (:number) -> ();
+        <set-max-items>:            (:number) -> ();
 
         <new-regexp>:               (:re-dialect, :string) -> (:regexp);
         <re-literal>:               () -> (:re-dialect);
@@ -359,6 +361,20 @@
                 <set-additional-items>(sch);
         };
 
+	directive-min-items = {
+		n = NUMBER;
+		<set-min-items>(n);
+	##
+		<err-expected-number>;
+	};
+
+	directive-max-items = {
+		n = NUMBER;
+		<set-max-items>(n);
+	##
+		<err-expected-number>;
+	};
+
 	directive-title = {
 		s = STRING;
 		<set-title>(s);
@@ -414,10 +430,10 @@
                 directive-additional-items;
 	||
 		? = <kw-max-items>(k);
-		placeholder;
+		directive-max-items;
 	||
 		? = <kw-min-items>(k);
-		placeholder;
+		directive-min-items;
 	||
 		? = <kw-unique-items>(k);
 		placeholder;
