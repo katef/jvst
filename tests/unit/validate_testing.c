@@ -298,13 +298,9 @@ newschema_p(struct arena_info *A, int types, ...)
 			*pspp = prop_set;
 		} else if (strcmp(pname, "additionalProperties") == 0) {
 			struct ast_schema *sch;
-			struct ast_schema_set *sset;
 
 			sch = va_arg(args, struct ast_schema *);
-			sset = schema_set(A, sch, NULL);
-
-			sset->next = s->additional_properties;
-			s->additional_properties = sset;
+			s->additional_properties = sch;
 		} else if (strcmp(pname, "required") == 0) {
 			s->required.set = va_arg(args, struct ast_string_set *);
 		} else if (strcmp(pname, "minimum") == 0) {

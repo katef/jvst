@@ -166,7 +166,7 @@ struct ast_schema {
 	/*
 	 * "additionalProperties": schema set
 	 */
-	struct ast_schema_set *additional_properties;
+	struct ast_schema *additional_properties;
 
 	/* "dependencies": array form */
 	struct {

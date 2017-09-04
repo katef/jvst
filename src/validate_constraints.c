@@ -1040,26 +1040,9 @@ jvst_cnode_translate_ast(const struct ast_schema *ast)
 		struct jvst_cnode *constraint, **cpp, *pdft;
 		struct ast_schema_set *sset;
 
-		constraint = NULL;
-		cpp = &constraint;
-
-		for (sset = ast->additional_properties; sset != NULL; sset = sset->next) {
-			*cpp = jvst_cnode_translate_ast(sset->schema);
-			assert(*cpp != NULL);
-
-			cpp = &(*cpp)->next;
-		}
-
+		constraint = jvst_cnode_translate_ast(ast->additional_properties);
 		assert(constraint != NULL);
-
-		if (constraint->next != NULL) {
-			struct jvst_cnode *jxn;
-
-			// wrap multiple constraints with an AND
-			jxn = jvst_cnode_alloc(JVST_CNODE_AND);
-			jxn->u.ctrl = constraint;
-			constraint = jxn;
-		}
+		assert(constraint->next == NULL);
 
 		pdft = jvst_cnode_alloc(JVST_CNODE_OBJ_PROP_DEFAULT);
 		pdft->u.prop_default = constraint;
