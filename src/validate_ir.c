@@ -1896,7 +1896,10 @@ ir_translate_obj_inner(struct jvst_cnode *top, struct ir_object_builder *builder
 			struct jvst_ir_stmt *frame, **spp, *matcher_stmt;
 
 			// duplicate DFA.
-			builder->matcher = fsm_clone(top->u.mswitch.dfa);
+			builder->matcher = NULL;
+			if (top->u.mswitch.dfa != NULL) {
+				builder->matcher = fsm_clone(top->u.mswitch.dfa);
+			}
 
 			// build jvst_ir_mcase nodes from cases list
 			which = 0;
@@ -1915,7 +1918,9 @@ ir_translate_obj_inner(struct jvst_cnode *top, struct ir_object_builder *builder
 			}
 
 			// replace MATCH_CASE opaque entries in DFA with their corresponding jvst_ir_mcase nodes
-			fsm_walk_states(builder->matcher, builder, obj_mcase_update_opaque);
+			if (builder->matcher != NULL) {
+				fsm_walk_states(builder->matcher, builder, obj_mcase_update_opaque);
+			}
 
 			// clear the castlist->u.mcase.tmp values in case they need to be used elsewhere
 			for (caselist = top->u.mswitch.cases; caselist != NULL; caselist = caselist->next) {

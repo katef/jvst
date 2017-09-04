@@ -1304,7 +1304,10 @@ cnode_mswitch_copy(struct jvst_cnode *node)
 	//
 	// XXX - need to determine how we're keeping track of
 	// FSMs
-	dup_fsm = fsm_clone(node->u.mswitch.dfa);
+	dup_fsm = NULL;
+	if (node->u.mswitch.dfa != NULL) {
+		dup_fsm = fsm_clone(node->u.mswitch.dfa);
+	}
 
 	tree->u.mswitch.dfa = dup_fsm;
 
@@ -1329,7 +1332,9 @@ cnode_mswitch_copy(struct jvst_cnode *node)
 	}
 
 	// update the copied DFA
-	fsm_walk_states(dup_fsm, NULL, mcase_update_opaque);
+	if (dup_fsm != NULL) {
+		fsm_walk_states(dup_fsm, NULL, mcase_update_opaque);
+	}
 
 	// all mswitch nodes need a default case!
 	assert(node->u.mswitch.default_case != NULL);
@@ -2103,7 +2108,35 @@ jvst_cnode_simplify(struct jvst_cnode *tree)
 		return cnode_simplify_propset(tree);
 
 	case JVST_CNODE_OBJ_PROP_DEFAULT:
-		tree->u.prop_default = jvst_cnode_simplify(tree->u.prop_default);
+		{
+			struct jvst_cnode *pset;
+
+			// simplify constraint
+			tree->u.prop_default = jvst_cnode_simplify(tree->u.prop_default);
+
+			// wrap any bare PROP_DEFAULT nodes in a PROP_SET
+			pset = jvst_cnode_alloc(JVST_CNODE_OBJ_PROP_SET);
+			pset->u.prop_set = tree;
+			return pset;
+		}
+
+	case JVST_CNODE_MATCH_SWITCH:
+		{
+			struct jvst_cnode *mc, *next;
+
+			tree->u.mswitch.default_case = jvst_cnode_simplify(tree->u.mswitch.default_case);
+
+			for (mc=tree->u.mswitch.cases; mc != NULL; mc = next) {
+				assert(mc->type == JVST_CNODE_MATCH_CASE);
+				next = mc->next;
+				mc->u.mcase.constraint = jvst_cnode_simplify(mc->u.mcase.constraint);
+			}
+
+
+			return tree;
+		}
+
+	case JVST_CNODE_MATCH_CASE:
 		return tree;
 
 	case JVST_CNODE_NUM_RANGE:
@@ -2115,8 +2148,6 @@ jvst_cnode_simplify(struct jvst_cnode *tree)
 	case JVST_CNODE_OBJ_REQUIRED:
 	case JVST_CNODE_ARR_ITEM:
 	case JVST_CNODE_ARR_ADDITIONAL:
-	case JVST_CNODE_MATCH_SWITCH:
-	case JVST_CNODE_MATCH_CASE:
 	case JVST_CNODE_OBJ_REQMASK:
 	case JVST_CNODE_OBJ_REQBIT:
 		// TODO: basic optimization for these nodes
@@ -2523,47 +2554,49 @@ cnode_canonify_propset(struct jvst_cnode *top)
 		}
 	}
 
-	// step 2: convert the FSM from an NFA to a DFA.
-	//
-	// This may involve merging MATCH_CASE nodes.  The rules are
-	// fairly simple: combine pattern sets, combine constraints with
-	// an AND condition.
-	//
-	// NB: combining requires copying because different end states
-	// may still have the original MATCH_CASE node.
-
-	// defer setting carryopaque until we're done compiling the REs
-	// into their own DFAs.  each RE gets a unique opaque value for
-	// all of its endstates.  When we union the DFAs together, we
-	// may need to merge these states, but not during compilation.
-	opts->carryopaque = merge_mcases;
-
-	if (!fsm_determinise(matches)) {
-		perror("cannot determinise fsm");
-		abort();
-	}
-
-	// step 3: collect all MATCH_CASE nodes from the DFA by
-	// iterating over the DFA end states.  All MATCH_CASE nodes must
-	// be placed into a linked list.
 	mcases = NULL;
-	collector.mcpp = &mcases;
+	if (matches != NULL) {
+		// step 2: convert the FSM from an NFA to a DFA.
+		//
+		// This may involve merging MATCH_CASE nodes.  The rules are
+		// fairly simple: combine pattern sets, combine constraints with
+		// an AND condition.
+		//
+		// NB: combining requires copying because different end states
+		// may still have the original MATCH_CASE node.
 
-	fsm_walk_states(matches, &collector, mcase_collector);
+		// defer setting carryopaque until we're done compiling the REs
+		// into their own DFAs.  each RE gets a unique opaque value for
+		// all of its endstates.  When we union the DFAs together, we
+		// may need to merge these states, but not during compilation.
+		opts->carryopaque = merge_mcases;
 
-	{
-		struct jvst_cnode *n;
-		for (n=mcases; n != NULL; n=n->next) {
-			n->u.mcase.collected = 0;
+		if (!fsm_determinise(matches)) {
+			perror("cannot determinise fsm");
+			abort();
 		}
-	}
 
-	// step 4: sort the MATCH_CASE nodes.
-	//
-	// This keeps the IR output deterministic (useful for testing,
-	// possibly other places?).  Currently this could be elided (or
-	// put behind an optional flag) if necessary.
-	sort_mcases(&mcases);
+		// step 3: collect all MATCH_CASE nodes from the DFA by
+		// iterating over the DFA end states.  All MATCH_CASE nodes must
+		// be placed into a linked list.
+		collector.mcpp = &mcases;
+
+		fsm_walk_states(matches, &collector, mcase_collector);
+
+		{
+			struct jvst_cnode *n;
+			for (n=mcases; n != NULL; n=n->next) {
+				n->u.mcase.collected = 0;
+			}
+		}
+
+		// step 4: sort the MATCH_CASE nodes.
+		//
+		// This keeps the IR output deterministic (useful for testing,
+		// possibly other places?).  Currently this could be elided (or
+		// put behind an optional flag) if necessary.
+		sort_mcases(&mcases);
+	}
 
 	// step 5: build the MATCH_SWITCH container to hold the cases
 	// and the DFA.  The default case should be VALID.
@@ -2924,7 +2957,9 @@ cnode_canonify_pass2(struct jvst_cnode *tree)
 			//
 			// XXX - should we make a copy of the DFA?
 			// This could result in a lot of copies...
-			fsm_walk_states(tree->u.mswitch.dfa, NULL, mcase_update_opaque);
+			if (tree->u.mswitch.dfa != NULL) {
+				fsm_walk_states(tree->u.mswitch.dfa, NULL, mcase_update_opaque);
+			}
 
 			tree->u.mswitch.cases = mc;
 		}

@@ -1429,6 +1429,33 @@ void test_simplify_propsets(void)
                             NULL),
           SJP_NONE)
     },
+
+    {
+      SIMPLIFY,
+      NULL,
+
+      newcnode_switch(&A, 0,
+        SJP_OBJECT_BEG, newcnode_bool(&A,JVST_CNODE_AND,
+                          newcnode_prop_default(&A, 
+                            newcnode_switch(&A, 0,
+                              SJP_TRUE, newcnode_valid(),
+                              SJP_FALSE, newcnode_valid(),
+                              SJP_NONE)),
+                          newcnode_valid(),
+                          NULL),
+        SJP_NONE),
+
+        newcnode_switch(&A, 0,
+          SJP_OBJECT_BEG, newcnode_propset(&A,
+                            newcnode_prop_default(&A, 
+                              newcnode_switch(&A, 0,
+                                SJP_TRUE, newcnode_valid(),
+                                SJP_FALSE, newcnode_valid(),
+                                SJP_NONE)),
+                            NULL),
+          SJP_NONE)
+    },
+
     { STOP },
   };
 
@@ -2108,6 +2135,33 @@ void test_canonify_propsets(void)
                               newmatchset(&A, RE_LITERAL, "foo", -1),
                               newcnode_switch(&A, 0, SJP_NUMBER, newcnode_valid(), SJP_NONE)
                             ),
+
+                            NULL),
+          SJP_NONE)
+    },
+
+    {
+      CANONIFY,
+      NULL,
+
+      newcnode_switch(&A, 0,
+        SJP_OBJECT_BEG, newcnode_bool(&A,JVST_CNODE_AND,
+                          newcnode_prop_default(&A, 
+                            newcnode_switch(&A, 0,
+                              SJP_TRUE, newcnode_valid(),
+                              SJP_FALSE, newcnode_valid(),
+                              SJP_NONE)),
+                          newcnode_valid(),
+                          NULL),
+        SJP_NONE),
+
+        newcnode_switch(&A, 0,
+          SJP_OBJECT_BEG, newcnode_mswitch(&A, 
+                            // default case
+                            newcnode_switch(&A, 0,
+                              SJP_TRUE, newcnode_valid(),
+                              SJP_FALSE, newcnode_valid(),
+                              SJP_NONE),
 
                             NULL),
           SJP_NONE)
