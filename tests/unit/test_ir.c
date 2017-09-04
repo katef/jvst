@@ -756,6 +756,101 @@ void test_ir_properties(void)
     {
       TRANSLATE,
       newcnode_switch(&A, 1,
+        SJP_OBJECT_BEG, newcnode_bool(&A,JVST_CNODE_AND,
+                          newcnode_propset(&A,
+                            newcnode_prop_match(&A, RE_LITERAL, "foo",
+                              newcnode_switch(&A, 0, SJP_NUMBER, newcnode_valid(), SJP_NONE)),
+                            newcnode_prop_match(&A, RE_LITERAL, "bar",
+                              newcnode_switch(&A, 0, SJP_STRING, newcnode_valid(), SJP_NONE)),
+                            NULL),
+                          newcnode_prop_default(&A, 
+                            newcnode_switch(&A, 0,
+                              SJP_TRUE, newcnode_valid(),
+                              SJP_FALSE, newcnode_valid(),
+                              SJP_NONE)),
+                          NULL
+                        ),
+        SJP_NONE),
+
+      newir_frame(&A,
+          newir_matcher(&A, 0, "dfa"),
+          newir_stmt(&A, JVST_IR_STMT_TOKEN),
+          newir_if(&A, newir_istok(&A, SJP_OBJECT_BEG),
+            newir_seq(&A,
+              newir_loop(&A, "L_OBJ", 0,
+                newir_stmt(&A, JVST_IR_STMT_TOKEN),
+                newir_if(&A, newir_istok(&A, SJP_OBJECT_END),
+                  newir_break(&A, "L_OBJ", 0),
+                  newir_seq(&A,                                 // unnecessary SEQ should be removed in the future
+                    newir_match(&A, 0,
+                      // no match
+                      newir_case(&A, 0, 
+                        NULL,
+                        newir_frame(&A,
+                          newir_stmt(&A, JVST_IR_STMT_TOKEN),
+                          newir_if(&A, newir_istok(&A, SJP_TRUE),
+                            newir_stmt(&A, JVST_IR_STMT_VALID),
+                            newir_if(&A, newir_istok(&A, SJP_FALSE),
+                              newir_stmt(&A, JVST_IR_STMT_VALID),
+                              newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token")
+                            )
+                          ),
+                          NULL
+                        )
+                      ),
+
+                      // match "bar"
+                      newir_case(&A, 1,
+                        newmatchset(&A, RE_LITERAL,  "bar", -1),
+                        newir_frame(&A,
+                          newir_stmt(&A, JVST_IR_STMT_TOKEN),
+                          newir_if(&A, newir_istok(&A, SJP_STRING),
+                            newir_stmt(&A, JVST_IR_STMT_VALID),
+                            newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token")
+                          ),
+                          NULL
+                        )
+                      ),
+
+                      // match "foo"
+                      newir_case(&A, 2,
+                        newmatchset(&A, RE_LITERAL,  "foo", -1),
+                        newir_frame(&A,
+                          newir_stmt(&A, JVST_IR_STMT_TOKEN),
+                          newir_if(&A, newir_istok(&A, SJP_NUMBER),
+                            newir_stmt(&A, JVST_IR_STMT_VALID),
+                            newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token")
+                          ),
+                          NULL
+                        )
+                      ),
+
+                      NULL
+                    ),
+                    NULL
+                  )
+                ),
+                NULL
+              ),
+              newir_stmt(&A, JVST_IR_STMT_VALID),
+              NULL
+            ),
+
+            newir_if(&A, newir_istok(&A, SJP_OBJECT_END),
+              newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token"),
+              newir_if(&A, newir_istok(&A, SJP_ARRAY_END),
+                newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token"),
+                newir_stmt(&A, JVST_IR_STMT_VALID)
+              )
+            )
+          ),
+          NULL
+      )
+    },
+
+    {
+      TRANSLATE,
+      newcnode_switch(&A, 1,
         SJP_OBJECT_BEG, newcnode_propset(&A,
                           newcnode_prop_match(&A, RE_NATIVE, "ba.",
                             newcnode_switch(&A, 0, SJP_NUMBER, newcnode_valid(), SJP_NONE)),

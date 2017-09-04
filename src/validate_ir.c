@@ -35,6 +35,21 @@
 	abort();								\
 } while(0)
 
+#define UNKNOWN_CNODE(type) do { \
+	fprintf(stderr, "%s:%d (%s) unknown cnode type %d\n", \
+		__FILE__, __LINE__, __func__, (type)); 	   \
+	abort(); } while(0)
+
+#define UNKNOWN_STMT(type) do { \
+	fprintf(stderr, "%s:%d (%s) unknown statement type %d\n", \
+		__FILE__, __LINE__, __func__, (type)); 	   \
+	abort(); } while(0)
+
+#define UNKNOWN_EXPR(type) do { \
+	fprintf(stderr, "%s:%d (%s) unknown expression type %d\n", \
+		__FILE__, __LINE__, __func__, (type)); 	   \
+	abort(); } while(0)
+
 const char *
 jvst_invalid_msg(enum jvst_invalid_code code)
 {
@@ -537,9 +552,7 @@ ir_expr_tmp(struct jvst_ir_stmt *frame, struct jvst_ir_expr *expr)
 		abort();
 	}
 
-	fprintf(stderr, "%s:%d (%s) unknown expression type %d\n",
-		__FILE__, __LINE__, __func__, expr->type);
-	abort();
+	UNKNOWN_EXPR(expr->type);
 }
 
 static struct jvst_ir_expr *
@@ -1739,7 +1752,7 @@ obj_mcase_translate_inner(struct jvst_cnode *ctree, struct ir_object_builder *bu
 
 	case JVST_CNODE_VALID:
 		builder->consumed = true;
-		return ir_stmt_new(JVST_IR_STMT_VALID);
+		return ir_stmt_new(JVST_IR_STMT_CONSUME);
 
 	case JVST_CNODE_INVALID:
 		// XXX - better error message!
@@ -1772,15 +1785,13 @@ obj_mcase_translate(struct jvst_cnode *ctree, struct ir_object_builder *builder)
 	return stmt;
 }
 
-static struct jvst_ir_mcase *
-obj_mswitch_case_translate(struct jvst_cnode *node, struct ir_object_builder *builder)
+static struct jvst_ir_stmt *
+obj_mswitch_translate_and_ensure_consume(struct jvst_cnode *constraint, struct ir_object_builder *builder)
 {
 	bool prev_consumed;
 	struct jvst_ir_stmt *stmt;
-	struct jvst_ir_mcase *mcase;
 
-	assert(node->type == JVST_CNODE_MATCH_CASE);
-	assert(node->u.mcase.tmp == NULL);
+	assert(constraint != NULL);
 
 	/* XXX - why isn't this logic in obj_mcase_translate? */
 	/* ---> */
@@ -1791,7 +1802,7 @@ obj_mswitch_case_translate(struct jvst_cnode *node, struct ir_object_builder *bu
 	prev_consumed = builder->consumed;
 	builder->consumed = false;
 
-	stmt = obj_mcase_translate(node->u.mcase.constraint, builder);
+	stmt = obj_mcase_translate(constraint, builder);
 	if (!builder->consumed) {
 		struct jvst_ir_stmt *seq, **spp;
 		seq = ir_stmt_new(JVST_IR_STMT_SEQ);
@@ -1804,10 +1815,25 @@ obj_mswitch_case_translate(struct jvst_cnode *node, struct ir_object_builder *bu
 	}
 
 	builder->consumed = prev_consumed;
+	/* <--- */
+
+	return stmt;
+}
+
+static struct jvst_ir_mcase *
+obj_mswitch_case_translate(struct jvst_cnode *node, struct ir_object_builder *builder)
+{
+	bool prev_consumed;
+	struct jvst_ir_stmt *stmt;
+	struct jvst_ir_mcase *mcase;
+
+	assert(node->type == JVST_CNODE_MATCH_CASE);
+	assert(node->u.mcase.tmp == NULL);
+
+	stmt = obj_mswitch_translate_and_ensure_consume(node->u.mcase.constraint, builder);
 
 	mcase = ir_mcase_new(UNASSIGNED_MATCH, stmt);
 	mcase->matchset = node->u.mcase.matchset;
-	/* <--- */
 
 	node->u.mcase.tmp = mcase;
 
@@ -1857,6 +1883,7 @@ ir_translate_obj_inner(struct jvst_cnode *top, struct ir_object_builder *builder
 
 	case JVST_CNODE_OBJ_REQUIRED:
 	case JVST_CNODE_OBJ_PROP_SET:
+	case JVST_CNODE_OBJ_PROP_DEFAULT:
 		fprintf(stderr, "canonified cnode trees should not have %s nodes\n",
 			jvst_cnode_type_name(top->type));
 		abort();
@@ -1869,7 +1896,10 @@ ir_translate_obj_inner(struct jvst_cnode *top, struct ir_object_builder *builder
 			struct jvst_ir_stmt *frame, **spp, *matcher_stmt;
 
 			// duplicate DFA.
-			builder->matcher = fsm_clone(top->u.mswitch.dfa);
+			builder->matcher = NULL;
+			if (top->u.mswitch.dfa != NULL) {
+				builder->matcher = fsm_clone(top->u.mswitch.dfa);
+			}
 
 			// build jvst_ir_mcase nodes from cases list
 			which = 0;
@@ -1888,7 +1918,9 @@ ir_translate_obj_inner(struct jvst_cnode *top, struct ir_object_builder *builder
 			}
 
 			// replace MATCH_CASE opaque entries in DFA with their corresponding jvst_ir_mcase nodes
-			fsm_walk_states(builder->matcher, builder, obj_mcase_update_opaque);
+			if (builder->matcher != NULL) {
+				fsm_walk_states(builder->matcher, builder, obj_mcase_update_opaque);
+			}
 
 			// clear the castlist->u.mcase.tmp values in case they need to be used elsewhere
 			for (caselist = top->u.mswitch.cases; caselist != NULL; caselist = caselist->next) {
@@ -1899,12 +1931,20 @@ ir_translate_obj_inner(struct jvst_cnode *top, struct ir_object_builder *builder
 
 			// 4. translate the default case
 			//
-			// Currently we do nothing, because the
-			// default_case is always VALID.
-			//
-			// FIXME: is default_case always VALID?  in that
-			// case we can eliminate it.  Otherwise, we need
-			// to do something more sophisticated here.
+			// XXX - Not sure that this will always do the
+			// right thing.  Need to revisit the translation
+			// of VALID/INVALID in obj_mcase_translate_inner,
+			// and refactor the whole translation.
+			{
+				struct jvst_cnode *cnode_dft;
+				struct jvst_ir_stmt *ir_dft;
+
+				cnode_dft = top->u.mswitch.default_case;
+				assert(cnode_dft != NULL);
+
+				ir_dft = obj_mswitch_translate_and_ensure_consume(cnode_dft, builder);
+				builder->match->u.match.default_case = ir_dft;
+			}
 
 			// 5. Add matcher statement to frame and fixup refs
 			matcher_stmt = ir_stmt_matcher(builder->frame, "dfa", builder->matcher);
@@ -2077,6 +2117,7 @@ cnode_and_requires_split(struct jvst_cnode *and_node)
 		case JVST_CNODE_NUM_INTEGER:
 		case JVST_CNODE_OBJ_PROP_SET:
 		case JVST_CNODE_OBJ_PROP_MATCH:
+		case JVST_CNODE_OBJ_PROP_DEFAULT:
 		case JVST_CNODE_OBJ_REQUIRED:
 		case JVST_CNODE_ARR_ITEM:
 		case JVST_CNODE_ARR_ADDITIONAL:
@@ -2152,6 +2193,7 @@ cnode_count_splits(struct jvst_cnode *top, size_t *np)
 	case JVST_CNODE_NUM_INTEGER:
 	case JVST_CNODE_OBJ_PROP_SET:
 	case JVST_CNODE_OBJ_PROP_MATCH:
+	case JVST_CNODE_OBJ_PROP_DEFAULT:
 	case JVST_CNODE_OBJ_REQUIRED:
 	case JVST_CNODE_ARR_ITEM:
 	case JVST_CNODE_ARR_ADDITIONAL:
@@ -2221,6 +2263,7 @@ separate_control_nodes(struct jvst_cnode *top, struct jvst_cnode **cpp, struct j
 		case JVST_CNODE_NUM_INTEGER:
 		case JVST_CNODE_OBJ_PROP_SET:
 		case JVST_CNODE_OBJ_PROP_MATCH:
+		case JVST_CNODE_OBJ_PROP_DEFAULT:
 		case JVST_CNODE_OBJ_REQUIRED:
 		case JVST_CNODE_ARR_ITEM:
 		case JVST_CNODE_ARR_ADDITIONAL:
@@ -2235,9 +2278,7 @@ separate_control_nodes(struct jvst_cnode *top, struct jvst_cnode **cpp, struct j
 			continue;
 		}
 
-		fprintf(stderr, "[%s:%d] unknown cnode type %d\n",
-				__FILE__, __LINE__, top->type);
-		abort();
+		UNKNOWN_CNODE(top->type);
 	}
 
 	return opp;
@@ -2430,6 +2471,7 @@ split_gather(struct jvst_cnode *top, struct split_gather_data *data)
 	case JVST_CNODE_NUM_INTEGER:
 	case JVST_CNODE_OBJ_PROP_SET:
 	case JVST_CNODE_OBJ_PROP_MATCH:
+	case JVST_CNODE_OBJ_PROP_DEFAULT:
 	case JVST_CNODE_OBJ_REQUIRED:
 	case JVST_CNODE_ARR_ITEM:
 	case JVST_CNODE_ARR_ADDITIONAL:
@@ -2444,9 +2486,7 @@ split_gather(struct jvst_cnode *top, struct split_gather_data *data)
 		abort();
 	}
 
-	// fail if the node type isn't handled in the switch
-	fprintf(stderr, "unknown cnode type %d\n", top->type);
-	abort();
+	UNKNOWN_CNODE(top->type);
 }
 
 static void
@@ -2814,6 +2854,7 @@ ir_translate_string_inner(struct jvst_cnode *top, struct ir_str_builder *builder
 	case JVST_CNODE_NUM_INTEGER:
 	case JVST_CNODE_OBJ_PROP_SET:
 	case JVST_CNODE_OBJ_PROP_MATCH:
+	case JVST_CNODE_OBJ_PROP_DEFAULT:
 	case JVST_CNODE_OBJ_REQUIRED:
 	case JVST_CNODE_ARR_ITEM:
 	case JVST_CNODE_ARR_ADDITIONAL:
@@ -2826,6 +2867,8 @@ ir_translate_string_inner(struct jvst_cnode *top, struct ir_str_builder *builder
 				jvst_cnode_type_name(top->type));
 		abort();
 	}
+
+	UNKNOWN_CNODE(top->type);
 }
 
 static struct jvst_ir_stmt *
@@ -3090,6 +3133,7 @@ ir_translate_array_inner(struct jvst_cnode *top, struct ir_arr_builder *builder)
 	case JVST_CNODE_OBJ_REQUIRED:
 	case JVST_CNODE_OBJ_PROP_SET:
 	case JVST_CNODE_OBJ_PROP_MATCH:
+	case JVST_CNODE_OBJ_PROP_DEFAULT:
 	case JVST_CNODE_STR_MATCH:
 		fprintf(stderr, "[%s:%d] cnode %s should not be be present in canonified cnode tree\n",
 				__FILE__, __LINE__, 
@@ -3110,6 +3154,8 @@ ir_translate_array_inner(struct jvst_cnode *top, struct ir_arr_builder *builder)
 				jvst_cnode_type_name(top->type));
 		abort();
 	}
+
+	UNKNOWN_CNODE(top->type);
 }
 
 static struct jvst_ir_stmt *

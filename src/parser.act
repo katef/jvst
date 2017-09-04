@@ -360,11 +360,29 @@
         @};
 
         <set-properties>:           (ps :ast-prop-schema) -> () = @{
+                struct ast_property_schema *ps, **pspp;
+
+                ps = @ps;
+
 		if (debug & DEBUG_ACT) {
                         // XXX - make this useful!
-			fprintf(stderr, "<set-properties>: %p\n", (void *) @ps);
+			fprintf(stderr, "<set-properties>: %p\n", (void *) ps);
 		}
-                ast->properties.set = @ps;
+
+                // search for end
+                for (pspp = &ast->properties.set; *pspp != NULL; pspp = &(*pspp)->next) {
+                        continue;
+                }
+
+                *pspp = ps;
+        @};
+
+        <set-additional-properties>:    (sch :ast-schema) -> () = @{
+		if (debug & DEBUG_ACT) {
+                        // XXX - make this useful!
+			fprintf(stderr, "<set-additional-properties>: %p\n", (void *) @sch);
+		}
+                ast->additional_properties = @sch;
         @};
 
         <new-schema-list>: () -> (lst :ast-schema-list) = @{

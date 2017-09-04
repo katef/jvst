@@ -95,6 +95,8 @@
 	<set-title>:                (:string) -> ();
 	<set-description>:          (:string) -> ();
         <set-properties>:           (:ast-prop-schema) -> ();
+        <set-additional-properties>:
+                                    (:ast-schema) -> ();
 
         <set-items-list>:           (:ast-schema-list) -> ();
         <set-items-single>:         (:ast-schema) -> ();
@@ -304,6 +306,11 @@
                 CCURLY;
         };
 
+        directive-additional-properties = {
+                sch = <parse-schema>;
+                <set-additional-properties>(sch);
+        };
+
         directive-pattern = {
                 s = STRING;
                 dialect = <re-pattern>;
@@ -459,7 +466,7 @@
 		directive-properties(dialect);
 	||
 		? = <kw-additional-properties>(k);
-		placeholder;
+                directive-additional-properties;
 	||
 		? = <kw-dependencies>(k);
 		placeholder;
