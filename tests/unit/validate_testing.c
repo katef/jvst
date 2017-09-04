@@ -343,6 +343,12 @@ newschema_p(struct arena_info *A, int types, ...)
 			if (s->additional_items == NULL) {
 				s->additional_items = schema;
 			}
+		} else if (strcmp(pname, "minItems") == 0) {
+			s->min_items = va_arg(args, int);
+			s->kws |= KWS_MIN_ITEMS;
+		} else if (strcmp(pname, "maxItems") == 0) {
+			s->max_items = va_arg(args, int);
+			s->kws |= KWS_MAX_ITEMS;
 		} else if (strcmp(pname, "anyOf") == 0) {
 			struct ast_schema_set *sset;
 			sset = va_arg(args, struct ast_schema_set *);
