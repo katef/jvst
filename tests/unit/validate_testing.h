@@ -99,6 +99,9 @@ struct jvst_cnode *
 newcnode_prop_default(struct arena_info *A, struct jvst_cnode *dft); 
 
 struct jvst_cnode *
+newcnode_propnames(struct arena_info *A, const char *pat);
+
+struct jvst_cnode *
 newcnode_bool(struct arena_info *A, enum jvst_cnode_type type, ...);
 
 struct jvst_cnode *

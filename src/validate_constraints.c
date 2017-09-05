@@ -385,6 +385,8 @@ jvst_cnode_type_name(enum jvst_cnode_type type)
 		return "OBJ_PROP_MATCH";
 	case JVST_CNODE_OBJ_PROP_DEFAULT:
 		return "OBJ_PROP_DEFAULT";
+	case JVST_CNODE_OBJ_PROP_NAMES:
+		return "OBJ_PROP_NAMES";
 	case JVST_CNODE_OBJ_REQUIRED:
 		return "OBJ_REQUIRED";
 	case JVST_CNODE_ARR_ITEM:
@@ -617,6 +619,12 @@ and_or_xor:
 		jvst_cnode_dump_inner(node->u.prop_default, buf, indent + 2);
 		sbuf_snprintf(buf, "\n");
 		sbuf_indent(buf, indent);
+		sbuf_snprintf(buf, ")");
+		break;
+
+	case JVST_CNODE_OBJ_PROP_NAMES:
+		sbuf_snprintf(buf, "PROP_NAMES(");
+		regexp_dump(buf, &node->u.prop_names);
 		sbuf_snprintf(buf, ")");
 		break;
 
@@ -1050,6 +1058,15 @@ jvst_cnode_translate_ast(const struct ast_schema *ast)
 		add_ast_constraint(node, SJP_OBJECT_BEG, pdft);
 	}
 
+	if (ast->property_names.str.s != NULL) {
+		struct jvst_cnode *pnames;
+
+		pnames = jvst_cnode_alloc(JVST_CNODE_OBJ_PROP_NAMES);
+		pnames->u.prop_names = ast->property_names;
+
+		add_ast_constraint(node, SJP_OBJECT_BEG, pnames);
+	}
+
 	if (ast->kws & (KWS_MIN_PROPERTIES | KWS_MAX_PROPERTIES)) {
 		struct jvst_cnode *range, *jxn;
 
@@ -1423,6 +1440,11 @@ cnode_deep_copy(struct jvst_cnode *node)
 		tree->u.prop_default = cnode_deep_copy(node->u.prop_default);
 		return tree;
 
+	case JVST_CNODE_OBJ_PROP_NAMES:
+		tree = jvst_cnode_alloc(node->type);
+		tree->u.prop_names = node->u.prop_names;
+		return tree;
+
 	case JVST_CNODE_OBJ_REQUIRED:
 		tree = jvst_cnode_alloc(node->type);
 		tree->u.required = node->u.required;
@@ -1571,13 +1593,14 @@ cnode_simplify_andor_switches(struct jvst_cnode *top)
 static struct jvst_cnode *
 cnode_simplify_and_propsets(struct jvst_cnode *top)
 {
-	struct jvst_cnode *comb, *psets, *pdfts, **npp, **dftpp;
-	size_t npsets, npdfts;
+	struct jvst_cnode *comb, *psets, *pdfts, **dftpp, *pnames, **pnpp, **npp;
+	size_t npsets, npdfts, npnames;
 
 	// check how many PROPSET children we have... if less than two,
 	// no simplification is necessary
-	npsets = 0;
-	npdfts = 0;
+	npsets  = 0;
+	npdfts  = 0;
+	npnames = 0;
 	{
 		struct jvst_cnode *node;
 		for (node = top->u.ctrl; node != NULL; node= node->next) {
@@ -1590,6 +1613,10 @@ cnode_simplify_and_propsets(struct jvst_cnode *top)
 				npdfts++;
 				break;
 
+			case JVST_CNODE_OBJ_PROP_NAMES:
+				npnames++;
+				break;
+
 			default:
 				break;
 			}
@@ -1597,7 +1624,7 @@ cnode_simplify_and_propsets(struct jvst_cnode *top)
 	}
 
 	// If only less than two PROPSETs and no PROP_DEFAULT, return
-	if (npsets < 2 && npdfts == 0) {
+	if (npsets < 2 && npdfts == 0 && npnames == 0) {
 		return top;
 	}
 
@@ -1605,12 +1632,12 @@ cnode_simplify_and_propsets(struct jvst_cnode *top)
 	// from the parent's list of nodes.  We keep them in different
 	// lists of nodes
 	psets = NULL;
-	pdfts = NULL;
+	pdfts = NULL;  dftpp = &pdfts;
+	pnames = NULL; pnpp  = &pnames;
 	{
 		struct jvst_cnode **setpp;
 
 		setpp = &psets;
-		dftpp = &pdfts;
 		for (npp = &top->u.ctrl; *npp != NULL; ) {
 			switch ((*npp)->type) {
 			case JVST_CNODE_OBJ_PROP_SET:
@@ -1627,6 +1654,14 @@ cnode_simplify_and_propsets(struct jvst_cnode *top)
 
 				dftpp = &(*dftpp)->next;
 				*dftpp = NULL;
+				break;
+
+			case JVST_CNODE_OBJ_PROP_NAMES:
+				*pnpp = *npp;
+				*npp = (*npp)->next;
+
+				pnpp = &(*pnpp)->next;
+				*pnpp = NULL;
 				break;
 
 			default:
@@ -1652,19 +1687,39 @@ cnode_simplify_and_propsets(struct jvst_cnode *top)
 			assert(node->u.prop_set != NULL);
 			assert(node->type == JVST_CNODE_OBJ_PROP_SET);
 			assert(node->u.prop_set->type == JVST_CNODE_OBJ_PROP_MATCH ||
+				node->u.prop_set->type == JVST_CNODE_OBJ_PROP_NAMES ||
 				node->u.prop_set->type == JVST_CNODE_OBJ_PROP_DEFAULT);
 
 			*pmpp = node->u.prop_set;
 			while (*pmpp != NULL) {
-				if ((*pmpp)->type == JVST_CNODE_OBJ_PROP_DEFAULT) {
+				switch ((*pmpp)->type) {
+				case JVST_CNODE_OBJ_PROP_DEFAULT:
 					// add node to dftpp list and
 					// remove from pmpp list
 					*dftpp = *pmpp;
 					*pmpp = (*pmpp)->next;
 					dftpp = &(*dftpp)->next;
 					*dftpp = NULL;
-				} else {
+					break;
+
+				case JVST_CNODE_OBJ_PROP_NAMES:
+					// add node to pnpp list and
+					// remove from pmpp list
+					*pnpp = *pmpp;
+					*pmpp = (*pmpp)->next;
+					pnpp = &(*pnpp)->next;
+					*pnpp = NULL;
+					break;
+
+				case JVST_CNODE_OBJ_PROP_MATCH:
 					pmpp = &(*pmpp)->next;
+					break;
+					
+				default:
+					fprintf(stderr, "%s:%d (%s) unknown node type %s\n",
+						__FILE__, __LINE__, __func__,
+						jvst_cnode_type_name((*pmpp)->type));
+					abort();
 				}
 			}
 		}
@@ -1705,6 +1760,19 @@ cnode_simplify_and_propsets(struct jvst_cnode *top)
 		assert(comb_dft->next == NULL);
 		comb_dft->next = comb->u.prop_set;
 		comb->u.prop_set = comb_dft;
+	}
+
+	// Add PROP_NAMES node to the PROPSET.  There should be at most
+	// one PROP_NAMES node.
+	if (pnames != NULL) {
+		if (pnames->next != NULL) {
+			fprintf(stderr, "%s:%d (%s) multiple PROP_NAMES nodes not supported\n",
+					__FILE__, __LINE__, __func__);
+			abort();
+		}
+
+		pnames->next = comb->u.prop_set;
+		comb->u.prop_set = pnames;
 	}
 
 	// all children are PROPSETs... return the combined PROPSET
@@ -2056,6 +2124,9 @@ cnode_simplify_propset(struct jvst_cnode *tree)
 			pm->u.prop_default = jvst_cnode_simplify(pm->u.prop_default);
 			break;
 
+		case JVST_CNODE_OBJ_PROP_NAMES:
+			break;
+
 		default:
 			fprintf(stderr, "%s:%d (%s) %s should not have %s as a child node\n",
 					__FILE__, __LINE__, __func__,
@@ -2115,6 +2186,16 @@ jvst_cnode_simplify(struct jvst_cnode *tree)
 			tree->u.prop_default = jvst_cnode_simplify(tree->u.prop_default);
 
 			// wrap any bare PROP_DEFAULT nodes in a PROP_SET
+			pset = jvst_cnode_alloc(JVST_CNODE_OBJ_PROP_SET);
+			pset->u.prop_set = tree;
+			return pset;
+		}
+
+	case JVST_CNODE_OBJ_PROP_NAMES:
+		{
+			struct jvst_cnode *pset;
+
+			// wrap any bare PROP_NAMES nodes in a PROP_SET
 			pset = jvst_cnode_alloc(JVST_CNODE_OBJ_PROP_SET);
 			pset->u.prop_set = tree;
 			return pset;
@@ -2219,7 +2300,10 @@ merge_mcases(const struct fsm_state **orig, size_t n,
 		}
 
 		c = fsm_getopaque(dfa, orig[i]);
-		assert(c != NULL);
+		if (c == NULL) {
+			continue;
+		}
+		// assert(c != NULL);
 
 		// allow a fast path if nstates==1
 		if (mcase == NULL) {
@@ -2273,6 +2357,35 @@ merge_mcases(const struct fsm_state **orig, size_t n,
 
 	assert(mcase->next == NULL);
 	fsm_setopaque(dfa, comb, mcase);
+}
+
+static int
+fsm_debug_printer(const struct fsm *dfa, const struct fsm_state *st, void *opaque)
+{
+	struct jvst_cnode *mc;
+	static char buf[2048];
+
+	(void)opaque;
+
+	if (!fsm_isend(dfa,st)) {
+		return 1;
+	}
+
+	mc = fsm_getopaque((struct fsm *)dfa, (struct fsm_state *)st);
+
+	memset(buf,0,sizeof buf);
+	if (!fsm_example(dfa, st, buf, sizeof buf)) {
+		const char mesg[] = "... too long ...";
+		memcpy(buf, mesg, sizeof mesg);
+	}
+
+	fprintf(stderr, "graph %p, end state %p, mc = %p\n", (void *)dfa, (void *)st, (void *)mc);
+	fprintf(stderr, "  example: %s\n", buf);
+	if (mc != NULL) {
+		jvst_cnode_debug(mc);
+	}
+
+	return 1;
 }
 
 struct mcase_collector {
@@ -2474,7 +2587,10 @@ mcase_re_compile(struct ast_regexp *re, struct fsm_options *opts, struct jvst_cn
 			(enum re_flags)0,
 			&err);
 
-	fsm_minimise(pat);
+	if (!fsm_minimise(pat)) {
+		perror("minimizing regexp");
+		abort();
+	}
 
 	if (pat == NULL) {
 		goto error;
@@ -2508,10 +2624,11 @@ error:
 static struct jvst_cnode *
 cnode_canonify_propset(struct jvst_cnode *top)
 {
-	struct jvst_cnode *pm, *mcases, *msw, **mcpp, *dft;
+	struct jvst_cnode *pm, *mcases, *msw, **mcpp, *dft, *names;
 	struct fsm_options *opts;
 	struct fsm *matches;
 	struct mcase_collector collector;
+	struct fsm *names_pat;
 
 	// FIXME: this is a leak...
 	opts = xmalloc(sizeof *opts);
@@ -2541,6 +2658,7 @@ cnode_canonify_propset(struct jvst_cnode *top)
 	//     in the FSM
 	//  d. Union the FSM with the previous FSMs.
 	matches = NULL;
+	names = NULL;
 	dft = NULL;
 	for (pm = top->u.prop_set; pm != NULL; pm=pm->next) {
 		struct jvst_cnode *cons, *mcase;
@@ -2551,6 +2669,13 @@ cnode_canonify_propset(struct jvst_cnode *top)
 			// should have at most one PROP_DEFAULT child
 			assert(dft == NULL);
 			dft = pm->u.prop_default;
+			continue;
+		}
+
+		if (pm->type == JVST_CNODE_OBJ_PROP_NAMES) {
+			// should have at most one PROP_NAMES child
+			assert(names == NULL);
+			names = pm;
 			continue;
 		}
 
@@ -2574,7 +2699,35 @@ cnode_canonify_propset(struct jvst_cnode *top)
 		}
 	}
 
-	mcases = NULL;
+	// make sure we have a non-NULL default case.
+	if (dft == NULL) {
+		dft = jvst_cnode_alloc(JVST_CNODE_VALID);
+	} else {
+		dft = jvst_cnode_simplify(dft);
+		dft = jvst_cnode_canonify(dft);
+	}
+
+	names_pat = NULL;
+	// if a PROP_NAMES node is present, we compile its regexp for
+	// later processing
+	if (names != NULL) {
+		struct jvst_cnode *mc, *cons;
+		struct jvst_cnode_matchset *mset;
+
+		assert(names->type == JVST_CNODE_OBJ_PROP_NAMES);
+
+		cons = jvst_cnode_alloc(JVST_CNODE_VALID);
+		mset  = cnode_matchset_new(names->u.prop_names, NULL);
+		mc = cnode_new_mcase(mset, cons);
+		names_pat = mcase_re_compile(&names->u.prop_names, opts, mc);
+	}
+
+	// defer setting carryopaque until we're done compiling the REs
+	// into their own DFAs.  each RE gets a unique opaque value for
+	// all of its endstates.  When we union the DFAs together, we
+	// may need to merge these states, but not during compilation.
+	opts->carryopaque = merge_mcases;
+
 	if (matches != NULL) {
 		// step 2: convert the FSM from an NFA to a DFA.
 		//
@@ -2585,17 +2738,77 @@ cnode_canonify_propset(struct jvst_cnode *top)
 		// NB: combining requires copying because different end states
 		// may still have the original MATCH_CASE node.
 
-		// defer setting carryopaque until we're done compiling the REs
-		// into their own DFAs.  each RE gets a unique opaque value for
-		// all of its endstates.  When we union the DFAs together, we
-		// may need to merge these states, but not during compilation.
-		opts->carryopaque = merge_mcases;
-
 		if (!fsm_determinise(matches)) {
 			perror("cannot determinise fsm");
 			abort();
 		}
 
+		// if we have a PROP_NAMES node, need to intersect the matches
+		// with the PROP_NAMES dfa.  Also need to subtract matches
+		// from the PROP_NAMES dfa to build the valid default
+		// case
+		if (names_pat != NULL) {
+			struct fsm *names1;
+
+			names1 = fsm_clone(names_pat);
+
+			// first restrict matches so they correspond to 
+			//
+			matches = fsm_intersect_bywalk(matches,names1);
+			if (!fsm_minimise(matches)) {
+				perror("minimizing (matches & names)");
+				abort();
+			}
+		}
+
+	}
+
+	if (names != NULL) {
+		struct fsm *matches1;
+		struct jvst_cnode *mc;
+		struct jvst_cnode_matchset *mset;
+
+		//   1. intersect the matches regexp with the PROP_NAMES regexp
+		//   2. if PROP_DEFAULT exists, give it a match that corresponds
+		//      to the DFA of (PROP_NAMES - matches)
+
+		assert(names_pat != NULL);
+
+		// next subtract matches1 from names_pat to
+		// generate the default case regexp.  restrict
+		// to 
+		if (matches != NULL) {
+			matches1 = fsm_clone(matches);
+			names_pat = fsm_subtract(names_pat, matches1);
+
+			if (!fsm_minimise(names_pat)) {
+				perror("minimizing (names - matches)");
+				abort();
+			}
+		}
+
+		mset = cnode_matchset_new(names->u.prop_names, NULL);
+		mc = cnode_new_mcase(mset, dft);
+		fsm_setendopaque(names_pat, mc);
+
+		// union them together and determinize
+		if (matches != NULL) {
+			matches = fsm_union(matches, names_pat);
+
+			if (!fsm_determinise(matches)) {
+				perror("cannot determinise matches (including PROP_NAMES node)");
+				abort();
+			}
+		} else {
+			matches = names_pat;
+		}
+
+		//   3. set the default to INVALID
+		dft = jvst_cnode_alloc(JVST_CNODE_INVALID);
+	}
+
+	mcases = NULL;
+	if (matches != NULL) {
 		// step 3: collect all MATCH_CASE nodes from the DFA by
 		// iterating over the DFA end states.  All MATCH_CASE nodes must
 		// be placed into a linked list.
@@ -2625,13 +2838,8 @@ cnode_canonify_propset(struct jvst_cnode *top)
 	msw->u.mswitch.opts = opts;
 	msw->u.mswitch.cases = mcases;
 
-	if (dft == NULL) {
-		dft = jvst_cnode_alloc(JVST_CNODE_VALID);
-	} else {
-		dft = jvst_cnode_simplify(dft);
-		dft = jvst_cnode_canonify(dft);
-	}
-
+	// if have a PROP_NAMES node, the default case (non-matching) is
+	// INVALID
 	msw->u.mswitch.default_case = dft;
 
 	// step 4: simplify and canonify the constraint of each MATCH_CASE node.
@@ -2801,6 +3009,9 @@ cnode_canonify_pass1(struct jvst_cnode *tree)
 					node->u.prop_default = cons;
 					break;
 
+				case JVST_CNODE_OBJ_PROP_NAMES:
+					break;
+
 				default:
 					fprintf(stderr, "%s:%d (%s) %s should not have %s as a child node\n",
 						__FILE__, __LINE__, __func__,
@@ -2819,6 +3030,7 @@ cnode_canonify_pass1(struct jvst_cnode *tree)
 		return cnode_canonify_strmatch(tree);
 
 	case JVST_CNODE_OBJ_PROP_DEFAULT:
+	case JVST_CNODE_OBJ_PROP_NAMES:
 	case JVST_CNODE_NUM_INTEGER:
 	case JVST_CNODE_OBJ_PROP_MATCH:
 	case JVST_CNODE_ARR_ITEM:
@@ -3001,8 +3213,7 @@ cnode_canonify_pass2(struct jvst_cnode *tree)
 		return tree;
 
 	case JVST_CNODE_OBJ_PROP_DEFAULT:
-		NOT_YET_IMPLEMENTED(tree, "canonification, pass 2");
-
+	case JVST_CNODE_OBJ_PROP_NAMES:
 	case JVST_CNODE_OBJ_PROP_MATCH:
 	case JVST_CNODE_OBJ_REQUIRED:
 		INVALID_OPERATION(tree, "canonization (pass 2)");

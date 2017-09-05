@@ -301,6 +301,14 @@ newschema_p(struct arena_info *A, int types, ...)
 
 			sch = va_arg(args, struct ast_schema *);
 			s->additional_properties = sch;
+		} else if (strcmp(pname, "propertyNames") == 0) {
+			const char *pat;
+			struct json_string str;
+
+			pat = va_arg(args, const char *);
+			s->property_names.dialect = RE_NATIVE;
+			s->property_names.str = newstr(pat);
+
 		} else if (strcmp(pname, "required") == 0) {
 			s->required.set = va_arg(args, struct ast_string_set *);
 		} else if (strcmp(pname, "minimum") == 0) {
@@ -614,6 +622,19 @@ newcnode_prop_default(struct arena_info *A, struct jvst_cnode *dft)
 
 	node = newcnode(A, JVST_CNODE_OBJ_PROP_DEFAULT);
 	node->u.prop_default = dft;
+
+	return node;
+}
+
+struct jvst_cnode *
+newcnode_propnames(struct arena_info *A, const char *pat)
+{
+	struct jvst_cnode *node;
+
+	node = newcnode(A, JVST_CNODE_OBJ_PROP_NAMES);
+
+	node->u.prop_names.dialect = RE_NATIVE;
+	node->u.prop_names.str     = newstr(pat);
 
 	return node;
 }

@@ -1884,6 +1884,8 @@ ir_translate_obj_inner(struct jvst_cnode *top, struct ir_object_builder *builder
 	case JVST_CNODE_OBJ_REQUIRED:
 	case JVST_CNODE_OBJ_PROP_SET:
 	case JVST_CNODE_OBJ_PROP_DEFAULT:
+	case JVST_CNODE_OBJ_PROP_MATCH:
+	case JVST_CNODE_OBJ_PROP_NAMES:
 		fprintf(stderr, "canonified cnode trees should not have %s nodes\n",
 			jvst_cnode_type_name(top->type));
 		abort();
@@ -2050,7 +2052,6 @@ ir_translate_obj_inner(struct jvst_cnode *top, struct ir_object_builder *builder
 		return;
 
 	case JVST_CNODE_SWITCH:
-	case JVST_CNODE_OBJ_PROP_MATCH:
 	case JVST_CNODE_MATCH_CASE:
 	case JVST_CNODE_OBJ_REQBIT:
 	case JVST_CNODE_LENGTH_RANGE:
@@ -2118,6 +2119,7 @@ cnode_and_requires_split(struct jvst_cnode *and_node)
 		case JVST_CNODE_OBJ_PROP_SET:
 		case JVST_CNODE_OBJ_PROP_MATCH:
 		case JVST_CNODE_OBJ_PROP_DEFAULT:
+		case JVST_CNODE_OBJ_PROP_NAMES:
 		case JVST_CNODE_OBJ_REQUIRED:
 		case JVST_CNODE_ARR_ITEM:
 		case JVST_CNODE_ARR_ADDITIONAL:
@@ -2194,6 +2196,7 @@ cnode_count_splits(struct jvst_cnode *top, size_t *np)
 	case JVST_CNODE_OBJ_PROP_SET:
 	case JVST_CNODE_OBJ_PROP_MATCH:
 	case JVST_CNODE_OBJ_PROP_DEFAULT:
+	case JVST_CNODE_OBJ_PROP_NAMES:
 	case JVST_CNODE_OBJ_REQUIRED:
 	case JVST_CNODE_ARR_ITEM:
 	case JVST_CNODE_ARR_ADDITIONAL:
@@ -2264,6 +2267,7 @@ separate_control_nodes(struct jvst_cnode *top, struct jvst_cnode **cpp, struct j
 		case JVST_CNODE_OBJ_PROP_SET:
 		case JVST_CNODE_OBJ_PROP_MATCH:
 		case JVST_CNODE_OBJ_PROP_DEFAULT:
+		case JVST_CNODE_OBJ_PROP_NAMES:
 		case JVST_CNODE_OBJ_REQUIRED:
 		case JVST_CNODE_ARR_ITEM:
 		case JVST_CNODE_ARR_ADDITIONAL:
@@ -2472,6 +2476,7 @@ split_gather(struct jvst_cnode *top, struct split_gather_data *data)
 	case JVST_CNODE_OBJ_PROP_SET:
 	case JVST_CNODE_OBJ_PROP_MATCH:
 	case JVST_CNODE_OBJ_PROP_DEFAULT:
+	case JVST_CNODE_OBJ_PROP_NAMES:
 	case JVST_CNODE_OBJ_REQUIRED:
 	case JVST_CNODE_ARR_ITEM:
 	case JVST_CNODE_ARR_ADDITIONAL:
@@ -2855,6 +2860,7 @@ ir_translate_string_inner(struct jvst_cnode *top, struct ir_str_builder *builder
 	case JVST_CNODE_OBJ_PROP_SET:
 	case JVST_CNODE_OBJ_PROP_MATCH:
 	case JVST_CNODE_OBJ_PROP_DEFAULT:
+	case JVST_CNODE_OBJ_PROP_NAMES:
 	case JVST_CNODE_OBJ_REQUIRED:
 	case JVST_CNODE_ARR_ITEM:
 	case JVST_CNODE_ARR_ADDITIONAL:
@@ -3134,6 +3140,7 @@ ir_translate_array_inner(struct jvst_cnode *top, struct ir_arr_builder *builder)
 	case JVST_CNODE_OBJ_PROP_SET:
 	case JVST_CNODE_OBJ_PROP_MATCH:
 	case JVST_CNODE_OBJ_PROP_DEFAULT:
+	case JVST_CNODE_OBJ_PROP_NAMES:
 	case JVST_CNODE_STR_MATCH:
 		fprintf(stderr, "[%s:%d] cnode %s should not be be present in canonified cnode tree\n",
 				__FILE__, __LINE__, 

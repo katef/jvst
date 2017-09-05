@@ -63,6 +63,7 @@ enum jvst_cnode_type {
 	JVST_CNODE_OBJ_PROP_SET,
 	JVST_CNODE_OBJ_PROP_MATCH,
 	JVST_CNODE_OBJ_PROP_DEFAULT,
+	JVST_CNODE_OBJ_PROP_NAMES,
 
 	JVST_CNODE_OBJ_REQUIRED,
 
@@ -134,6 +135,7 @@ struct jvst_cnode {
 		} prop_match;
 
 		struct jvst_cnode *prop_default;
+		struct ast_regexp prop_names;
 
 		// for array item and additional_item constraints
 		struct jvst_cnode *arr_item;
