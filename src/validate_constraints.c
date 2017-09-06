@@ -2,6 +2,7 @@
 
 #include <assert.h>
 #include <stdarg.h>
+#include <stddef.h>
 #include <stdlib.h>
 #include <string.h>
 #include <limits.h>
@@ -20,26 +21,39 @@
 #include "sjp_testing.h"
 #include "validate_sbuf.h"
 
-#define SHOULD_NOT_REACH()							\
-	do {									\
-		fprintf(stderr, "SHOULD NOT REACH %s, line %d (function %s)\n",	\
-			__FILE__, __LINE__, __func__);				\
+#define WHEREFMT "%s:%d (%s) "
+#define WHEREARGS __FILE__, __LINE__, __func__
+
+#define SHOULD_NOT_REACH()					\
+	do {							\
+		fprintf(stderr, WHEREFMT "SHOULD NOT REACH\n",	\
+			WHEREARGS);				\
+		abort();					\
+	} while (0)
+
+#define NOT_YET_IMPLEMENTED(cnode, oper) do {					\
+		fprintf(stderr, WHEREFMT "%s not yet implemented for node %s\n",\
+			WHEREARGS, (oper), jvst_cnode_type_name((cnode)->type));\
 		abort();							\
 	} while (0)
 
-#define NOT_YET_IMPLEMENTED(cnode, oper)					\
-	do {									\
-		fprintf(stderr, "%s:%d (%s) %s not yet implemented for node %s\n",		\
-			__FILE__, __LINE__, __func__, 				\
-			(oper), jvst_cnode_type_name((cnode)->type));		\
-		abort();							\
-	} while (0)
+#define UNKNOWN_NODE_TYPE(cnode) do { 				\
+	fprintf(stderr, WHEREFMT "unknown node type %s\n",	\
+		WHEREARGS, jvst_cnode_type_name((cnode)->type));\
+	abort(); } while(0)
 
-#define INVALID_OPERATION(cnode, oper)						\
-	do {	fprintf(stderr, "%s:%d (%s) invalid operation %s on %s node \n", \
-			__FILE__, __LINE__, __func__,				\
-			jvst_cnode_type_name((cnode)->type), (oper));		\
+#define INVALID_OPERATION(cnode, oper) do {				\
+	fprintf(stderr, WHEREFMT "invalid operation %s on %s node \n",  \
+			WHEREARGS, jvst_cnode_type_name((cnode)->type), (oper)); \
 		abort(); } while (0)
+
+#define DIE(mesg) do {					\
+	fprintf(stderr, WHEREFMT mesg, WHEREARGS);	\
+	abort(); } while(0)
+
+#define DIEF(mesg,...) do {					\
+	fprintf(stderr, WHEREFMT mesg, WHEREARGS, __VA_ARGS__);	\
+	abort(); } while(0)
 
 enum {
 	JVST_CNODE_CHUNKSIZE = 1024,
@@ -784,8 +798,8 @@ and_or_xor:
 
 	case JVST_CNODE_NOT:
 	case JVST_CNODE_ARR_UNIQUE:
-		fprintf(stderr, "%s:%d (%s) **not implemented**\n",
-			__FILE__, __LINE__, __func__);
+		fprintf(stderr, WHEREFMT "**not implemented**\n",
+			WHEREARGS);
 		abort();
 	}
 }
@@ -1716,10 +1730,7 @@ cnode_simplify_and_propsets(struct jvst_cnode *top)
 					break;
 					
 				default:
-					fprintf(stderr, "%s:%d (%s) unknown node type %s\n",
-						__FILE__, __LINE__, __func__,
-						jvst_cnode_type_name((*pmpp)->type));
-					abort();
+					UNKNOWN_NODE_TYPE(*pmpp);
 				}
 			}
 		}
@@ -1766,9 +1777,7 @@ cnode_simplify_and_propsets(struct jvst_cnode *top)
 	// one PROP_NAMES node.
 	if (pnames != NULL) {
 		if (pnames->next != NULL) {
-			fprintf(stderr, "%s:%d (%s) multiple PROP_NAMES nodes not supported\n",
-					__FILE__, __LINE__, __func__);
-			abort();
+			DIE("multiple PROP_NAMES nodes not supported\n");
 		}
 
 		pnames->next = comb->u.prop_set;
@@ -2128,10 +2137,9 @@ cnode_simplify_propset(struct jvst_cnode *tree)
 			break;
 
 		default:
-			fprintf(stderr, "%s:%d (%s) %s should not have %s as a child node\n",
-					__FILE__, __LINE__, __func__,
-					jvst_cnode_type_name(tree->type), jvst_cnode_type_name(pm->type));
-			abort();
+			DIEF("%s should not have %s as a child node\n",
+				jvst_cnode_type_name(tree->type),
+				jvst_cnode_type_name(pm->type));
 		}
 
 	}
@@ -3013,10 +3021,9 @@ cnode_canonify_pass1(struct jvst_cnode *tree)
 					break;
 
 				default:
-					fprintf(stderr, "%s:%d (%s) %s should not have %s as a child node\n",
-						__FILE__, __LINE__, __func__,
-						jvst_cnode_type_name(tree->type), jvst_cnode_type_name(node->type));
-					abort();
+					DIEF("%s should not have %s as a child node\n",
+						jvst_cnode_type_name(tree->type),
+						jvst_cnode_type_name(node->type));
 				}
 			}
 
