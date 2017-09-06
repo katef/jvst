@@ -438,7 +438,7 @@ static void test_xlate_propertynames(void)
       TRANSLATE,
       newschema_p(&A, 0,
         "properties", newprops(&A, "foo", newschema(&A, JSON_VALUE_NUMBER), NULL),
-        "propertyNames", "f.*",
+        "propertyNames", newschema_p(&A, 0, "pattern", "f.*", NULL),
         NULL
       ),
 
@@ -446,7 +446,13 @@ static void test_xlate_propertynames(void)
 
       newcnode_switch(&A, 1,
         SJP_OBJECT_BEG, newcnode_bool(&A,JVST_CNODE_AND,
-                          newcnode_propnames(&A, "f.*"),
+                          newcnode_propnames(&A, 
+                            newcnode_switch(&A, 1,
+                              SJP_STRING, newcnode_bool(&A, JVST_CNODE_AND,
+                                            newcnode_strmatch(&A, RE_NATIVE, "f.*"),
+                                            newcnode_valid(),
+                                            NULL),
+                              SJP_NONE)),
                           newcnode_bool(&A,JVST_CNODE_AND,
                             newcnode_propset(&A,
                               newcnode_prop_match(&A, RE_LITERAL, "foo",
@@ -469,14 +475,20 @@ static void test_xlate_propertynames(void)
                           "bar", newschema(&A, JSON_VALUE_STRING),
                           NULL),
           "additionalProperties", newschema(&A, JSON_VALUE_BOOL),
-          "propertyNames", "f.*",
+          "propertyNames", newschema_p(&A, 0, "pattern", "f.*", NULL),
           NULL),
 
       NULL,
 
       newcnode_switch(&A, 1,
         SJP_OBJECT_BEG, newcnode_bool(&A,JVST_CNODE_AND,
-                          newcnode_propnames(&A, "f.*"),
+                          newcnode_propnames(&A,
+                            newcnode_switch(&A, 1,
+                              SJP_STRING, newcnode_bool(&A, JVST_CNODE_AND,
+                                            newcnode_strmatch(&A, RE_NATIVE, "f.*"),
+                                            newcnode_valid(),
+                                            NULL),
+                              SJP_NONE)),
                           newcnode_bool(&A,JVST_CNODE_AND,
                             newcnode_prop_default(&A, 
                               newcnode_switch(&A, 0,
@@ -1558,7 +1570,8 @@ static void test_simplify_propertynames(void)
 
       newcnode_switch(&A, 1,
         SJP_OBJECT_BEG, newcnode_bool(&A,JVST_CNODE_AND,
-                          newcnode_propnames(&A, "f.*"),
+                          newcnode_propnames(&A,
+                            newcnode_switch(&A, 0, SJP_STRING, newcnode_strmatch(&A, RE_NATIVE, "f.*"), SJP_NONE)),
                           newcnode_bool(&A,JVST_CNODE_AND,
                             newcnode_propset(&A,
                               newcnode_prop_match(&A, RE_LITERAL, "foo",
@@ -1574,7 +1587,8 @@ static void test_simplify_propertynames(void)
 
       newcnode_switch(&A, 1,
         SJP_OBJECT_BEG, newcnode_propset(&A,
-                          newcnode_propnames(&A, "f.*"),
+                          newcnode_propnames(&A,
+                            newcnode_switch(&A, 0, SJP_STRING, newcnode_strmatch(&A, RE_NATIVE, "f.*"), SJP_NONE)),
                           newcnode_prop_match(&A, RE_LITERAL, "foo",
                             newcnode_switch(&A, 0, SJP_NUMBER, newcnode_valid(), SJP_NONE)),
                           NULL
@@ -1599,7 +1613,8 @@ static void test_simplify_propertynames(void)
 
       newcnode_switch(&A, 1,
         SJP_OBJECT_BEG, newcnode_bool(&A,JVST_CNODE_AND,
-                          newcnode_propnames(&A, "f.*"),
+                          newcnode_propnames(&A,
+                            newcnode_switch(&A, 0, SJP_STRING, newcnode_strmatch(&A, RE_NATIVE, "f.*"), SJP_NONE)),
                           newcnode_bool(&A,JVST_CNODE_AND,
                             newcnode_prop_default(&A, 
                               newcnode_switch(&A, 0,
@@ -1621,7 +1636,8 @@ static void test_simplify_propertynames(void)
 
       newcnode_switch(&A, 1,
         SJP_OBJECT_BEG, newcnode_propset(&A,
-                          newcnode_propnames(&A, "f.*"),
+                          newcnode_propnames(&A,
+                            newcnode_switch(&A, 0, SJP_STRING, newcnode_strmatch(&A, RE_NATIVE, "f.*"), SJP_NONE)),
                           newcnode_prop_default(&A, 
                             newcnode_switch(&A, 0,
                               SJP_TRUE, newcnode_valid(),
@@ -1646,12 +1662,14 @@ static void test_simplify_propertynames(void)
       NULL,
 
       newcnode_switch(&A, 0,
-        SJP_OBJECT_BEG, newcnode_propnames(&A, "f.*"),
+        SJP_OBJECT_BEG, newcnode_propnames(&A,
+                          newcnode_switch(&A, 0, SJP_STRING, newcnode_strmatch(&A, RE_NATIVE, "f.*"), SJP_NONE)),
         SJP_NONE),
 
       newcnode_switch(&A, 0,
         SJP_OBJECT_BEG, newcnode_propset(&A, 
-                          newcnode_propnames(&A, "f.*"),
+                          newcnode_propnames(&A,
+                            newcnode_switch(&A, 0, SJP_STRING, newcnode_strmatch(&A, RE_NATIVE, "f.*"), SJP_NONE)),
                           NULL),
         SJP_NONE)
     },
@@ -2393,7 +2411,8 @@ static void test_canonify_propertynames(void)
 
       newcnode_switch(&A, 0,
         SJP_OBJECT_BEG, newcnode_bool(&A,JVST_CNODE_AND,
-                          newcnode_propnames(&A, "f.*"),
+                          newcnode_propnames(&A,
+                            newcnode_switch(&A, 0, SJP_STRING, newcnode_strmatch(&A, RE_NATIVE, "f.*"), SJP_NONE)),
                           newcnode_bool(&A,JVST_CNODE_AND,
                             newcnode_propset(&A,
                               newcnode_prop_match(&A, RE_LITERAL, "foo",
@@ -2441,7 +2460,8 @@ static void test_canonify_propertynames(void)
 
       newcnode_switch(&A, 0,
         SJP_OBJECT_BEG, newcnode_bool(&A,JVST_CNODE_AND,
-                          newcnode_propnames(&A, "f.*"),
+                          newcnode_propnames(&A,
+                            newcnode_switch(&A, 0, SJP_STRING, newcnode_strmatch(&A, RE_NATIVE, "f.*"), SJP_NONE)),
                           newcnode_bool(&A,JVST_CNODE_AND,
                             newcnode_prop_default(&A, 
                               newcnode_switch(&A, 0,
@@ -2493,7 +2513,8 @@ static void test_canonify_propertynames(void)
 
       newcnode_switch(&A, 0,
         SJP_OBJECT_BEG, newcnode_bool(&A,JVST_CNODE_AND,
-                          newcnode_propnames(&A, "f.*"),
+                          newcnode_propnames(&A,
+                            newcnode_switch(&A, 0, SJP_STRING, newcnode_strmatch(&A, RE_NATIVE, "f.*"), SJP_NONE)),
                           newcnode_bool(&A,JVST_CNODE_AND,
                             newcnode_prop_default(&A, 
                               newcnode_switch(&A, 0,
@@ -2530,7 +2551,8 @@ static void test_canonify_propertynames(void)
       NULL,
 
       newcnode_switch(&A, 0,
-        SJP_OBJECT_BEG, newcnode_propnames(&A, "f.*"),
+        SJP_OBJECT_BEG, newcnode_propnames(&A,
+                          newcnode_switch(&A, 0, SJP_STRING, newcnode_strmatch(&A, RE_NATIVE, "f.*"), SJP_NONE)),
         SJP_NONE),
 
       newcnode_switch(&A, 0,
@@ -2543,6 +2565,51 @@ static void test_canonify_propertynames(void)
                             newcnode_valid()),
                           NULL),
         SJP_NONE)
+    },
+
+    // binary schema
+    {
+      CANONIFY,
+      /*
+      newschema_p(&A, 0, "propertyNames", true_schema(), NULL),
+      */
+
+      NULL,
+
+      newcnode_switch(&A, 0,
+        SJP_OBJECT_BEG, newcnode_propnames(&A,
+                          newcnode_switch(&A, 1, SJP_NONE)),
+        SJP_NONE),
+
+      newcnode_switch(&A, 0,
+        SJP_OBJECT_BEG, newcnode_mswitch(&A, 
+                          // default case
+                          newcnode_valid(),
+                          NULL),
+        SJP_NONE)
+
+    },
+
+    {
+      CANONIFY,
+      /*
+      newschema_p(&A, 0, "propertyNames", false_schema(), NULL),
+      */
+
+      NULL,
+
+      newcnode_switch(&A, 0,
+        SJP_OBJECT_BEG, newcnode_propnames(&A,
+                          newcnode_switch(&A, 0, SJP_NONE)),
+        SJP_NONE),
+
+      newcnode_switch(&A, 0,
+        SJP_OBJECT_BEG, newcnode_mswitch(&A, 
+                          // default case
+                          newcnode_invalid(),
+                          NULL),
+        SJP_NONE)
+
     },
 
     { STOP },

@@ -135,7 +135,7 @@ struct jvst_cnode {
 		} prop_match;
 
 		struct jvst_cnode *prop_default;
-		struct ast_regexp prop_names;
+		struct jvst_cnode *prop_names;
 
 		// for array item and additional_item constraints
 		struct jvst_cnode *arr_item;

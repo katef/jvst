@@ -184,7 +184,7 @@ struct ast_schema {
 	 * .dependencies_strings/schema
 	 * to map to opaque pointers which disambiguate which is responsible */
 
-	struct ast_regexp property_names;
+	struct ast_schema *property_names;
 
 	/*
 	 * "enum":  an unordered set

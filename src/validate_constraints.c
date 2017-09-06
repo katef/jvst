@@ -637,8 +637,11 @@ and_or_xor:
 		break;
 
 	case JVST_CNODE_OBJ_PROP_NAMES:
-		sbuf_snprintf(buf, "PROP_NAMES(");
-		regexp_dump(buf, &node->u.prop_names);
+		sbuf_snprintf(buf, "PROP_NAMES(\n");
+		sbuf_indent(buf, indent + 2);
+		jvst_cnode_dump_inner(node->u.prop_names, buf, indent+2);
+		sbuf_snprintf(buf, "\n");
+		sbuf_indent(buf, indent);
 		sbuf_snprintf(buf, ")");
 		break;
 
@@ -1072,11 +1075,14 @@ jvst_cnode_translate_ast(const struct ast_schema *ast)
 		add_ast_constraint(node, SJP_OBJECT_BEG, pdft);
 	}
 
-	if (ast->property_names.str.s != NULL) {
+	if (ast->property_names != NULL) {
+		struct jvst_cnode *constraint;
 		struct jvst_cnode *pnames;
 
+		constraint = jvst_cnode_translate_ast(ast->property_names);
+
 		pnames = jvst_cnode_alloc(JVST_CNODE_OBJ_PROP_NAMES);
-		pnames->u.prop_names = ast->property_names;
+		pnames->u.prop_names = constraint;
 
 		add_ast_constraint(node, SJP_OBJECT_BEG, pnames);
 	}
@@ -2636,7 +2642,7 @@ cnode_canonify_propset(struct jvst_cnode *top)
 	struct fsm_options *opts;
 	struct fsm *matches;
 	struct mcase_collector collector;
-	struct fsm *names_pat;
+	struct jvst_cnode *names_match;
 
 	// FIXME: this is a leak...
 	opts = xmalloc(sizeof *opts);
@@ -2715,19 +2721,56 @@ cnode_canonify_propset(struct jvst_cnode *top)
 		dft = jvst_cnode_canonify(dft);
 	}
 
-	names_pat = NULL;
+	names_match = NULL;
 	// if a PROP_NAMES node is present, we compile its regexp for
 	// later processing
 	if (names != NULL) {
-		struct jvst_cnode *mc, *cons;
-		struct jvst_cnode_matchset *mset;
+		struct jvst_cnode *mc, *nametree;
 
 		assert(names->type == JVST_CNODE_OBJ_PROP_NAMES);
 
-		cons = jvst_cnode_alloc(JVST_CNODE_VALID);
-		mset  = cnode_matchset_new(names->u.prop_names, NULL);
-		mc = cnode_new_mcase(mset, cons);
-		names_pat = mcase_re_compile(&names->u.prop_names, opts, mc);
+		nametree = jvst_cnode_simplify(names->u.prop_names);
+		nametree = jvst_cnode_canonify(nametree);
+
+		if (nametree->type == JVST_CNODE_SWITCH) {
+			nametree = nametree->u.sw[SJP_STRING];
+		}
+
+		switch (nametree->type) {
+		case JVST_CNODE_VALID:
+			// PROP_NAMES has no constraints on keys...
+			// leave names_match = NULL.
+			break;
+
+		case JVST_CNODE_INVALID:
+			{
+				struct fsm *empty;
+				struct fsm_state *start;
+
+				// all keys are disallowed, regardless of
+				// everything else...
+				names_match = jvst_cnode_alloc(JVST_CNODE_MATCH_SWITCH);
+
+				// empty DFA
+				empty = fsm_new(opts);
+				start = fsm_addstate(empty);
+				fsm_setstart(empty,start);
+
+				names_match->u.mswitch.dfa = empty;
+				names_match->u.mswitch.default_case = cnode_deep_copy(nametree);
+			}
+			break;
+
+		case JVST_CNODE_MATCH_SWITCH:
+			// names_pat = nametree;
+			names_match = nametree;
+			break;
+
+		default:
+			DIEF("PROP_NAMES does not support cnode type %s\n",
+				jvst_cnode_type_name(nametree->type));
+			break;
+		}
 	}
 
 	// defer setting carryopaque until we're done compiling the REs
@@ -2755,10 +2798,12 @@ cnode_canonify_propset(struct jvst_cnode *top)
 		// with the PROP_NAMES dfa.  Also need to subtract matches
 		// from the PROP_NAMES dfa to build the valid default
 		// case
-		if (names_pat != NULL) {
+		if (names_match != NULL) {
 			struct fsm *names1;
 
-			names1 = fsm_clone(names_pat);
+			assert(names_match->type == JVST_CNODE_MATCH_SWITCH);
+
+			names1 = fsm_clone(names_match->u.mswitch.dfa);
 
 			// first restrict matches so they correspond to 
 			//
@@ -2771,23 +2816,52 @@ cnode_canonify_propset(struct jvst_cnode *top)
 
 	}
 
-	if (names != NULL) {
-		struct fsm *matches1;
+	if (names_match != NULL) {
+		struct fsm *matches1, *names_pat;
 		struct jvst_cnode *mc;
 		struct jvst_cnode_matchset *mset;
+
+		assert(names_match->type == JVST_CNODE_MATCH_SWITCH);
+
+		// Modify by AND'ing the default case
+		for (mc = names_match->u.mswitch.cases; mc != NULL; mc = mc->next) {
+			struct jvst_cnode *jxn, *constraint, *new_constraint;
+
+			jxn = jvst_cnode_alloc(JVST_CNODE_AND);
+			constraint = mc->u.mcase.constraint;
+
+			assert(constraint != NULL);
+			assert(constraint->next == NULL);
+
+			constraint->next = cnode_deep_copy(dft);
+			jxn->u.ctrl = constraint;
+			new_constraint = jvst_cnode_simplify(jxn);
+			new_constraint = jvst_cnode_canonify(new_constraint);
+			mc->u.mcase.constraint = new_constraint;
+		}
+
+		names_pat = fsm_clone_with_opts(names_match->u.mswitch.dfa, opts);
+		if (names_pat == NULL) {
+			perror("allocating FSM");
+			abort();
+		}
 
 		//   1. intersect the matches regexp with the PROP_NAMES regexp
 		//   2. if PROP_DEFAULT exists, give it a match that corresponds
 		//      to the DFA of (PROP_NAMES - matches)
 
-		assert(names_pat != NULL);
 
 		// next subtract matches1 from names_pat to
 		// generate the default case regexp.  restrict
 		// to 
 		if (matches != NULL) {
 			matches1 = fsm_clone(matches);
-			names_pat = fsm_subtract(names_pat, matches1);
+			if (!fsm_complement(matches1)) {
+				perror("complementing matches");
+				abort();
+			}
+
+			names_pat = fsm_intersect_bywalk(names_pat, matches1);
 
 			if (!fsm_minimise(names_pat)) {
 				perror("minimizing (names - matches)");
@@ -2795,9 +2869,6 @@ cnode_canonify_propset(struct jvst_cnode *top)
 			}
 		}
 
-		mset = cnode_matchset_new(names->u.prop_names, NULL);
-		mc = cnode_new_mcase(mset, dft);
-		fsm_setendopaque(names_pat, mc);
 
 		// union them together and determinize
 		if (matches != NULL) {
@@ -2811,8 +2882,8 @@ cnode_canonify_propset(struct jvst_cnode *top)
 			matches = names_pat;
 		}
 
-		//   3. set the default to INVALID
-		dft = jvst_cnode_alloc(JVST_CNODE_INVALID);
+		//   3. set the default to the default of names_match
+		dft = cnode_deep_copy(names_match->u.mswitch.default_case);
 	}
 
 	mcases = NULL;
