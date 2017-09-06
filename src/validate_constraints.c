@@ -2293,18 +2293,42 @@ json_str_getc(void *p)
 	return ch;
 }
 
+static int 
+cmp_mcase_ptr(const void *pa, const void *pb)
+{
+	const struct jvst_cnode *a, *b;
+	ptrdiff_t delta;
+
+	a = *((const struct jvst_cnode **)pa);
+	b = *((const struct jvst_cnode **)pb);
+
+	delta = a-b;
+	if (delta < 0) {
+		return -1;
+	}
+
+	if (delta > 0) {
+		return 1;
+	}
+
+	return 0;
+}
+
 static void
 merge_mcases(const struct fsm_state **orig, size_t n,
 	struct fsm *dfa, struct fsm_state *comb)
 {
 	struct jvst_cnode *mcase, *jxn, **jpp;
 	struct jvst_cnode_matchset **mspp;
-	size_t nstates;
-	size_t i;
+	struct jvst_cnode *mcases_buf[8] = { 0 };
+	struct jvst_cnode **mcases;
+	size_t nstates, nuniq;
+	size_t i,ind;
 
 	// first count states to make sure that we need to merge...
 	mcase = NULL;
 	nstates = 0;
+	nuniq = 0;
 
 	for (i = 0; i < n; i++) {
 		struct jvst_cnode *c;
@@ -2322,6 +2346,9 @@ merge_mcases(const struct fsm_state **orig, size_t n,
 		// allow a fast path if nstates==1
 		if (mcase == NULL) {
 			mcase = c;
+			nuniq++;
+		} else if (mcase != c) {
+			nuniq++;
 		}
 
 		nstates++;
@@ -2331,7 +2358,7 @@ merge_mcases(const struct fsm_state **orig, size_t n,
 		return;
 	}
 
-	if (nstates == 1) {
+	if (nstates == 1 || nuniq == 1) {
 		assert(mcase != NULL);
 		assert(mcase->next == NULL);
 		fsm_setopaque(dfa, comb, mcase);
@@ -2339,14 +2366,15 @@ merge_mcases(const struct fsm_state **orig, size_t n,
 	}
 
 	// okay... need to combine things...
-	jxn = jvst_cnode_alloc(JVST_CNODE_AND);
-	jpp = &jxn->u.ctrl;
-	mcase = cnode_new_mcase(NULL, jxn);
-	mspp = &mcase->u.mcase.matchset;
+	if (nstates <= ARRAYLEN(mcases_buf)) {
+		mcases = &mcases_buf[0];
+	} else {
+		mcases = xcalloc(nstates, sizeof *mcases);
+	}
 
-	for (i = 0; i < n; i++) {
+	// gather all the mcases
+	for (ind = 0, i = 0; i < n; i++) {
 		struct jvst_cnode *c;
-		struct jvst_cnode_matchset *mset;
 
 		if (!fsm_isend(dfa, orig[i])) {
 			continue;
@@ -2358,7 +2386,29 @@ merge_mcases(const struct fsm_state **orig, size_t n,
 		assert(c->type == JVST_CNODE_MATCH_CASE);
 		assert(c->u.mcase.matchset != NULL);
 
-		// XXX - currently don't check for duplicates.
+		assert(ind < nstates);
+		mcases[ind++] = c;
+	}
+
+	// sort cases, remove duplicates
+	qsort(mcases, nstates, sizeof *mcases, cmp_mcase_ptr);
+
+	jxn = jvst_cnode_alloc(JVST_CNODE_AND);
+	jpp = &jxn->u.ctrl;
+	mcase = cnode_new_mcase(NULL, jxn);
+	mspp = &mcase->u.mcase.matchset;
+
+	for (i=0; i < nstates; i++) {
+		struct jvst_cnode_matchset *mset;
+		struct jvst_cnode *c;
+
+		if (i > 0 && mcases[i] == mcases[i-1]) {
+			continue;
+		}
+
+		c = mcases[i];
+
+		// XXX - currently don't check the matchsets for duplicates.
 		// Do we need to?
 		for (mset = c->u.mcase.matchset; mset != NULL; mset = mset->next) {
 			*mspp = cnode_matchset_new(mset->match, NULL);
@@ -2371,6 +2421,10 @@ merge_mcases(const struct fsm_state **orig, size_t n,
 
 	assert(mcase->next == NULL);
 	fsm_setopaque(dfa, comb, mcase);
+
+	if (mcases != &mcases_buf[0]) {
+		free(mcases);
+	}
 }
 
 static int
