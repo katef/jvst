@@ -2713,24 +2713,68 @@ static struct jvst_ir_stmt *
 ir_translate_string_inner(struct jvst_cnode *top, struct ir_str_builder *builder);
 
 static struct jvst_ir_stmt *
+str_translate_concat_contraints(struct jvst_cnode *sw_cons, struct jvst_cnode *case_cons, struct ir_str_builder *builder)
+{
+	struct jvst_ir_stmt *cpre, *c;
+
+	if (sw_cons == NULL || sw_cons->type == JVST_CNODE_VALID || case_cons->type == JVST_CNODE_INVALID) {
+		return ir_translate_string_inner(case_cons, builder);
+	}
+
+	cpre = ir_translate_string_inner(sw_cons, builder);
+
+	assert(cpre->next == NULL);
+
+	if (case_cons->type == JVST_CNODE_VALID) {
+		return cpre;
+	}
+
+	cpre->next = ir_translate_string_inner(case_cons, builder);
+
+	c = ir_stmt_new(JVST_IR_STMT_SEQ);
+	c->u.stmt_list = cpre;
+
+	return c;
+}
+
+static struct jvst_ir_stmt *
 str_translate_mswitch(struct jvst_cnode *top, struct ir_str_builder *builder)
 {
-	struct jvst_ir_stmt *match, *matcher;
+	struct jvst_ir_stmt *match, *matcher, **dftpp;
 	struct jvst_ir_mcase **mcpp;
 	struct jvst_cnode *mcase;
+	struct jvst_cnode *sw_cons;
 	struct fsm *dfa;
 	size_t which;
 
 	assert(top != NULL);
 	assert(top->type == JVST_CNODE_MATCH_SWITCH);
 
-	match = ir_stmt_new(JVST_IR_STMT_MATCH);
-	mcpp = &match->u.match.cases;
+	if (top->u.mswitch.cases == NULL) {
+		struct jvst_ir_stmt **spp;
+
+		match = ir_stmt_new(JVST_IR_STMT_SEQ);
+		spp = &match->u.stmt_list;
+
+		*spp = ir_stmt_new(JVST_IR_STMT_CONSUME);
+		spp = &(*spp)->next;
+
+		dftpp = spp;
+	} else {
+		match = ir_stmt_new(JVST_IR_STMT_MATCH);
+		mcpp = &match->u.match.cases;
+		dftpp = &match->u.match.default_case;
+	}
 
 	// duplicate DFA.
-	dfa = fsm_clone(top->u.mswitch.dfa);
+	dfa = NULL;
+	if (top->u.mswitch.dfa != NULL) {
+		dfa = fsm_clone(top->u.mswitch.dfa);
+	}
 
 	builder->consumed = true;
+
+	sw_cons = top->u.mswitch.constraints;
 
 	// build jvst_ir_mcase nodes from cases list
 	which = 0;
@@ -2741,7 +2785,8 @@ str_translate_mswitch(struct jvst_cnode *top, struct ir_str_builder *builder)
 		assert(mcase->type == JVST_CNODE_MATCH_CASE);
 		assert(mcase->u.mcase.tmp == NULL);
 
-		ir_constraint = ir_translate_string_inner(mcase->u.mcase.constraint, builder);
+		ir_constraint = str_translate_concat_contraints(
+			sw_cons, mcase->u.mcase.constraint, builder);
 
 		mc = ir_mcase_new(++which, ir_constraint);
 		mc->matchset = mcase->u.mcase.matchset;
@@ -2752,22 +2797,29 @@ str_translate_mswitch(struct jvst_cnode *top, struct ir_str_builder *builder)
 	}
 
 	// replace MATCH_CASE opaque entries in DFA with their corresponding jvst_ir_mcase nodes
-	fsm_walk_states(dfa, NULL, obj_mcase_update_opaque);
+	if (dfa != NULL && top->u.mswitch.cases != NULL) {
+		fsm_walk_states(dfa, NULL, obj_mcase_update_opaque);
+	}
 
 	// translate the default case
-	match->u.match.default_case = ir_translate_string(top->u.mswitch.default_case, builder->frame);
+	*dftpp = str_translate_concat_contraints(
+		sw_cons, top->u.mswitch.default_case, builder);
 
-	// clear the castlist->u.mcase.tmp values in case they need to be used elsewhere
+	// clear the u.mcase.tmp values in case they need to be used elsewhere
 	for (mcase = top->u.mswitch.cases; mcase != NULL; mcase = mcase->next) {
 		assert(mcase->type == JVST_CNODE_MATCH_CASE);
 		assert(mcase->u.mcase.tmp != NULL);
 		mcase->u.mcase.tmp = NULL;
 	}
 
-	matcher = ir_stmt_matcher(builder->frame, "dfa", dfa);
-	match->u.match.dfa = dfa;
-	match->u.match.name = matcher->u.matcher.name;
-	match->u.match.ind  = matcher->u.matcher.ind;
+	if (dfa != NULL && top->u.mswitch.cases != NULL) {
+		assert(match->type == JVST_IR_STMT_MATCH);
+
+		matcher = ir_stmt_matcher(builder->frame, "dfa", dfa);
+		match->u.match.dfa = dfa;
+		match->u.match.name = matcher->u.matcher.name;
+		match->u.match.ind  = matcher->u.matcher.ind;
+	}
 
 	return match;
 }

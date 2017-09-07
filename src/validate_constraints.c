@@ -700,6 +700,18 @@ and_or_xor:
 			struct jvst_cnode *c;
 
 			sbuf_snprintf(buf, "MATCH_SWITCH(\n");
+			if (node->u.mswitch.constraints != NULL) {
+				sbuf_indent(buf, indent+2);
+				sbuf_snprintf(buf, "CONSTRAINTS[\n");
+				sbuf_indent(buf, indent+4);
+				jvst_cnode_dump_inner(node->u.mswitch.constraints, buf, indent + 4);
+				sbuf_snprintf(buf, "\n");
+				sbuf_indent(buf, indent+2);
+				sbuf_snprintf(buf, "],\n");
+			}
+
+			// assert(node->u.mswitch.default_case != NULL);
+
 			if (node->u.mswitch.default_case != NULL) {
 				sbuf_indent(buf, indent+2);
 				sbuf_snprintf(buf, "DEFAULT[\n");
@@ -714,6 +726,9 @@ and_or_xor:
 				} else {
 					sbuf_snprintf(buf, "]\n");
 				}
+			} else {
+				sbuf_indent(buf, indent+2);
+				sbuf_snprintf(buf, "DEFAULT[ << WARNING: NO DEFAULT >> ],\n");
 			}
 
 			for (c = node->u.mswitch.cases; c != NULL; c = c->next) {
@@ -1377,6 +1392,10 @@ cnode_mswitch_copy(struct jvst_cnode *node)
 	assert(node->u.mswitch.default_case != NULL);
 	tree->u.mswitch.default_case = cnode_deep_copy(node->u.mswitch.default_case);
 
+	if (node->u.mswitch.constraints != NULL) {
+		tree->u.mswitch.constraints = cnode_deep_copy(node->u.mswitch.constraints);
+	}
+
 	return tree;
 }
 
@@ -1428,7 +1447,7 @@ cnode_deep_copy(struct jvst_cnode *node)
 	case JVST_CNODE_LENGTH_RANGE:
 	case JVST_CNODE_PROP_RANGE:
 	case JVST_CNODE_ITEM_RANGE:
-		tree	   = jvst_cnode_alloc(node->type);
+		tree = jvst_cnode_alloc(node->type);
 		tree->u.counts = node->u.counts;
 		return tree;
 
@@ -1907,6 +1926,140 @@ cnode_simplify_ctrl_combine_like(struct jvst_cnode *top)
 }
 
 static struct jvst_cnode *
+cnode_and_constraints(struct jvst_cnode *c1, struct jvst_cnode *c2)
+{
+	struct jvst_cnode *jxn;
+
+	assert(c1 != NULL);
+	assert(c2 != NULL);
+
+	assert(c1->next == NULL);
+	assert(c2->next == NULL);
+
+	if (c1->type == JVST_CNODE_VALID) {
+		return c2;
+	}
+
+	if (c1->type == JVST_CNODE_INVALID) {
+		return c1;
+	}
+
+	if (c2->type == JVST_CNODE_VALID) {
+		return c1;
+	}
+
+	if (c2->type == JVST_CNODE_INVALID) {
+		return c2;
+	}
+
+	jxn = jvst_cnode_alloc(JVST_CNODE_AND);
+	c1->next = c2;
+	jxn->u.ctrl = c1;
+
+	return jvst_cnode_simplify(jxn);
+}
+
+static struct jvst_cnode *
+mswitch_and_cases_with_default(struct jvst_cnode *cases, struct jvst_cnode *dft)
+{
+	struct jvst_cnode *c, *new_cases, **ncpp;
+
+	if (dft->type == JVST_CNODE_VALID) {
+		return cases;
+	}
+
+	new_cases = NULL;
+	ncpp = &new_cases;
+	for (c = cases; c != NULL; c = c->next) {
+		struct jvst_cnode *nc, *ndft;
+		nc = cnode_deep_copy(c);
+		ndft = cnode_deep_copy(dft);
+
+		nc->u.mcase.constraint = cnode_and_constraints(nc->u.mcase.constraint, ndft);
+
+		*ncpp = nc;
+		ncpp = &nc->next;
+	}
+
+	return new_cases;
+}
+
+static struct jvst_cnode *
+merge_mswitches_with_and(struct jvst_cnode *mswlst)
+{
+	struct jvst_cnode *n, *msw;
+
+	assert(mswlst != NULL);
+	assert(mswlst->type == JVST_CNODE_MATCH_SWITCH);
+
+	if (mswlst->next == NULL) {
+		return mswlst;
+	}
+
+	msw = cnode_deep_copy(mswlst);
+	for (n = mswlst->next; n != NULL; n = n->next) {
+		assert(n->type == JVST_CNODE_MATCH_SWITCH);
+
+		if (msw->u.mswitch.cases != NULL && n->u.mswitch.cases != NULL) {
+			// FIXME: merge the mswitches!
+			NOT_YET_IMPLEMENTED(msw, "merging two mswitch nodes, both with cases");
+
+			// XXX - should combine match_switch nodes!
+			//
+			// it's an AND operation... this requires a bit of care
+			// because of the default case.
+			//
+			// Let's merge two match_switch nodes.  Let DFA1 be the
+			// first and DFA2 be the second.  Let DC1 and DC2 be the
+			// default cases for the first and second, respectively.
+			//
+			// 1. We want things that match both DFA1 and DFA2 to
+			//    have neither default case.
+			// 2. Things that match DFA1 and not DFA2 should have
+			//    their matching cases ANDed with DC2.
+			// 3. Things that match DFA2 and not DFA2 should have
+			//    their matching cases ANDed with DC1.
+			// 4. Things that match neither DFA1 nor DFA2 should
+			//    have AND(DC1,DC2)
+			//
+			// #1 is equivalent to intersection(DFA1,DFA2)
+			// #2 is DFA1 - DFA2, or DFA1 - intersection(DFA1,DFA2)
+			// #3 is DFA2 - DFA1, or DFA2 - intersection(DFA1,DFA2)
+			// #4 is the new default case
+
+			// XXX - to do this, we have to replace the carryopaque
+			//       function in the fsm opts.  But... there's no
+			//       easy way to access this at the moment.
+		} else if (n->u.mswitch.cases != NULL) {
+
+			assert(msw->u.mswitch.cases == NULL);
+
+			// need to AND together msw's default case and
+			// each of n's cases
+			msw->u.mswitch.cases = mswitch_and_cases_with_default(
+				n->u.mswitch.cases, msw->u.mswitch.default_case);
+		} else if (msw->u.mswitch.cases != NULL) {
+			// need to AND together msw's default case and
+			// each of n's cases
+			msw->u.mswitch.cases = mswitch_and_cases_with_default(
+				msw->u.mswitch.cases, n->u.mswitch.default_case);
+		}
+
+		msw->u.mswitch.default_case = cnode_and_constraints(
+				msw->u.mswitch.default_case, n->u.mswitch.default_case);
+
+		if (msw->u.mswitch.constraints && n->u.mswitch.constraints) {
+			msw->u.mswitch.constraints = cnode_and_constraints(
+				msw->u.mswitch.constraints, n->u.mswitch.constraints);
+		} else if (n->u.mswitch.constraints) {
+			msw->u.mswitch.constraints = n->u.mswitch.constraints;
+		}
+	}
+
+	return msw;
+}
+
+static struct jvst_cnode *
 cnode_simplify_and_mswitch(struct jvst_cnode *top)
 {
 	struct jvst_cnode *msw, *conds;
@@ -1946,43 +2099,17 @@ cnode_simplify_and_mswitch(struct jvst_cnode *top)
 		}
 	}
 
-	// no match_switch nodes, so nothing to simplify here
+	// no match_switch node
 	if (msw == NULL) {
 		*npp = conds;
 		return top;
 	}
 
-	// two or more
-	if (msw->next != NULL) {
-		// XXX - should combine match_switch nodes!
-		//
-		// it's an AND operation... this requires a bit of care
-		// because of the default case.
-		//
-		// Let's merge two match_switch nodes.  Let DFA1 be the
-		// first and DFA2 be the second.  Let DC1 and DC2 be the
-		// default cases for the first and second, respectively.
-		//
-		// 1. We want things that match both DFA1 and DFA2 to
-		//    have neither default case.
-		// 2. Things that match DFA1 and not DFA2 should have
-		//    their matching cases ANDed with DC2.
-		// 3. Things that match DFA2 and not DFA2 should have
-		//    their matching cases ANDed with DC1.
-		// 4. Things that match neither DFA1 nor DFA2 should
-		//    have AND(DC1,DC2)
-		//
-		// #1 is equivalent to intersection(DFA1,DFA2)
-		// #2 is DFA1 - DFA2, or DFA1 - intersection(DFA1,DFA2)
-		// #3 is DFA2 - DFA1, or DFA2 - intersection(DFA1,DFA2)
-		// #4 is the new default case
+	msw = merge_mswitches_with_and(msw);
 
-		// XXX - to do this, we have to replace the carryopaque
-		//       function in the fsm opts.  But... there's no
-		//       easy way to access this at the moment.
-	}
-
-	// push string conditionals into MATCH
+	// push string conditionals into the constraints field of the
+	// MATCH_SWITCH
+	//
 	// XXX - this is currently the first match_switch node, but
 	//       should work fine when we combine multiple match_switch
 	//       nodes
@@ -1991,30 +2118,11 @@ cnode_simplify_and_mswitch(struct jvst_cnode *top)
 
 		jxn = jvst_cnode_alloc(JVST_CNODE_AND);
 		jxn->u.ctrl = conds;
+		*cpp = msw->u.mswitch.constraints;
 
-		for (mc = msw->u.mswitch.cases; mc != NULL; mc = mc->next) {
-			struct jvst_cnode *case_jxn, *cons;
+		jxn = jvst_cnode_simplify(jxn);
 
-			assert(mc->type == JVST_CNODE_MATCH_CASE);
-
-			cons = mc->u.mcase.constraint;
-			assert(cons != NULL);
-			assert(cons->next == NULL);
-
-			case_jxn = cnode_deep_copy(jxn);
-			cons->next = case_jxn->u.ctrl;
-			case_jxn->u.ctrl = cons;
-			
-			mc->u.mcase.constraint = case_jxn;
-		}
-
-		dft = msw->u.mswitch.default_case;
-		assert(dft != NULL);
-		assert(dft->next == NULL);
-
-		dft->next = jxn->u.ctrl;
-		jxn->u.ctrl = dft;
-		msw->u.mswitch.default_case = jxn;
+		msw->u.mswitch.constraints = jxn;
 	}
 
 	*npp = msw;
@@ -3094,7 +3202,6 @@ cnode_canonify_pass1(struct jvst_cnode *tree)
 	case JVST_CNODE_VALID:
 	case JVST_CNODE_ARR_UNIQUE:
 	case JVST_CNODE_NUM_RANGE:
-	case JVST_CNODE_LENGTH_RANGE:
 	case JVST_CNODE_PROP_RANGE:
 	case JVST_CNODE_ITEM_RANGE:
 		return tree;
@@ -3160,6 +3267,17 @@ cnode_canonify_pass1(struct jvst_cnode *tree)
 
 	case JVST_CNODE_STR_MATCH:
 		return cnode_canonify_strmatch(tree);
+
+	case JVST_CNODE_LENGTH_RANGE:
+		{
+			struct jvst_cnode *msw;
+
+			msw = jvst_cnode_alloc(JVST_CNODE_MATCH_SWITCH);
+			msw->u.mswitch.default_case = jvst_cnode_alloc(JVST_CNODE_VALID);
+			msw->u.mswitch.constraints = tree;
+
+			return msw;
+		}
 
 	case JVST_CNODE_OBJ_PROP_DEFAULT:
 	case JVST_CNODE_OBJ_PROP_NAMES:

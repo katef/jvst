@@ -743,6 +743,9 @@ newcnode_reqbit(struct arena_info *A, size_t bit)
 	return node;
 }
 
+const struct jvst_cnode v_mswitch_str_constraints;
+const struct jvst_cnode *const mswitch_str_constraints = &v_mswitch_str_constraints;
+
 struct jvst_cnode *
 newcnode_mswitch(struct arena_info *A, struct jvst_cnode *dft, ...)
 {
@@ -759,6 +762,14 @@ newcnode_mswitch(struct arena_info *A, struct jvst_cnode *dft, ...)
 		c = va_arg(args, struct jvst_cnode *);
 		if (c == NULL) {
 			break;
+		}
+
+		if (c == mswitch_str_constraints) {
+			struct jvst_cnode *cons;
+
+			cons = va_arg(args, struct jvst_cnode *);
+			node->u.mswitch.constraints = cons;
+			continue;
 		}
 
 		*cpp = c;

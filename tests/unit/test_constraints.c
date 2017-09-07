@@ -2063,6 +2063,58 @@ void test_simplify_ored_schema(void)
   RUNTESTS(tests);
 }
 
+static void test_simplify_patterns(void)
+{
+  struct arena_info A = {0};
+
+  const struct cnode_test tests[] = {
+    {
+      SIMPLIFY,
+      /*
+      newschema_p(&A, 0, "pattern", "a+", NULL),
+      */
+      NULL,
+
+      newcnode_switch(&A, 1,
+        SJP_STRING, newcnode_bool(&A, JVST_CNODE_AND,
+                      newcnode_strmatch(&A, RE_NATIVE, "a+"),
+                      newcnode_valid(),
+                      NULL),
+        SJP_NONE),
+
+      newcnode_switch(&A, 1,
+        SJP_STRING, newcnode_strmatch(&A, RE_NATIVE, "a+"),
+        SJP_NONE)
+    },
+
+    {
+      SIMPLIFY,
+      /*
+      newschema_p(&A, 0, "pattern", "a+", NULL),
+      */
+      NULL,
+
+      newcnode_switch(&A, 1,
+        SJP_STRING, newcnode_bool(&A, JVST_CNODE_AND,
+                      newcnode_strmatch(&A, RE_NATIVE, "a+"),
+                      newcnode_counts(&A, JVST_CNODE_LENGTH_RANGE, 12, 0, false),
+                      NULL),
+        SJP_NONE),
+
+      newcnode_switch(&A, 1,
+        SJP_STRING, newcnode_bool(&A, JVST_CNODE_AND,
+                      newcnode_strmatch(&A, RE_NATIVE, "a+"),
+                      newcnode_counts(&A, JVST_CNODE_LENGTH_RANGE, 12, 0, false),
+                      NULL),
+        SJP_NONE),
+    },
+
+    { STOP },
+  };
+
+  RUNTESTS(tests);
+}
+
 void test_canonify_ored_schema(void)
 {
   struct arena_info A = {0};
@@ -2733,16 +2785,21 @@ static void test_canonify_patterns(void)
 
     {
       CANONIFY,
+      /*
       newschema_p(&A, 0,
-          "pattern", "a+",
+          "pattern", "a+b.d",
           "minLength", 12,
           NULL),
+      */
+      NULL,
 
       newcnode_switch(&A, 1,
         SJP_STRING, newcnode_bool(&A, JVST_CNODE_AND,
-                      newcnode_strmatch(&A, RE_NATIVE, "a+b.d"),
                       newcnode_counts(&A, JVST_CNODE_LENGTH_RANGE, 12, 0, false),
-                      newcnode_valid(),
+                      newcnode_bool(&A, JVST_CNODE_AND,
+                        newcnode_strmatch(&A, RE_NATIVE, "a+b.d"),
+                        newcnode_valid(),
+                        NULL),
                       NULL),
         SJP_NONE),
 
@@ -2750,14 +2807,46 @@ static void test_canonify_patterns(void)
         SJP_STRING, newcnode_mswitch(&A,
                       newcnode_invalid(),       // default case
 
+                      mswitch_str_constraints, 
+                        newcnode_counts(&A, JVST_CNODE_LENGTH_RANGE, 12, 0, false),
+
                       newcnode_mcase(&A,
                         newmatchset(&A, RE_NATIVE, "a+b.d", -1),
-                        newcnode_counts(&A, JVST_CNODE_LENGTH_RANGE, 12, 0, false)
+                        newcnode_valid()
                       ),
 
                       NULL
                     ),
-        SJP_NONE)
+        SJP_NONE),
+    },
+
+    {
+      CANONIFY,
+      /*
+      newschema_p(&A, 0,
+          "pattern", "a+b.d",
+          "minLength", 12,
+          NULL),
+      */
+      NULL,
+
+      newcnode_switch(&A, 1,
+        SJP_STRING, newcnode_bool(&A, JVST_CNODE_AND,
+                      newcnode_counts(&A, JVST_CNODE_LENGTH_RANGE, 12, 0, false),
+                      newcnode_valid(),
+                      NULL),
+        SJP_NONE),
+
+      newcnode_switch(&A, 1,
+        SJP_STRING, newcnode_mswitch(&A,
+                      newcnode_valid(),       // default case
+
+                      mswitch_str_constraints, 
+                        newcnode_counts(&A, JVST_CNODE_LENGTH_RANGE, 12, 0, false),
+
+                      NULL
+                    ),
+        SJP_NONE),
     },
 
     { STOP },
@@ -2765,6 +2854,7 @@ static void test_canonify_patterns(void)
 
   RUNTESTS(tests);
 }
+
 
 static void test_xlate_minmax_items(void)
 {
@@ -2927,6 +3017,7 @@ int main(void)
   test_simplify_propertynames();
   test_simplify_required();
   test_simplify_dependencies();
+  test_simplify_patterns();
 
   test_canonify_ored_schema();
   test_canonify_propsets();

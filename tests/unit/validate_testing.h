@@ -135,6 +135,8 @@ newcnode_reqmask(struct arena_info *A, size_t nbits);
 struct jvst_cnode *
 newcnode_reqbit(struct arena_info *A, size_t bit);
 
+extern const struct jvst_cnode *const mswitch_str_constraints;
+
 struct jvst_cnode *
 newcnode_mswitch(struct arena_info *A, struct jvst_cnode *dft, ...);
 
