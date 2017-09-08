@@ -1245,37 +1245,6 @@ static struct jvst_cnode *
 cnode_deep_copy(struct jvst_cnode *node);
 
 static int
-mcase_copier(const struct fsm *dfa, const struct fsm_state *st, void *opaque)
-{
-	struct jvst_cnode *node, *ndup;
-
-	(void)opaque;
-
-	if (!fsm_isend(dfa, st)) {
-		return 1;
-	}
-
-	node = fsm_getopaque((struct fsm *)dfa, st);
-	assert(node->type == JVST_CNODE_MATCH_CASE);
-
-	if (node->u.mcase.copied) {
-		assert(node->u.mcase.tmp != NULL);
-		return 1;
-	}
-
-	assert(node->u.mcase.tmp == NULL);
-
-	ndup = cnode_deep_copy(node);
-	assert(ndup != NULL);
-	node->u.mcase.tmp = ndup;
-	node->u.mcase.copied = 1;
-
-	fsm_setopaque((struct fsm *)dfa, (struct fsm_state *)st, ndup);
-
-	return 1;
-}
-
-static int
 mcase_update_opaque(const struct fsm *dfa, const struct fsm_state *st, void *opaque)
 {
 	struct jvst_cnode *node, *ndup;
