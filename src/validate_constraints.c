@@ -1929,28 +1929,46 @@ cnode_and_constraints(struct jvst_cnode *c1, struct jvst_cnode *c2)
 }
 
 static struct jvst_cnode *
-mswitch_and_cases_with_default(struct jvst_cnode *cases, struct jvst_cnode *dft)
+mswitch_and_cases_with_default(struct jvst_cnode *msw, struct jvst_cnode *dft)
 {
 	struct jvst_cnode *c, *new_cases, **ncpp;
 
+	assert(msw->type == JVST_CNODE_MATCH_SWITCH);
+
 	if (dft->type == JVST_CNODE_VALID) {
-		return cases;
+		return msw;
 	}
 
 	new_cases = NULL;
 	ncpp = &new_cases;
-	for (c = cases; c != NULL; c = c->next) {
+	for (c = msw->u.mswitch.cases; c != NULL; c = c->next) {
 		struct jvst_cnode *nc, *ndft;
+		assert(c->type == JVST_CNODE_MATCH_CASE);
+
 		nc = cnode_deep_copy(c);
 		ndft = cnode_deep_copy(dft);
 
 		nc->u.mcase.constraint = cnode_and_constraints(nc->u.mcase.constraint, ndft);
 
+		// the dfa can be updated
+		c->u.mcase.tmp = nc;
+
 		*ncpp = nc;
 		ncpp = &nc->next;
 	}
 
-	return new_cases;
+	fsm_walk_states(msw->u.mswitch.dfa, NULL, mcase_update_opaque);
+
+	// reset the tmp fields
+	for (c = msw->u.mswitch.cases; c != NULL; c = c->next) {
+		assert(c->type == JVST_CNODE_MATCH_CASE);
+		assert(c->u.mcase.tmp != NULL);
+		c->u.mcase.tmp = NULL;
+	}
+
+	msw->u.mswitch.cases = new_cases;
+
+	return msw;
 }
 
 static int matchset_cmp(const void *p0, const void *p1)
@@ -2309,18 +2327,15 @@ merge_mswitches_with_and(struct jvst_cnode *mswlst)
 			msw->u.mswitch.dfa = combined;
 			collect_mcases(combined, &msw->u.mswitch.cases);
 		} else if (n->u.mswitch.cases != NULL) {
-
 			assert(msw->u.mswitch.cases == NULL);
 
-			// need to AND together msw's default case and
-			// each of n's cases
-			msw->u.mswitch.cases = mswitch_and_cases_with_default(
-				n->u.mswitch.cases, msw->u.mswitch.default_case);
+			msw->u.mswitch.dfa = fsm_clone(n->u.mswitch.dfa);
+			msw->u.mswitch.cases = n->u.mswitch.cases;
+			mswitch_and_cases_with_default(msw, msw->u.mswitch.default_case);
 		} else if (msw->u.mswitch.cases != NULL) {
 			// need to AND together msw's default case and
 			// each of n's cases
-			msw->u.mswitch.cases = mswitch_and_cases_with_default(
-				msw->u.mswitch.cases, n->u.mswitch.default_case);
+			mswitch_and_cases_with_default(msw, n->u.mswitch.default_case);
 		}
 
 		msw->u.mswitch.default_case = cnode_and_constraints(
@@ -3131,27 +3146,6 @@ cnode_canonify_propset(struct jvst_cnode *top)
 			perror("cannot determinise fsm");
 			abort();
 		}
-
-		// if we have a PROP_NAMES node, need to intersect the matches
-		// with the PROP_NAMES dfa.  Also need to subtract matches
-		// from the PROP_NAMES dfa to build the valid default
-		// case
-		if (names_match != NULL) {
-			struct fsm *names1;
-
-			assert(names_match->type == JVST_CNODE_MATCH_SWITCH);
-
-			names1 = fsm_clone(names_match->u.mswitch.dfa);
-
-			// first restrict matches so they correspond to 
-			//
-			matches = fsm_intersect_bywalk(matches,names1);
-			if (!fsm_minimise(matches)) {
-				perror("minimizing (matches & names)");
-				abort();
-			}
-		}
-
 	}
 
 	mcases = NULL;

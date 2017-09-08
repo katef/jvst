@@ -2539,6 +2539,10 @@ static void test_canonify_propertynames(void)
                           newcnode_invalid(),
 
                           newcnode_mcase(&A,
+                            newmatchset(&A, RE_LITERAL, "bar", -1),
+                            newcnode_invalid()),
+
+                          newcnode_mcase(&A,
                             newmatchset(&A, RE_LITERAL, "foo", RE_NATIVE, "f.*", -1),
                             newcnode_switch(&A, 0, SJP_NUMBER, newcnode_valid(), SJP_NONE)),
 
