@@ -4302,6 +4302,281 @@ static void test_ir_propertynames()
       )
     },
 
+    {
+      TRANSLATE,
+      newcnode_switch(&A, 0,
+        SJP_OBJECT_BEG, newcnode_propnames(&A,
+                          newcnode_switch(&A, 0,
+                            SJP_STRING, newcnode_bool(&A,JVST_CNODE_AND,
+                                          newcnode_strmatch(&A, RE_NATIVE, "f.*"),
+                                          newcnode_counts(&A, JVST_CNODE_LENGTH_RANGE, 3, 16, true),
+                                          NULL),
+                            SJP_NONE)),
+        SJP_NONE),
+
+      newir_frame(&A,
+          newir_matcher(&A, 0, "dfa"),
+          newir_stmt(&A, JVST_IR_STMT_TOKEN),
+          newir_if(&A, newir_istok(&A, SJP_OBJECT_BEG),
+            newir_seq(&A,
+              newir_loop(&A, "L_OBJ", 0,
+                newir_stmt(&A, JVST_IR_STMT_TOKEN),
+                newir_if(&A, newir_istok(&A, SJP_OBJECT_END),
+                  newir_break(&A, "L_OBJ", 0),
+                  newir_seq(&A,
+                    newir_match(&A, 0,
+                      newir_case(&A, 0, 
+                        NULL,
+                        newir_invalid(&A, JVST_INVALID_BAD_PROPERTY_NAME, "bad property name")
+                      ),
+
+                      newir_case(&A, 1,
+                        newmatchset(&A, RE_NATIVE,  "f.*", -1),
+                        newir_if(&A,
+                          newir_op(&A, JVST_IR_EXPR_GE, 
+                            newir_expr(&A, JVST_IR_EXPR_TOK_LEN),
+                            newir_size(&A, 3)
+                          ),
+                          newir_if(&A,
+                            newir_op(&A, JVST_IR_EXPR_LE,
+                              newir_expr(&A, JVST_IR_EXPR_TOK_LEN),
+                              newir_size(&A, 16)
+                            ),
+                            newir_stmt(&A, JVST_IR_STMT_CONSUME),
+                            newir_invalid(&A, JVST_INVALID_LENGTH_TOO_LONG, "length is too long")
+                          ),
+                          newir_invalid(&A, JVST_INVALID_LENGTH_TOO_SHORT, "length is too short")
+                        )
+                      ),
+
+                      NULL
+                    ),
+                    NULL
+                  )
+                ),
+                NULL
+              ),
+              newir_stmt(&A, JVST_IR_STMT_VALID),
+              NULL
+            ),
+            newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token")
+          ),
+          NULL
+      )
+    },
+
+    {
+      TRANSLATE,
+      newcnode_switch(&A, 0,
+        SJP_OBJECT_BEG, newcnode_propnames(&A,
+                          newcnode_switch(&A, 0,
+                            SJP_STRING, newcnode_counts(&A, JVST_CNODE_LENGTH_RANGE, 3, 16, true),
+                            SJP_NONE)),
+        SJP_NONE),
+
+      newir_frame(&A,
+          newir_matcher(&A, 0, "dfa"),
+          newir_stmt(&A, JVST_IR_STMT_TOKEN),
+          newir_if(&A, newir_istok(&A, SJP_OBJECT_BEG),
+            newir_seq(&A,
+              newir_loop(&A, "L_OBJ", 0,
+                newir_stmt(&A, JVST_IR_STMT_TOKEN),
+                newir_if(&A, newir_istok(&A, SJP_OBJECT_END),
+                  newir_break(&A, "L_OBJ", 0),
+                  newir_seq(&A,
+                    newir_stmt(&A, JVST_IR_STMT_CONSUME),
+                    newir_if(&A,
+                      newir_op(&A, JVST_IR_EXPR_GE, 
+                        newir_expr(&A, JVST_IR_EXPR_TOK_LEN),
+                        newir_size(&A, 3)
+                      ),
+                      newir_if(&A,
+                        newir_op(&A, JVST_IR_EXPR_LE,
+                          newir_expr(&A, JVST_IR_EXPR_TOK_LEN),
+                          newir_size(&A, 16)
+                        ),
+                        newir_stmt(&A, JVST_IR_STMT_CONSUME),
+                        newir_invalid(&A, JVST_INVALID_LENGTH_TOO_LONG, "length is too long")
+                      ),
+                      newir_invalid(&A, JVST_INVALID_LENGTH_TOO_SHORT, "length is too short")
+                    ),
+                    NULL
+                  )
+                ),
+                NULL
+              ),
+              newir_stmt(&A, JVST_IR_STMT_VALID),
+              NULL
+            ),
+            newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token")
+          ),
+          NULL
+      )
+    },
+
+    {
+      TRANSLATE,
+      /*
+      newschema_p(&A, 0,
+          "propertyNames", "f.*",
+          NULL),
+          */
+
+      newcnode_switch(&A, 0,
+        SJP_OBJECT_BEG, newcnode_propnames(&A,
+                          newcnode_switch(&A, 0, SJP_STRING, newcnode_strmatch(&A, RE_NATIVE, "f.*"), SJP_NONE)),
+        SJP_NONE),
+
+      /*
+      newcnode_switch(&A, 0,
+        SJP_OBJECT_BEG, newcnode_mswitch(&A, 
+                          // default case
+                          newcnode_invalid(),
+
+                          newcnode_mcase(&A,
+                            newmatchset(&A, RE_NATIVE, "f.*", -1),
+                            newcnode_valid()),
+                          NULL),
+        SJP_NONE)
+      */
+
+      newir_frame(&A,
+          newir_matcher(&A, 0, "dfa"),
+          newir_stmt(&A, JVST_IR_STMT_TOKEN),
+          newir_if(&A, newir_istok(&A, SJP_OBJECT_BEG),
+            newir_seq(&A,
+              newir_loop(&A, "L_OBJ", 0,
+                newir_stmt(&A, JVST_IR_STMT_TOKEN),
+                newir_if(&A, newir_istok(&A, SJP_OBJECT_END),
+                  newir_break(&A, "L_OBJ", 0),
+                  newir_seq(&A,
+                    newir_match(&A, 0,
+                      newir_case(&A, 0, 
+                        NULL,
+                        newir_invalid(&A, JVST_INVALID_BAD_PROPERTY_NAME, "bad property name")
+                      ),
+
+                      newir_case(&A, 1,
+                        newmatchset(&A, RE_NATIVE,  "f.*", -1),
+                        newir_stmt(&A, JVST_IR_STMT_CONSUME)
+                      ),
+
+                      NULL
+                    ),
+                    NULL
+                  )
+                ),
+                NULL
+              ),
+              newir_stmt(&A, JVST_IR_STMT_VALID),
+              NULL
+            ),
+            newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token")
+          ),
+          NULL
+      )
+    },
+
+    // binary schema
+    {
+      TRANSLATE,
+      /*
+      newschema_p(&A, 0, "propertyNames", true_schema(), NULL),
+      */
+
+      newcnode_switch(&A, 0,
+        SJP_OBJECT_BEG, newcnode_propnames(&A,
+                          newcnode_switch(&A, 1, SJP_NONE)),
+        SJP_NONE),
+
+      /*
+      newcnode_switch(&A, 0,
+        SJP_OBJECT_BEG, newcnode_mswitch(&A, 
+                          // default case
+                          newcnode_valid(),
+                          NULL),
+        SJP_NONE)
+        */
+
+      /* TODO: we can improve this (maybe at the cnode level?
+       * the entire loop should become a CONSUME
+       */
+      newir_frame(&A,
+          newir_matcher(&A, 0, "dfa"),
+          newir_stmt(&A, JVST_IR_STMT_TOKEN),
+          newir_if(&A, newir_istok(&A, SJP_OBJECT_BEG),
+            newir_seq(&A,
+              newir_loop(&A, "L_OBJ", 0,
+                newir_stmt(&A, JVST_IR_STMT_TOKEN),
+                newir_if(&A, newir_istok(&A, SJP_OBJECT_END),
+                  newir_break(&A, "L_OBJ", 0),
+                  newir_seq(&A,
+                    newir_stmt(&A, JVST_IR_STMT_CONSUME),
+                    newir_stmt(&A, JVST_IR_STMT_CONSUME),
+                    NULL
+                  )
+                ),
+                NULL
+              ),
+              newir_stmt(&A, JVST_IR_STMT_VALID),
+              NULL
+            ),
+            newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token")
+          ),
+          NULL
+      )
+    },
+
+    {
+      TRANSLATE,
+      /*
+      newschema_p(&A, 0, "propertyNames", false_schema(), NULL),
+      */
+
+      newcnode_switch(&A, 0,
+        SJP_OBJECT_BEG, newcnode_propnames(&A,
+                          newcnode_switch(&A, 0, SJP_NONE)),
+        SJP_NONE),
+
+      /*
+      newcnode_switch(&A, 0,
+        SJP_OBJECT_BEG, newcnode_mswitch(&A, 
+                          // default case
+                          newcnode_invalid(),
+                          NULL),
+        SJP_NONE)
+      */
+
+      // TODO: we can improve this, as well:
+      //   SEQ(CONSUME, INVALID(BAD_PROPERTY_NAME))
+      // can be replaced with:
+      //   INVALID(BAD_PROPERTY_NAME)
+      newir_frame(&A,
+          newir_matcher(&A, 0, "dfa"),
+          newir_stmt(&A, JVST_IR_STMT_TOKEN),
+          newir_if(&A, newir_istok(&A, SJP_OBJECT_BEG),
+            newir_seq(&A,
+              newir_loop(&A, "L_OBJ", 0,
+                newir_stmt(&A, JVST_IR_STMT_TOKEN),
+                newir_if(&A, newir_istok(&A, SJP_OBJECT_END),
+                  newir_break(&A, "L_OBJ", 0),
+                  newir_seq(&A,
+                    newir_stmt(&A, JVST_IR_STMT_CONSUME),
+                    newir_invalid(&A, JVST_INVALID_BAD_PROPERTY_NAME, "bad property name"),
+                    NULL
+                  )
+                ),
+                NULL
+              ),
+              newir_stmt(&A, JVST_IR_STMT_VALID),
+              NULL
+            ),
+            newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token")
+          ),
+          NULL
+      )
+    },
+
     { STOP },
   };
 
