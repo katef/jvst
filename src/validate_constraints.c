@@ -656,7 +656,7 @@ and_or_xor:
 		sbuf_snprintf(buf, "x");
 
 		if (node->u.counts.upper > 0) {
-			sbuf_snprintf(buf, "<= %zu", node->u.counts.max);
+			sbuf_snprintf(buf, " <= %zu", node->u.counts.max);
 		}
 
 		sbuf_snprintf(buf, ")");
