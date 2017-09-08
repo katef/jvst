@@ -2236,7 +2236,7 @@ void test_canonify_ored_schema(void)
                                 newcnode_valid(),
 
                                 newcnode_mcase(&A,
-                                  newmatchset(&A, RE_LITERAL, "bar", RE_LITERAL, "bar", -1),
+                                  newmatchset(&A, RE_LITERAL, "bar", -1),
                                   newcnode_bool(&A, JVST_CNODE_AND,
                                     newcnode_switch(&A, 0, 
                                       SJP_NUMBER, newcnode(&A,JVST_CNODE_NUM_INTEGER),
@@ -2604,6 +2604,41 @@ static void test_canonify_propertynames(void)
 
       newcnode_switch(&A, 0,
         SJP_OBJECT_BEG, newcnode_propnames(&A,
+                          newcnode_switch(&A, 0,
+                            SJP_STRING, newcnode_bool(&A,JVST_CNODE_AND,
+                                          newcnode_strmatch(&A, RE_NATIVE, "f.*"),
+                                          newcnode_counts(&A, JVST_CNODE_LENGTH_RANGE, 3, 16, true),
+                                          NULL),
+                            SJP_NONE)),
+        SJP_NONE),
+
+      newcnode_switch(&A, 0,
+        SJP_OBJECT_BEG, newcnode_mswitch(&A, 
+                          // default case
+                          newcnode_invalid(),
+
+                          mswitch_str_constraints, 
+                            newcnode_counts(&A, JVST_CNODE_LENGTH_RANGE, 3, 16, true),
+
+                          newcnode_mcase(&A,
+                            newmatchset(&A, RE_NATIVE, "f.*", -1),
+                            newcnode_valid()),
+                          NULL),
+        SJP_NONE)
+    },
+
+    {
+      CANONIFY,
+      /*
+      newschema_p(&A, 0,
+          "propertyNames", "f.*",
+          NULL),
+          */
+
+      NULL,
+
+      newcnode_switch(&A, 0,
+        SJP_OBJECT_BEG, newcnode_propnames(&A,
                           newcnode_switch(&A, 0, SJP_STRING, newcnode_strmatch(&A, RE_NATIVE, "f.*"), SJP_NONE)),
         SJP_NONE),
 
@@ -2737,7 +2772,7 @@ void test_canonify_required(void)
                             ),
 
                             newcnode_mcase(&A,
-                              newmatchset(&A, RE_LITERAL, "foo", RE_LITERAL, "foo", -1),
+                              newmatchset(&A, RE_LITERAL, "foo", -1),
                               newcnode_bool(&A,JVST_CNODE_AND,
                                 newcnode_switch(&A, 0, SJP_NUMBER, newcnode_valid(), SJP_NONE),
                                 newcnode_reqbit(&A, 0),

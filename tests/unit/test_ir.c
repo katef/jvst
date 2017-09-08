@@ -1928,7 +1928,7 @@ void test_ir_required(void)
 
                       // match "foo"
                       newir_case(&A, 2,
-                        newmatchset(&A, RE_LITERAL,  "foo", RE_LITERAL, "foo", -1),
+                        newmatchset(&A, RE_LITERAL, "foo", -1),
                         newir_seq(&A,
                           newir_frame(&A,
                             newir_stmt(&A, JVST_IR_STMT_TOKEN),

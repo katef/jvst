@@ -1984,6 +1984,212 @@ mswitch_and_cases_with_default(struct jvst_cnode *cases, struct jvst_cnode *dft)
 	return new_cases;
 }
 
+static int matchset_cmp(const void *p0, const void *p1)
+{
+	const struct jvst_cnode_matchset *const *ms0, *const *ms1;
+	int diff;
+	size_t n0, n1, nsm;
+
+	ms0 = p0;
+	ms1 = p1;
+
+	diff = (*ms0)->match.dialect - (*ms1)->match.dialect;
+	if (diff != 0) {
+		return diff;
+	}
+
+	n0 = (*ms0)->match.str.len;
+	n1 = (*ms1)->match.str.len;
+	nsm = n0;
+	if (nsm > n1) {
+		nsm = n1;
+	}
+
+	diff = memcmp((*ms0)->match.str.s, (*ms1)->match.str.s, nsm);
+	if ((diff != 0) || (n0 == n1)) {
+		return diff;
+	}
+
+	return (n0 < n1) ? -1 : 1;
+}
+
+static void
+sort_matchset(struct jvst_cnode_matchset **mspp)
+{
+	struct jvst_cnode_matchset *ms, **msv;
+	struct jvst_cnode_matchset *msv0[16];
+	size_t i,n;
+
+	for (n=0, ms = *mspp; ms != NULL; n++, ms = ms->next) {
+		continue;
+	}
+
+	if (n < 2) {
+		return;
+	}
+
+	if (n <= ARRAYLEN(msv0)) {
+		msv = msv0;
+	} else {
+		msv = xmalloc(n * sizeof *msv);
+	}
+
+	for (i=0, ms=*mspp; ms != NULL; i++, ms=ms->next) {
+		msv[i] = ms;
+	}
+
+	qsort(msv, n, sizeof *msv, matchset_cmp);
+
+	for (i=0; i < n; i++) {
+		*mspp = msv[i];
+		mspp = &(*mspp)->next;
+		*mspp = NULL;
+	}
+
+	if (msv != msv0) {
+		free(msv);
+	}
+}
+
+static int
+mcase_cmp(const void *p0, const void *p1)
+{
+	const struct jvst_cnode *const *c0, *const *c1;
+	const struct jvst_cnode_matchset *ms0, *ms1;
+	c0 = p0;
+	c1 = p1;
+
+	ms0 = (*c0)->u.mcase.matchset;
+	ms1 = (*c1)->u.mcase.matchset;
+	for(; (ms0 != NULL) || (ms1 != NULL); ms0=ms0->next, ms1=ms1->next) {
+		int diff;
+
+		if (ms0 == ms1) {
+			return 0;
+		}
+
+		if (ms0 == NULL) {
+			return -1;
+		}
+
+		if (ms1 == NULL) {
+			return 1;
+		}
+
+		diff = matchset_cmp(&ms0,&ms1);
+		if (diff != 0) {
+			return diff;
+		}
+	}
+
+	if ((ms0 == NULL) && (ms1 == NULL)) {
+		return 0;
+	}
+
+	return (ms0 == NULL) ? -1 : 1;
+}
+
+static void
+sort_mcases(struct jvst_cnode **mcpp)
+{
+	struct jvst_cnode *mc, **mcv;
+	size_t i,n;
+	struct jvst_cnode *mcv0[16] = { 0 };
+
+	assert(mcpp != NULL);
+
+	for (n=0, mc = *mcpp; mc != NULL; n++, mc = mc->next) {
+		sort_matchset(&mc->u.mcase.matchset);
+	}
+
+	if (n < 2) {
+		return;
+	}
+
+	if (n <= ARRAYLEN(mcv0)) {
+		mcv = mcv0;
+	} else {
+		mcv = xmalloc(n * sizeof *mcv);
+	}
+
+	for (i=0, mc = *mcpp; mc != NULL; i++, mc = mc->next) {
+		mcv[i] = mc;
+	}
+
+	qsort(mcv, n, sizeof *mcv, mcase_cmp);
+
+	for (i=0; i < n; i++) {
+		*mcpp = mcv[i];
+		mcpp = &(*mcpp)->next;
+		*mcpp = NULL;
+	}
+
+	if (mcv != mcv0) {
+		free(mcv);
+	}
+}
+
+struct mcase_collector {
+	struct jvst_cnode **mcpp;
+};
+
+static int
+mcase_collector(const struct fsm *dfa, const struct fsm_state *st, void *opaque)
+{
+	struct jvst_cnode *node;
+	struct mcase_collector *collector;
+
+	collector = opaque;
+	assert(collector->mcpp != NULL);
+	assert(*collector->mcpp == NULL);
+
+	if (!fsm_isend(dfa, st)) {
+		return 1;
+	}
+
+	node = fsm_getopaque((struct fsm *)dfa, st);
+	assert(node->type == JVST_CNODE_MATCH_CASE);
+
+	if (node->u.mcase.collected) {
+		return 1;
+	}
+
+	assert(node->next == NULL);
+	assert(collector->mcpp != &node->next);
+
+	*collector->mcpp = node;
+	collector->mcpp = &node->next;
+	node->u.mcase.collected = 1;
+
+	return 1;
+}
+
+static void
+collect_mcases(struct fsm *dfa, struct jvst_cnode **mcpp)
+{
+	struct mcase_collector collector;
+	struct jvst_cnode *n, **it;
+
+	assert(mcpp != NULL);
+
+	collector.mcpp = mcpp;
+	*collector.mcpp = NULL;
+
+	fsm_walk_states(dfa, &collector, mcase_collector);
+
+	for (it=mcpp; *it != NULL; it = &(*it)->next) {
+		assert((*it)->type == JVST_CNODE_MATCH_CASE);
+
+		(*it)->u.mcase.collected = 0;
+	}
+
+	sort_mcases(mcpp);
+}
+
+static void
+merge_mcases(const struct fsm_state **orig, size_t n,
+	struct fsm *dfa, struct fsm_state *comb);
+
 static struct jvst_cnode *
 merge_mswitches_with_and(struct jvst_cnode *mswlst)
 {
@@ -2001,35 +2207,138 @@ merge_mswitches_with_and(struct jvst_cnode *mswlst)
 		assert(n->type == JVST_CNODE_MATCH_SWITCH);
 
 		if (msw->u.mswitch.cases != NULL && n->u.mswitch.cases != NULL) {
-			// FIXME: merge the mswitches!
-			NOT_YET_IMPLEMENTED(msw, "merging two mswitch nodes, both with cases");
+			struct fsm *dfa1, *dfa2, *both, *only1, *only2, *combined;
+			const struct fsm_options *opts;
+			struct jvst_cnode *mc1, *mc2;
 
-			// XXX - should combine match_switch nodes!
+			// Combining match_switch nodes
 			//
-			// it's an AND operation... this requires a bit of care
-			// because of the default case.
+			// it's an AND operation... this requires a bit of care because of the
+			// default case.
 			//
-			// Let's merge two match_switch nodes.  Let DFA1 be the
-			// first and DFA2 be the second.  Let DC1 and DC2 be the
-			// default cases for the first and second, respectively.
+			// Let the non-default cases for DFA1 be:
+			//   A_1, A_2, ... A_M, and the default case be A_0.
 			//
-			// 1. We want things that match both DFA1 and DFA2 to
-			//    have neither default case.
-			// 2. Things that match DFA1 and not DFA2 should have
-			//    their matching cases ANDed with DC2.
-			// 3. Things that match DFA2 and not DFA2 should have
-			//    their matching cases ANDed with DC1.
-			// 4. Things that match neither DFA1 nor DFA2 should
-			//    have AND(DC1,DC2)
+			// Similarly, let the non-default cases for DFA2 be:
+			//   B_1, B_2, ... B_N, and the default case be B_0.
 			//
-			// #1 is equivalent to intersection(DFA1,DFA2)
-			// #2 is DFA1 - DFA2, or DFA1 - intersection(DFA1,DFA2)
-			// #3 is DFA2 - DFA1, or DFA2 - intersection(DFA1,DFA2)
-			// #4 is the new default case
+			// The intersection of DFA1 and DFA2 will be a set of L cases in DFA1:
+			//   A_i1, A_i2, ..., A_iL, 
+			// and a set of L cases in DFA2:
+			//   B_j1, B_j2, ..., B_jL,
+			// where A_i1 has the same end state as B_j1, A_i2 and B_j2, ...,
+			// A_iL and B_jL.
+			//
+			// We want to AND together these cases to give
+			//   C_1, C_2, ..., C_L,
+			// where C_k = AND(A_ik, B_jk)
+			// 
+			// This leaves M-L cases in DFA1 that don't match with a case in DFA2
+			// and N-L cases in DFA2 that don't match with a case in DFA1.
+			//
+			// For the M-L cases in DFA1, they should be AND'd with the default case
+			// of DFA2.
+			//
+			// Similarly, for the N-L cases in DFA2, they should be AND'd with the
+			// default case in DFA1.
+			//
+			// Finally, the default case of the combined nodes matches neither DFA1
+			// nor DFA2, and should have the default cases for both AND'd together.
+			//
+			// To find the cases that match both, we need intersect(DFA1, DFA2).
+			// To find those that match DFA1 and not DFA2, we need subtract(DFA1, DFA2).
+			// To find those that match DFA2 and not DFA1, we need subtract(DFA2, DFA1).
+			//
+			// In all of these cases, we need the opaque values to be merged
+			// correctly.
 
-			// XXX - to do this, we have to replace the carryopaque
-			//       function in the fsm opts.  But... there's no
-			//       easy way to access this at the moment.
+			dfa1 = fsm_clone(msw->u.mswitch.dfa);
+			opts = fsm_getoptions(dfa1);
+
+			assert(opts->carryopaque == merge_mcases);
+
+			dfa2 = fsm_clone_with_opts(n->u.mswitch.dfa, opts);
+			if (dfa2 == NULL) {
+				perror("merging mswitch nodes (cloning DFA2)");
+				abort();
+			}
+
+			// NB: unlike fsm_intersect, fsm_intersect_bywalk is not destructive to
+			// its arguments
+			both = fsm_intersect_bywalk(dfa1,dfa2);
+			if (!fsm_minimise(both)) {
+				perror("minimizing (dfa1 & dfa2)");
+				abort();
+			}
+
+			// subtract(dfa1, dfa2) = intersection(dfa1, complement(dfa2))
+			//
+			// 1) form the complement of dfa2; 2) set its opaque values to be the
+			// default case for dfa2; 3) use fsm_intersect_bywalk to merge the
+			// mcases
+			if (!fsm_complement(dfa2)) {
+				perror("merging mswitch nodes (complement of DFA2)");
+				abort();
+			}
+
+			mc2 = cnode_new_mcase(NULL,
+				cnode_deep_copy(n->u.mswitch.default_case));
+
+			fsm_setendopaque(dfa2, mc2);
+			only1 = fsm_intersect_bywalk(dfa1, dfa2);
+			if (!fsm_minimise(only1)) {
+				perror("minimizing (DFA1 - DFA2)");
+				abort();
+			}
+			fsm_free(dfa2);
+
+			dfa2 = fsm_clone_with_opts(n->u.mswitch.dfa, opts);
+			// subtract(dfa2, dfa1) = intersect(dfa2, complement(dfa1)).
+			// Same as above, but we need to recreate dfa2 because the complement
+			// operation destroyed it.
+			if (dfa2 == NULL) {
+				perror("merging mswitch nodes (cloning DFA2)");
+				abort();
+			}
+
+			if (!fsm_complement(dfa1)) {
+				perror("merging mswitch nodes (complement of DFA1)");
+				abort();
+			}
+
+			mc1 = cnode_new_mcase(NULL,
+				cnode_deep_copy(msw->u.mswitch.default_case));
+
+			fsm_setendopaque(dfa1, mc1);
+			only2 = fsm_intersect_bywalk(dfa2, dfa1);
+			if (!fsm_minimise(only2)) {
+				perror("minimizing (DFA2 - DFA1)");
+				abort();
+			}
+			fsm_free(dfa1);
+			fsm_free(dfa2);
+
+			// now union them together
+			combined = fsm_union(both, only1);
+			if (!combined) {
+				perror("unioning (both OR only1)");
+				abort();
+			}
+
+			combined = fsm_union(combined, only2);
+			if (!combined) {
+				perror("unioning (combined OR only2)");
+				abort();
+			}
+
+			if (!fsm_determinise(combined)) {
+				perror("determinising union");
+				abort();
+			}
+
+			// now gather mcases
+			msw->u.mswitch.dfa = combined;
+			collect_mcases(combined, &msw->u.mswitch.cases);
 		} else if (n->u.mswitch.cases != NULL) {
 
 			assert(msw->u.mswitch.cases == NULL);
@@ -2422,15 +2731,54 @@ cmp_mcase_ptr(const void *pa, const void *pb)
 	return 0;
 }
 
+static int
+cmp_matchsets(const void *pa, const void *pb)
+{
+	const struct jvst_cnode_matchset *a, *b;
+	size_t n;
+	int delta;
+
+	a = *((const struct jvst_cnode_matchset **)pa);
+	b = *((const struct jvst_cnode_matchset **)pb);
+
+	if (a == b) {
+		return 0;
+	}
+
+	if (a == NULL) {
+		return 1;
+	}
+
+	if (b == NULL) {
+		return -1;
+	}
+
+	n = (a->match.str.len < b->match.str.len) ? a->match.str.len : b->match.str.len;
+	delta = memcmp(a->match.str.s, b->match.str.s, n);
+	if (delta != 0) {
+		return delta;
+	}
+
+	if (a->match.str.len < b->match.str.len) {
+		return -1;
+	}
+
+	if (a->match.str.len > b->match.str.len) {
+		return 1;
+	}
+
+	return 0;
+}
+
 static void
 merge_mcases(const struct fsm_state **orig, size_t n,
 	struct fsm *dfa, struct fsm_state *comb)
 {
 	struct jvst_cnode *mcase, *jxn, **jpp;
 	struct jvst_cnode_matchset **mspp;
-	struct jvst_cnode *mcases_buf[8] = { 0 };
-	struct jvst_cnode **mcases;
-	size_t nstates, nuniq;
+	struct jvst_cnode *mcases_buf[8] = { 0 }, **mcases;
+	struct jvst_cnode_matchset *mset_buf[8] = { 0 }, **msets;
+	size_t nstates, nuniq, nmatchsets;
 	size_t i,ind;
 
 	// first count states to make sure that we need to merge...
@@ -2492,7 +2840,7 @@ merge_mcases(const struct fsm_state **orig, size_t n,
 		assert(c != NULL);
 
 		assert(c->type == JVST_CNODE_MATCH_CASE);
-		assert(c->u.mcase.matchset != NULL);
+		// assert(c->u.mcase.matchset != NULL);
 
 		assert(ind < nstates);
 		mcases[ind++] = c;
@@ -2506,6 +2854,7 @@ merge_mcases(const struct fsm_state **orig, size_t n,
 	mcase = cnode_new_mcase(NULL, jxn);
 	mspp = &mcase->u.mcase.matchset;
 
+	nmatchsets = 0;
 	for (i=0; i < nstates; i++) {
 		struct jvst_cnode_matchset *mset;
 		struct jvst_cnode *c;
@@ -2519,12 +2868,49 @@ merge_mcases(const struct fsm_state **orig, size_t n,
 		// XXX - currently don't check the matchsets for duplicates.
 		// Do we need to?
 		for (mset = c->u.mcase.matchset; mset != NULL; mset = mset->next) {
+			nmatchsets++;
 			*mspp = cnode_matchset_new(mset->match, NULL);
 			mspp = &(*mspp)->next;
 		}
 
 		*jpp = cnode_deep_copy(c->u.mcase.constraint);
 		jpp = &(*jpp)->next;
+	}
+
+	if (nmatchsets > 1) {
+		struct jvst_cnode_matchset *ms;
+		size_t i;
+
+		if (nmatchsets <= ARRAYLEN(mset_buf)) {
+			msets = &mset_buf[0];
+		} else {
+			msets = xcalloc(nmatchsets, sizeof *msets);
+		}
+
+		i=0;
+		for (ms = mcase->u.mcase.matchset; ms != NULL; ms = ms->next) {
+			assert(i < nmatchsets);
+			msets[i++] = ms;
+		}
+
+		assert(i == nmatchsets);
+
+		qsort(msets, nmatchsets, sizeof *msets, cmp_matchsets);
+
+		mspp = &mcase->u.mcase.matchset;
+		*mspp = NULL;
+		for (i=0; i < nmatchsets; i++) {
+			if (i > 0 && cmp_matchsets(&msets[i], &msets[i-1]) == 0) {
+				continue;
+			}
+			*mspp = msets[i];
+			mspp = &(*mspp)->next;
+			*mspp = NULL;
+		}
+
+		if (msets != &mset_buf[0]) {
+			free(msets);
+		}
 	}
 
 	assert(mcase->next == NULL);
@@ -2564,186 +2950,7 @@ fsm_debug_printer(const struct fsm *dfa, const struct fsm_state *st, void *opaqu
 	return 1;
 }
 
-struct mcase_collector {
-	struct jvst_cnode **mcpp;
-};
 // static struct jvst_cnode **mcase_collector_head;
-
-static int
-mcase_collector(const struct fsm *dfa, const struct fsm_state *st, void *opaque)
-{
-	struct jvst_cnode *node;
-	struct mcase_collector *collector;
-
-	collector = opaque;
-	assert(collector->mcpp != NULL);
-	assert(*collector->mcpp == NULL);
-
-	if (!fsm_isend(dfa, st)) {
-		return 1;
-	}
-
-	node = fsm_getopaque((struct fsm *)dfa, st);
-	assert(node->type == JVST_CNODE_MATCH_CASE);
-
-	if (node->u.mcase.collected) {
-		return 1;
-	}
-
-	assert(node->next == NULL);
-	assert(collector->mcpp != &node->next);
-
-	*collector->mcpp = node;
-	collector->mcpp = &node->next;
-	node->u.mcase.collected = 1;
-
-	return 1;
-}
-
-static int matchset_cmp(const void *p0, const void *p1)
-{
-	const struct jvst_cnode_matchset *const *ms0, *const *ms1;
-	int diff;
-	size_t n0, n1, nsm;
-
-	ms0 = p0;
-	ms1 = p1;
-
-	diff = (*ms0)->match.dialect - (*ms1)->match.dialect;
-	if (diff != 0) {
-		return diff;
-	}
-
-	n0 = (*ms0)->match.str.len;
-	n1 = (*ms1)->match.str.len;
-	nsm = n0;
-	if (nsm > n1) {
-		nsm = n1;
-	}
-
-	diff = memcmp((*ms0)->match.str.s, (*ms1)->match.str.s, nsm);
-	if ((diff != 0) || (n0 == n1)) {
-		return diff;
-	}
-
-	return (n0 < n1) ? -1 : 1;
-}
-
-static void
-sort_matchset(struct jvst_cnode_matchset **mspp)
-{
-	struct jvst_cnode_matchset *ms, **msv;
-	struct jvst_cnode_matchset *msv0[16];
-	size_t i,n;
-
-	for (n=0, ms = *mspp; ms != NULL; n++, ms = ms->next) {
-		continue;
-	}
-
-	if (n < 2) {
-		return;
-	}
-
-	if (n <= ARRAYLEN(msv0)) {
-		msv = msv0;
-	} else {
-		msv = xmalloc(n * sizeof *msv);
-	}
-
-	for (i=0, ms=*mspp; ms != NULL; i++, ms=ms->next) {
-		msv[i] = ms;
-	}
-
-	qsort(msv, n, sizeof *msv, matchset_cmp);
-
-	for (i=0; i < n; i++) {
-		*mspp = msv[i];
-		mspp = &(*mspp)->next;
-		*mspp = NULL;
-	}
-
-	if (msv != msv0) {
-		free(msv);
-	}
-}
-
-static int
-mcase_cmp(const void *p0, const void *p1)
-{
-	const struct jvst_cnode *const *c0, *const *c1;
-	const struct jvst_cnode_matchset *ms0, *ms1;
-	c0 = p0;
-	c1 = p1;
-
-	ms0 = (*c0)->u.mcase.matchset;
-	ms1 = (*c1)->u.mcase.matchset;
-	for(; (ms0 != NULL) || (ms1 != NULL); ms0=ms0->next, ms1=ms1->next) {
-		int diff;
-
-		if (ms0 == ms1) {
-			return 0;
-		}
-
-		if (ms0 == NULL) {
-			return -1;
-		}
-
-		if (ms1 == NULL) {
-			return 1;
-		}
-
-		diff = matchset_cmp(&ms0,&ms1);
-		if (diff != 0) {
-			return diff;
-		}
-	}
-
-	if ((ms0 == NULL) && (ms1 == NULL)) {
-		return 0;
-	}
-
-	return (ms0 == NULL) ? -1 : 1;
-}
-
-static void
-sort_mcases(struct jvst_cnode **mcpp)
-{
-	struct jvst_cnode *mc, **mcv;
-	size_t i,n;
-	struct jvst_cnode *mcv0[16] = { 0 };
-
-	assert(mcpp != NULL);
-
-	for (n=0, mc = *mcpp; mc != NULL; n++, mc = mc->next) {
-		sort_matchset(&mc->u.mcase.matchset);
-	}
-
-	if (n < 2) {
-		return;
-	}
-
-	if (n <= ARRAYLEN(mcv0)) {
-		mcv = mcv0;
-	} else {
-		mcv = xmalloc(n * sizeof *mcv);
-	}
-
-	for (i=0, mc = *mcpp; mc != NULL; i++, mc = mc->next) {
-		mcv[i] = mc;
-	}
-
-	qsort(mcv, n, sizeof *mcv, mcase_cmp);
-
-	for (i=0; i < n; i++) {
-		*mcpp = mcv[i];
-		mcpp = &(*mcpp)->next;
-		*mcpp = NULL;
-	}
-
-	if (mcv != mcv0) {
-		free(mcv);
-	}
-}
 
 static struct fsm *
 mcase_re_compile(struct ast_regexp *re, struct fsm_options *opts, struct jvst_cnode *mcase)
@@ -2919,7 +3126,7 @@ cnode_canonify_propset(struct jvst_cnode *top)
 				fsm_setstart(empty,start);
 
 				names_match->u.mswitch.dfa = empty;
-				names_match->u.mswitch.default_case = cnode_deep_copy(nametree);
+				names_match->u.mswitch.default_case = nametree;
 			}
 			break;
 
@@ -2978,98 +3185,18 @@ cnode_canonify_propset(struct jvst_cnode *top)
 
 	}
 
-	if (names_match != NULL) {
-		struct fsm *matches1, *names_pat;
-		struct jvst_cnode *mc;
-		struct jvst_cnode_matchset *mset;
-
-		assert(names_match->type == JVST_CNODE_MATCH_SWITCH);
-
-		// Modify by AND'ing the default case
-		for (mc = names_match->u.mswitch.cases; mc != NULL; mc = mc->next) {
-			struct jvst_cnode *jxn, *constraint, *new_constraint;
-
-			jxn = jvst_cnode_alloc(JVST_CNODE_AND);
-			constraint = mc->u.mcase.constraint;
-
-			assert(constraint != NULL);
-			assert(constraint->next == NULL);
-
-			constraint->next = cnode_deep_copy(dft);
-			jxn->u.ctrl = constraint;
-			new_constraint = jvst_cnode_simplify(jxn);
-			new_constraint = jvst_cnode_canonify(new_constraint);
-			mc->u.mcase.constraint = new_constraint;
-		}
-
-		names_pat = fsm_clone_with_opts(names_match->u.mswitch.dfa, opts);
-		if (names_pat == NULL) {
-			perror("allocating FSM");
-			abort();
-		}
-
-		//   1. intersect the matches regexp with the PROP_NAMES regexp
-		//   2. if PROP_DEFAULT exists, give it a match that corresponds
-		//      to the DFA of (PROP_NAMES - matches)
-
-
-		// next subtract matches1 from names_pat to
-		// generate the default case regexp.  restrict
-		// to 
-		if (matches != NULL) {
-			matches1 = fsm_clone(matches);
-			if (!fsm_complement(matches1)) {
-				perror("complementing matches");
-				abort();
-			}
-
-			names_pat = fsm_intersect_bywalk(names_pat, matches1);
-
-			if (!fsm_minimise(names_pat)) {
-				perror("minimizing (names - matches)");
-				abort();
-			}
-		}
-
-
-		// union them together and determinize
-		if (matches != NULL) {
-			matches = fsm_union(matches, names_pat);
-
-			if (!fsm_determinise(matches)) {
-				perror("cannot determinise matches (including PROP_NAMES node)");
-				abort();
-			}
-		} else {
-			matches = names_pat;
-		}
-
-		//   3. set the default to the default of names_match
-		dft = cnode_deep_copy(names_match->u.mswitch.default_case);
-	}
-
 	mcases = NULL;
 	if (matches != NULL) {
 		// step 3: collect all MATCH_CASE nodes from the DFA by
 		// iterating over the DFA end states.  All MATCH_CASE nodes must
 		// be placed into a linked list.
-		collector.mcpp = &mcases;
-
-		fsm_walk_states(matches, &collector, mcase_collector);
-
-		{
-			struct jvst_cnode *n;
-			for (n=mcases; n != NULL; n=n->next) {
-				n->u.mcase.collected = 0;
-			}
-		}
-
+		//
 		// step 4: sort the MATCH_CASE nodes.
 		//
 		// This keeps the IR output deterministic (useful for testing,
 		// possibly other places?).  Currently this could be elided (or
 		// put behind an optional flag) if necessary.
-		sort_mcases(&mcases);
+		collect_mcases(matches, &mcases);
 	}
 
 	// step 5: build the MATCH_SWITCH container to hold the cases
@@ -3092,7 +3219,20 @@ cnode_canonify_propset(struct jvst_cnode *top)
 		mcases->u.mcase.constraint = jvst_cnode_canonify(cons);
 	}
 
-	return msw;
+	if (names_match == NULL) {
+		return msw;
+	}
+
+	{
+		struct jvst_cnode *merged;
+
+		assert(msw->next == NULL);
+		assert(names_match->next == NULL);
+
+		msw->next = names_match;
+		merged = merge_mswitches_with_and(msw);
+		return merged;
+	}
 }
 
 // replaces REQUIRED nodes with REQMASK and REQBIT nodes
