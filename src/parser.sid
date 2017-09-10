@@ -105,6 +105,10 @@
         <set-min-items>:            (:number) -> ();
         <set-max-items>:            (:number) -> ();
 
+        <set-all-of>:               (:ast-schema-list) -> ();
+        <set-any-of>:               (:ast-schema-list) -> ();
+        <set-one-of>:               (:ast-schema-list) -> ();
+
         <new-regexp>:               (:re-dialect, :string) -> (:regexp);
         <re-literal>:               () -> (:re-dialect);
         <re-pattern>:               () -> (:re-dialect);
@@ -388,6 +392,24 @@
 		<err-expected-number>;
 	};
 
+        directive-all-of = {
+                lst = schema-list;
+                <set-all-of>(lst);
+                <free-schema-list>(lst);
+        };
+
+        directive-any-of = {
+                lst = schema-list;
+                <set-any-of>(lst);
+                <free-schema-list>(lst);
+        };
+
+        directive-one-of = {
+                lst = schema-list;
+                <set-one-of>(lst);
+                <free-schema-list>(lst);
+        };
+
 	directive-title = {
 		s = STRING;
 		<set-title>(s);
@@ -490,13 +512,13 @@
 		directive-type;
 	||
 		? = <kw-all-of>(k);
-		placeholder;
+                directive-all-of;
 	||
 		? = <kw-any-of>(k);
-		placeholder;
+		directive-any-of;
 	||
 		? = <kw-one-of>(k);
-		placeholder;
+                directive-one-of;
 	||
 		? = <kw-not>(k);
 		placeholder;
