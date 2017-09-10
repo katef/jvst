@@ -1182,6 +1182,81 @@ void test_xlate_anyof_2(void)
   RUNTESTS(tests);
 }
 
+void test_xlate_allof_2(void)
+{
+  struct arena_info A = {0};
+
+  const struct cnode_test tests[] = {
+    {
+      TRANSLATE,
+      newschema_p(&A, 0,
+        "properties", newprops(&A, "bar", newschema(&A, JSON_VALUE_INTEGER), NULL),
+        "required", stringset(&A, "bar", NULL),
+        "allOf", schema_set(&A, 
+          newschema_p(&A, 0,
+            "properties", newprops(&A, "foo", newschema_p(&A, JSON_VALUE_STRING, NULL), NULL),
+            "required", stringset(&A, "foo", NULL),
+            NULL),
+          newschema_p(&A, 0,
+            "properties", newprops(&A, "baz", newschema_p(&A, JSON_VALUE_NULL, NULL), NULL),
+            "required", stringset(&A, "baz", NULL),
+            NULL),
+          NULL),
+        NULL),
+
+      NULL,
+
+      newcnode_bool(&A, JVST_CNODE_AND,
+          newcnode_bool(&A, JVST_CNODE_AND,
+            newcnode_switch(&A, 1,
+              SJP_OBJECT_BEG, newcnode_bool(&A, JVST_CNODE_AND,
+                                newcnode_required(&A, stringset(&A, "foo", NULL)),
+                                newcnode_bool(&A, JVST_CNODE_AND,
+                                  newcnode_propset(&A, 
+                                    newcnode_prop_match(&A, RE_LITERAL, "foo",
+                                      newcnode_switch(&A, 0, SJP_STRING, newcnode_valid(), SJP_NONE)),
+                                    NULL),
+                                newcnode_valid(),
+                                NULL),
+                              NULL),
+              SJP_NONE),
+            newcnode_switch(&A, 1,
+              SJP_OBJECT_BEG, newcnode_bool(&A, JVST_CNODE_AND,
+                                newcnode_required(&A, stringset(&A, "baz", NULL)),
+                                newcnode_bool(&A, JVST_CNODE_AND,
+                                  newcnode_propset(&A, 
+                                    newcnode_prop_match(&A, RE_LITERAL, "baz",
+                                      newcnode_switch(&A, 0, SJP_NULL, newcnode_valid(), SJP_NONE)),
+                                    NULL),
+                                newcnode_valid(),
+                                NULL),
+                              NULL),
+              SJP_NONE),
+
+            NULL),
+
+          newcnode_switch(&A, 1,
+            SJP_OBJECT_BEG, newcnode_bool(&A, JVST_CNODE_AND,
+                              newcnode_required(&A, stringset(&A, "bar", NULL)),
+                              newcnode_bool(&A, JVST_CNODE_AND,
+                                newcnode_propset(&A, 
+                                  newcnode_prop_match(&A, RE_LITERAL, "bar",
+                                    newcnode_switch(&A, 0, SJP_NUMBER, newcnode(&A,JVST_CNODE_NUM_INTEGER), SJP_NONE)),
+                                  NULL),
+                              newcnode_valid(),
+                              NULL),
+                            NULL),
+            SJP_NONE),
+
+          NULL)
+    },
+
+    { STOP },
+  };
+
+  RUNTESTS(tests);
+}
+
 static void test_xlate_pattern_1(void)
 {
   struct arena_info A = {0};
@@ -2107,6 +2182,100 @@ static void test_simplify_patterns(void)
                       newcnode_counts(&A, JVST_CNODE_LENGTH_RANGE, 12, 0, false),
                       NULL),
         SJP_NONE),
+    },
+
+    { STOP },
+  };
+
+  RUNTESTS(tests);
+}
+
+void test_simplify_allof_2(void)
+{
+  struct arena_info A = {0};
+
+  const struct cnode_test tests[] = {
+    {
+      SIMPLIFY,
+      NULL,
+      /*
+      newschema_p(&A, 0,
+        "properties", newprops(&A, "bar", newschema(&A, JSON_VALUE_INTEGER), NULL),
+        "required", stringset(&A, "bar", NULL),
+        "allOf", schema_set(&A, 
+          newschema_p(&A, 0,
+            "properties", newprops(&A, "foo", newschema_p(&A, JSON_VALUE_STRING, NULL), NULL),
+            "required", stringset(&A, "foo", NULL),
+            NULL),
+          newschema_p(&A, 0,
+            "properties", newprops(&A, "baz", newschema_p(&A, JSON_VALUE_NULL, NULL), NULL),
+            "required", stringset(&A, "baz", NULL),
+            NULL),
+          NULL),
+        NULL),
+      */
+
+      newcnode_bool(&A, JVST_CNODE_AND,
+          newcnode_bool(&A, JVST_CNODE_AND,
+            newcnode_switch(&A, 1,
+              SJP_OBJECT_BEG, newcnode_bool(&A, JVST_CNODE_AND,
+                                newcnode_required(&A, stringset(&A, "foo", NULL)),
+                                newcnode_bool(&A, JVST_CNODE_AND,
+                                  newcnode_propset(&A, 
+                                    newcnode_prop_match(&A, RE_LITERAL, "foo",
+                                      newcnode_switch(&A, 0, SJP_STRING, newcnode_valid(), SJP_NONE)),
+                                    NULL),
+                                newcnode_valid(),
+                                NULL),
+                              NULL),
+              SJP_NONE),
+            newcnode_switch(&A, 1,
+              SJP_OBJECT_BEG, newcnode_bool(&A, JVST_CNODE_AND,
+                                newcnode_required(&A, stringset(&A, "baz", NULL)),
+                                newcnode_bool(&A, JVST_CNODE_AND,
+                                  newcnode_propset(&A, 
+                                    newcnode_prop_match(&A, RE_LITERAL, "baz",
+                                      newcnode_switch(&A, 0, SJP_NULL, newcnode_valid(), SJP_NONE)),
+                                    NULL),
+                                newcnode_valid(),
+                                NULL),
+                              NULL),
+              SJP_NONE),
+
+            NULL),
+
+          newcnode_switch(&A, 1,
+            SJP_OBJECT_BEG, newcnode_bool(&A, JVST_CNODE_AND,
+                              newcnode_required(&A, stringset(&A, "bar", NULL)),
+                              newcnode_bool(&A, JVST_CNODE_AND,
+                                newcnode_propset(&A, 
+                                  newcnode_prop_match(&A, RE_LITERAL, "bar",
+                                    newcnode_switch(&A, 0, SJP_NUMBER, newcnode(&A,JVST_CNODE_NUM_INTEGER), SJP_NONE)),
+                                  NULL),
+                              newcnode_valid(),
+                              NULL),
+                            NULL),
+            SJP_NONE),
+
+          NULL),
+
+        newcnode_switch(&A, 1,
+          SJP_OBJECT_BEG, newcnode_bool(&A, JVST_CNODE_AND,
+                            newcnode_propset(&A, 
+                              newcnode_prop_match(&A, RE_LITERAL, "foo",
+                                newcnode_switch(&A, 0, SJP_STRING, newcnode_valid(), SJP_NONE)),
+
+                              newcnode_prop_match(&A, RE_LITERAL, "baz",
+                                newcnode_switch(&A, 0, SJP_NULL, newcnode_valid(), SJP_NONE)),
+
+                              newcnode_prop_match(&A, RE_LITERAL, "bar",
+                                newcnode_switch(&A, 0, SJP_NUMBER, newcnode(&A,JVST_CNODE_NUM_INTEGER), SJP_NONE)),
+                              NULL),
+
+                            newcnode_required(&A, stringset(&A, "foo", "baz", "bar", NULL)),
+
+                          NULL),
+          SJP_NONE),
     },
 
     { STOP },
@@ -3042,6 +3211,7 @@ int main(void)
 
   test_xlate_anyof_allof_oneof_1();
   test_xlate_anyof_2();
+  test_xlate_allof_2();
 
   test_xlate_pattern_1();
   test_xlate_minmax_length_1();
@@ -3057,6 +3227,7 @@ int main(void)
   test_simplify_required();
   test_simplify_dependencies();
   test_simplify_patterns();
+  test_simplify_allof_2();
 
   test_canonify_ored_schema();
   test_canonify_propsets();

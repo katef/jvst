@@ -1868,30 +1868,34 @@ cnode_simplify_ctrl_children(struct jvst_cnode *top)
 void
 cnode_simplify_ctrl_combine_like(struct jvst_cnode *top)
 {
-	struct jvst_cnode *node, *next, **pp;
+	struct jvst_cnode *node, *next, *newlist, **pp;
+
+	assert(top != NULL);
+	assert(top->type == JVST_CNODE_AND || top->type == JVST_CNODE_OR);
+	assert(top->u.ctrl != NULL);
 
 	// combine subnodes of the same type (ie: AND will combine with
 	// AND and OR will combine with OR)
-	for (pp = &top->u.ctrl; *pp != NULL; pp = &(*pp)->next) {
-		if ((*pp)->type != top->type) {
+	newlist = NULL;
+	pp = &newlist;
+	for (node = top->u.ctrl; node != NULL; node = next) {
+		next = node->next;
+
+		if (node->type != top->type) {
+			*pp = node;
+			pp = &node->next;
 			continue;
 		}
 
-		// save next link
-		next = (*pp)->next;
-		*pp  = (*pp)->u.ctrl;
+		assert(node->u.ctrl != NULL);
 
-		// fast path...
-		if (next == NULL) {
-			continue;
-		}
-
+		*pp = node->u.ctrl;
 		while (*pp != NULL) {
 			pp = &(*pp)->next;
 		}
-
-		*pp = next;
 	}
+
+	top->u.ctrl = newlist;
 }
 
 static struct jvst_cnode *
