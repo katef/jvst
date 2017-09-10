@@ -67,6 +67,7 @@
         typedef struct {
                 struct ast_schema_set *head;
                 struct ast_schema_set **tail;
+                unsigned count;
         } *ast_schema_list_t;
 
 	#define CURRENT_TERMINAL act_state->t.type
@@ -206,6 +207,20 @@
 			}
 		}
 	}
+
+        static void
+        set_schema_list(struct ast_schema_set **varp, ast_schema_list_t list, const char *name)
+        {
+                
+                assert(list->head != NULL);
+
+                *varp = list->head;
+
+		if (debug & DEBUG_ACT) {
+			fprintf(stderr, "<%s>:\n", name);
+                        // FIXME: print out list of items
+                }
+        }
 
 @}, @{
 
@@ -421,6 +436,7 @@
                 
                 *l->tail = sset;
                 l->tail = &sset->next;
+                l->count++;
         @};
 
         <set-items-single>: (sch :ast-schema) -> () = @{
@@ -459,16 +475,8 @@
                 ast_schema_list_t items;
 
                 items = @lst;
-                assert(items->head != NULL);
-
-                ast->items = items->head;
-
                 ast->kws &= ~KWS_SINGLETON_ITEMS;
-
-		if (debug & DEBUG_ACT) {
-			fprintf(stderr, "<set-items-list>:\n");
-                        // FIXME: print out list of items
-                }
+                set_schema_list(&ast->items, items, "set-items-list");
         @};
 
 	<set-min-items>: (n :number) -> () = @{
@@ -504,6 +512,33 @@
 		ast->kws |= KWS_MAX_ITEMS;
 		ast->max_items = c;
 	@};
+
+        <set-all-of>:   (lst :ast-schema-list) -> () = @{
+                ast_schema_list_t items;
+
+                items = @lst;
+                set_schema_list(&ast->some_of.set, items, "set-all-of");
+                ast->some_of.min = items->count;
+                ast->some_of.max = items->count;
+        @};
+
+        <set-any-of>:   (lst :ast-schema-list) -> () = @{
+                ast_schema_list_t items;
+
+                items = @lst;
+                set_schema_list(&ast->some_of.set, items, "set-any-of");
+                ast->some_of.min = 1;
+                ast->some_of.max = items->count;
+        @};
+
+        <set-one-of>:  (lst :ast-schema-list) -> () = @{
+                ast_schema_list_t items;
+
+                items = @lst;
+                set_schema_list(&ast->some_of.set, items, "set-any-of");
+                ast->some_of.min = 1;
+                ast->some_of.max = 1;
+        @};
 
 	<set-schema>: (s :string) -> () = @{
 		assert(@s.s != NULL);
