@@ -145,7 +145,7 @@ struct jvst_cnode {
 			struct jvst_cnode *default_case;
 			struct jvst_cnode *cases;
 
-			struct jvst_cnode *constraints;
+			// struct jvst_cnode *constraints;
 
 			struct fsm *dfa;
 			struct fsm_options *opts;

@@ -2790,12 +2790,9 @@ static void test_canonify_propertynames(void)
                           // default case
                           newcnode_invalid(),
 
-                          mswitch_str_constraints, 
-                            newcnode_counts(&A, JVST_CNODE_LENGTH_RANGE, 3, 16, true),
-
                           newcnode_mcase(&A,
                             newmatchset(&A, RE_NATIVE, "f.*", -1),
-                            newcnode_valid()),
+                            newcnode_counts(&A, JVST_CNODE_LENGTH_RANGE, 3, 16, true)),
                           NULL),
         SJP_NONE)
     },
@@ -3015,12 +3012,9 @@ static void test_canonify_patterns(void)
         SJP_STRING, newcnode_mswitch(&A,
                       newcnode_invalid(),       // default case
 
-                      mswitch_str_constraints, 
-                        newcnode_counts(&A, JVST_CNODE_LENGTH_RANGE, 12, 0, false),
-
                       newcnode_mcase(&A,
                         newmatchset(&A, RE_NATIVE, "a+b.d", -1),
-                        newcnode_valid()
+                        newcnode_counts(&A, JVST_CNODE_LENGTH_RANGE, 12, 0, false)
                       ),
 
                       NULL
@@ -3047,10 +3041,7 @@ static void test_canonify_patterns(void)
 
       newcnode_switch(&A, 1,
         SJP_STRING, newcnode_mswitch(&A,
-                      newcnode_valid(),       // default case
-
-                      mswitch_str_constraints, 
-                        newcnode_counts(&A, JVST_CNODE_LENGTH_RANGE, 12, 0, false),
+                      newcnode_counts(&A, JVST_CNODE_LENGTH_RANGE, 12, 0, false),
 
                       NULL
                     ),
