@@ -768,7 +768,7 @@ newcnode_mswitch(struct arena_info *A, struct jvst_cnode *dft, ...)
 			struct jvst_cnode *cons;
 
 			cons = va_arg(args, struct jvst_cnode *);
-			node->u.mswitch.constraints = cons;
+			// node->u.mswitch.constraints = cons;
 			continue;
 		}
 

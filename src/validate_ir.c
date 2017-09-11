@@ -1950,7 +1950,8 @@ ir_translate_obj_inner(struct jvst_cnode *top, struct ir_object_builder *builder
 				assert(caselist->u.mcase.tmp == mc);
 				assert(mc->next == NULL);
 
-				ir_obj_prepend_constraints(&mc->stmt, top->u.mswitch.constraints, builder);
+				// FIXME: handle string constraints
+				// ir_obj_prepend_constraints(&mc->stmt, top->u.mswitch.constraints, builder);
 
 				mc->which = ++which;
 				*builder->mcpp = mc;
@@ -1986,8 +1987,12 @@ ir_translate_obj_inner(struct jvst_cnode *top, struct ir_object_builder *builder
 				if (cnode_dft->type != JVST_CNODE_INVALID) {
 					// if it's already invalid, don't bother with further
 					// constraints...
-					ir_obj_prepend_constraints(&ir_dft, top->u.mswitch.constraints, builder);
+
+					// FIXME: handle string
+					// constraints!
+					// ir_obj_prepend_constraints(&ir_dft, top->u.mswitch.constraints, builder);
 				}
+
 				builder->match->u.match.default_case = ir_dft;
 			}
 
@@ -2802,7 +2807,9 @@ str_translate_mswitch(struct jvst_cnode *top, struct ir_str_builder *builder)
 
 	builder->consumed = true;
 
-	sw_cons = top->u.mswitch.constraints;
+	// FIXME: handle string constraints
+	// sw_cons = top->u.mswitch.constraints;
+	sw_cons = NULL;
 
 	// build jvst_ir_mcase nodes from cases list
 	which = 0;
