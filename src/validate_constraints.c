@@ -714,12 +714,20 @@ and_or_xor:
 
 			// assert(node->u.mswitch.default_case != NULL);
 
-			if (node->u.mswitch.default_case != NULL) {
+			if (node->u.mswitch.dft_case != NULL) {
+				struct jvst_cnode *dft, *constraint;
+
+				dft = node->u.mswitch.dft_case;
+				assert(dft->type == JVST_CNODE_MATCH_CASE);
+
+				constraint = dft->u.mcase.constraint;
+				assert(constraint != NULL);
+
 				sbuf_indent(buf, indent+2);
 				sbuf_snprintf(buf, "DEFAULT[\n");
 
 				sbuf_indent(buf, indent+4);
-				jvst_cnode_dump_inner(node->u.mswitch.default_case, buf, indent + 4);
+				jvst_cnode_dump_inner(constraint, buf, indent + 4);
 				sbuf_snprintf(buf, "\n");
 
 				sbuf_indent(buf, indent+2);
@@ -1360,8 +1368,9 @@ cnode_mswitch_copy(struct jvst_cnode *node)
 	}
 
 	// all mswitch nodes need a default case!
-	assert(node->u.mswitch.default_case != NULL);
-	tree->u.mswitch.default_case = cnode_deep_copy(node->u.mswitch.default_case);
+	assert(node->u.mswitch.dft_case != NULL);
+	assert(node->u.mswitch.dft_case->type == JVST_CNODE_MATCH_CASE);
+	tree->u.mswitch.dft_case = cnode_deep_copy(node->u.mswitch.dft_case);
 
 	/*
 	if (node->u.mswitch.constraints != NULL) {
@@ -2330,8 +2339,7 @@ merge_mswitches_with_and(struct jvst_cnode *mswlst)
 			}
 
 			// only1 = DFA2 - DFA1
-			mc2 = cnode_new_mcase(NULL,
-				cnode_deep_copy(n->u.mswitch.default_case));
+			mc2 = cnode_deep_copy(n->u.mswitch.dft_case);
 			only1 = subtract_nd(dfa1,dfa2,mc2,opts);
 			if (!only1) {
 				perror("subtracting (DFA1 - DFA2)");
@@ -2344,8 +2352,7 @@ merge_mswitches_with_and(struct jvst_cnode *mswlst)
 			}
 
 			// only2 = DFA2 - DFA1
-			mc1 = cnode_new_mcase(NULL,
-				cnode_deep_copy(msw->u.mswitch.default_case));
+			mc1 = cnode_deep_copy(msw->u.mswitch.dft_case);
 			only2 = subtract_nd(dfa2,dfa1,mc1,opts);
 			if (!only2) {
 				perror("subtracting (DFA2 - DFA1)");
@@ -2383,24 +2390,17 @@ merge_mswitches_with_and(struct jvst_cnode *mswlst)
 
 			msw->u.mswitch.dfa = fsm_clone(n->u.mswitch.dfa);
 			msw->u.mswitch.cases = n->u.mswitch.cases;
-			mswitch_and_cases_with_default(msw, msw->u.mswitch.default_case);
+			mswitch_and_cases_with_default(msw, msw->u.mswitch.dft_case->u.mcase.constraint);
 		} else if (msw->u.mswitch.cases != NULL) {
 			// need to AND together msw's default case and
 			// each of n's cases
-			mswitch_and_cases_with_default(msw, n->u.mswitch.default_case);
+			mswitch_and_cases_with_default(msw, n->u.mswitch.dft_case->u.mcase.constraint);
 		}
 
-		msw->u.mswitch.default_case = cnode_and_constraints(
-				msw->u.mswitch.default_case, n->u.mswitch.default_case);
-
-		/*
-		if (msw->u.mswitch.constraints && n->u.mswitch.constraints) {
-			msw->u.mswitch.constraints = cnode_and_constraints(
-				msw->u.mswitch.constraints, n->u.mswitch.constraints);
-		} else if (n->u.mswitch.constraints) {
-			msw->u.mswitch.constraints = n->u.mswitch.constraints;
-		}
-		*/
+		assert(msw->u.mswitch.dft_case != NULL);
+		assert(msw->u.mswitch.dft_case->type == JVST_CNODE_MATCH_CASE);
+		msw->u.mswitch.dft_case->u.mcase.constraint = cnode_and_constraints(
+				msw->u.mswitch.dft_case->u.mcase.constraint, n->u.mswitch.dft_case->u.mcase.constraint);
 	}
 
 	msw = jvst_cnode_simplify(msw);
@@ -2492,17 +2492,18 @@ cnode_simplify_and_mswitch(struct jvst_cnode *top)
 
 		{ 
 			struct jvst_cnode *dft, *top_jxn;
-			dft = msw->u.mswitch.default_case;
+			dft = msw->u.mswitch.dft_case;
 
 			assert(dft != NULL);
+			assert(dft->type == JVST_CNODE_MATCH_CASE);
 			assert(dft->next == NULL);
 			assert(cjxn->next == NULL);
 
 			top_jxn = jvst_cnode_alloc(JVST_CNODE_AND);
 			top_jxn->u.ctrl = cjxn;
-			cjxn->next = dft;
+			cjxn->next = dft->u.mcase.constraint;
 
-			msw->u.mswitch.default_case = jvst_cnode_simplify(top_jxn);
+			msw->u.mswitch.dft_case->u.mcase.constraint = jvst_cnode_simplify(top_jxn);
 		}
 	}
 
@@ -2728,7 +2729,7 @@ jvst_cnode_simplify(struct jvst_cnode *tree)
 		{
 			struct jvst_cnode *mc, *next;
 
-			tree->u.mswitch.default_case = jvst_cnode_simplify(tree->u.mswitch.default_case);
+			tree->u.mswitch.dft_case = jvst_cnode_simplify(tree->u.mswitch.dft_case);
 
 			for (mc=tree->u.mswitch.cases; mc != NULL; mc = next) {
 				assert(mc->type == JVST_CNODE_MATCH_CASE);
@@ -3196,7 +3197,7 @@ cnode_canonify_propset(struct jvst_cnode *top)
 				fsm_setstart(empty,start);
 
 				names_match->u.mswitch.dfa = empty;
-				names_match->u.mswitch.default_case = nametree;
+				names_match->u.mswitch.dft_case = cnode_new_mcase(NULL,nametree);
 			}
 			break;
 
@@ -3257,7 +3258,7 @@ cnode_canonify_propset(struct jvst_cnode *top)
 
 	// if have a PROP_NAMES node, the default case (non-matching) is
 	// INVALID
-	msw->u.mswitch.default_case = dft;
+	msw->u.mswitch.dft_case = cnode_new_mcase(NULL,dft);
 
 	// step 4: simplify and canonify the constraint of each MATCH_CASE node.
 	// 	   We re-simplify the constraints because multiple
@@ -3372,7 +3373,7 @@ cnode_canonify_strmatch(struct jvst_cnode *top)
 	msw->u.mswitch.dfa = match;
 	msw->u.mswitch.opts = opts;
 	msw->u.mswitch.cases = mcase;
-	msw->u.mswitch.default_case = jvst_cnode_alloc(JVST_CNODE_INVALID);
+	msw->u.mswitch.dft_case = cnode_new_mcase(NULL, jvst_cnode_alloc(JVST_CNODE_INVALID));
 
 	return msw;
 }
@@ -3462,8 +3463,7 @@ cnode_canonify_pass1(struct jvst_cnode *tree)
 			struct jvst_cnode *msw;
 
 			msw = jvst_cnode_alloc(JVST_CNODE_MATCH_SWITCH);
-			msw->u.mswitch.default_case = tree; // jvst_cnode_alloc(JVST_CNODE_VALID);
-			// msw->u.mswitch.constraints = tree;
+			msw->u.mswitch.dft_case = cnode_new_mcase(NULL,tree);
 
 			return msw;
 		}
@@ -3605,7 +3605,7 @@ cnode_canonify_pass2(struct jvst_cnode *tree)
 		{
 			struct jvst_cnode *mc, **mcpp;
 
-			tree->u.mswitch.default_case = cnode_canonify_pass2(tree->u.mswitch.default_case);
+			tree->u.mswitch.dft_case = cnode_canonify_pass2(tree->u.mswitch.dft_case);
 
 			mc = NULL;
 			mcpp = &mc;
