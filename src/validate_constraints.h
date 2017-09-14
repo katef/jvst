@@ -142,10 +142,8 @@ struct jvst_cnode {
 
 		/* Nodes used for simplifying property matching */
 		struct {
-			struct jvst_cnode *default_case;
+			struct jvst_cnode *dft_case;
 			struct jvst_cnode *cases;
-
-			// struct jvst_cnode *constraints;
 
 			struct fsm *dfa;
 			struct fsm_options *opts;

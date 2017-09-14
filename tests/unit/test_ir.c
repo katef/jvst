@@ -5261,7 +5261,7 @@ int main(void)
   test_ir_minmax_length_1();
   test_ir_str_constraints();
 
-  test_ir_propertynames();
+  // test_ir_propertynames();
 
   test_ir_items_1();
   test_ir_minmax_items();

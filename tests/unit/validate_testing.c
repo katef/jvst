@@ -749,11 +749,13 @@ const struct jvst_cnode *const mswitch_str_constraints = &v_mswitch_str_constrai
 struct jvst_cnode *
 newcnode_mswitch(struct arena_info *A, struct jvst_cnode *dft, ...)
 {
-	struct jvst_cnode *node, **cpp;
+	struct jvst_cnode *node, **cpp, *dftcase;
 	va_list args;
 
 	node = newcnode(A, JVST_CNODE_MATCH_SWITCH);
-	node->u.mswitch.default_case = dft;
+	dftcase = newcnode(A, JVST_CNODE_MATCH_CASE);
+	dftcase->u.mcase.constraint = dft;
+	node->u.mswitch.dft_case = dftcase;
 	cpp = &node->u.mswitch.cases;
 
 	va_start(args, dft);

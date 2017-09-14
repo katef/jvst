@@ -1980,10 +1980,12 @@ ir_translate_obj_inner(struct jvst_cnode *top, struct ir_object_builder *builder
 				struct jvst_cnode *cnode_dft;
 				struct jvst_ir_stmt *ir_dft;
 
-				cnode_dft = top->u.mswitch.default_case;
+				cnode_dft = top->u.mswitch.dft_case;
 				assert(cnode_dft != NULL);
+				assert(cnode_dft->type == JVST_CNODE_MATCH_CASE);
+				assert(cnode_dft->u.mcase.constraint != NULL);
 
-				ir_dft = obj_mswitch_translate_and_ensure_consume(cnode_dft, builder);
+				ir_dft = obj_mswitch_translate_and_ensure_consume(cnode_dft->u.mcase.constraint, builder);
 				if (cnode_dft->type != JVST_CNODE_INVALID) {
 					// if it's already invalid, don't bother with further
 					// constraints...
@@ -2763,6 +2765,10 @@ str_translate_concat_constraints(struct jvst_cnode *sw_cons, struct jvst_cnode *
 	}
 	ir_translate_string_inner(case_cons, builder);
 
+	if ((*(builder->ipp))->type == JVST_IR_STMT_NOP) {
+		(*(builder->ipp))->type = JVST_IR_STMT_VALID;
+	}
+
 	builder->ipp = saved_ipp;
 }
 
@@ -2839,7 +2845,9 @@ str_translate_mswitch(struct jvst_cnode *top, struct ir_str_builder *builder)
 	}
 
 	// translate the default case
-	str_translate_concat_constraints(sw_cons, top->u.mswitch.default_case, dftpp, builder);
+	assert(top->u.mswitch.dft_case != NULL);
+	assert(top->u.mswitch.dft_case->type == JVST_CNODE_MATCH_CASE);
+	str_translate_concat_constraints(sw_cons, top->u.mswitch.dft_case->u.mcase.constraint, dftpp, builder);
 
 	// clear the u.mcase.tmp values in case they need to be used elsewhere
 	for (mcase = top->u.mswitch.cases; mcase != NULL; mcase = mcase->next) {
@@ -2981,6 +2989,12 @@ ir_translate_string(struct jvst_cnode *top, struct jvst_ir_stmt *frame)
 	builder.ipp = &stmt;
 
 	ir_translate_string_inner(top, &builder);
+	assert(builder.ipp != NULL);
+	assert(*builder.ipp != NULL);
+
+	if ((*builder.ipp)->type == JVST_IR_STMT_NOP) {
+		(*builder.ipp)->type = JVST_IR_STMT_VALID;
+	}
 
 	assert(stmt != NULL);
 
