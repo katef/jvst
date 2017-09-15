@@ -2788,11 +2788,15 @@ static void test_canonify_propertynames(void)
       newcnode_switch(&A, 0,
         SJP_OBJECT_BEG, newcnode_mswitch(&A, 
                           // default case
-                          newcnode_invalid(),
+                          newcnode_mcase_namecons(&A,
+                            NULL,
+                            newcnode_counts(&A, JVST_CNODE_LENGTH_RANGE, 3, 16, true),
+                            newcnode_invalid()),
 
-                          newcnode_mcase(&A,
+                          newcnode_mcase_namecons(&A,
                             newmatchset(&A, RE_NATIVE, "f.*", -1),
-                            newcnode_counts(&A, JVST_CNODE_LENGTH_RANGE, 3, 16, true)),
+                            newcnode_counts(&A, JVST_CNODE_LENGTH_RANGE, 3, 16, true),
+                            newcnode_valid()),
                           NULL),
         SJP_NONE)
     },
@@ -3010,11 +3014,17 @@ static void test_canonify_patterns(void)
 
       newcnode_switch(&A, 1,
         SJP_STRING, newcnode_mswitch(&A,
-                      newcnode_invalid(),       // default case
+                      // default case
+                      newcnode_mcase_namecons(&A,
+                        NULL,
+                        newcnode_counts(&A, JVST_CNODE_LENGTH_RANGE, 12, 0, false),
+                        newcnode_invalid()
+                      ),
 
-                      newcnode_mcase(&A,
+                      newcnode_mcase_namecons(&A,
                         newmatchset(&A, RE_NATIVE, "a+b.d", -1),
-                        newcnode_counts(&A, JVST_CNODE_LENGTH_RANGE, 12, 0, false)
+                        newcnode_counts(&A, JVST_CNODE_LENGTH_RANGE, 12, 0, false),
+                        newcnode_valid()
                       ),
 
                       NULL
@@ -3041,7 +3051,11 @@ static void test_canonify_patterns(void)
 
       newcnode_switch(&A, 1,
         SJP_STRING, newcnode_mswitch(&A,
-                      newcnode_counts(&A, JVST_CNODE_LENGTH_RANGE, 12, 0, false),
+                      newcnode_mcase_namecons(&A,
+                        NULL,
+                        newcnode_counts(&A, JVST_CNODE_LENGTH_RANGE, 12, 0, false),
+                        newcnode_valid()
+                      ),
 
                       NULL
                     ),
