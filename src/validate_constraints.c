@@ -2800,19 +2800,46 @@ jvst_cnode_simplify(struct jvst_cnode *tree)
 			tree->u.mswitch.dft_case = jvst_cnode_simplify(tree->u.mswitch.dft_case);
 
 			for (mc=tree->u.mswitch.cases; mc != NULL; mc = next) {
+				struct jvst_cnode *smc;
+
 				assert(mc->type == JVST_CNODE_MATCH_CASE);
 				next = mc->next;
-				if (mc->u.mcase.name_constraint != NULL) {
-					mc->u.mcase.name_constraint = jvst_cnode_simplify(mc->u.mcase.name_constraint);
-				}
-				mc->u.mcase.value_constraint = jvst_cnode_simplify(mc->u.mcase.value_constraint);
-			}
 
+				// FIXME: this is a hack.  what we should do is to rebuild the case list.
+				// When we do that, the u.mcase.tmp values aren't kept and this is required
+				// when updating FSM nodes.  We need to find a better way to do this!
+
+				smc = jvst_cnode_simplify(mc);
+				mc->u.mcase.name_constraint = smc->u.mcase.name_constraint;
+				mc->u.mcase.value_constraint = smc->u.mcase.value_constraint;
+			}
 
 			return tree;
 		}
 
 	case JVST_CNODE_MATCH_CASE:
+		if (tree->u.mcase.name_constraint != NULL) {
+			tree->u.mcase.name_constraint = jvst_cnode_simplify(tree->u.mcase.name_constraint);
+
+			if (tree->u.mcase.name_constraint->type == JVST_CNODE_VALID) {
+				// a VALID name constraint is equivalent to no name constraint
+				tree->u.mcase.name_constraint = NULL;
+				break;
+			} else if (tree->u.mcase.name_constraint->type == JVST_CNODE_INVALID) {
+				// an INVALID name constraint makes everything INVALID
+				tree->u.mcase.value_constraint = tree->u.mcase.name_constraint;
+				tree->u.mcase.name_constraint = NULL;
+			}
+		}
+
+		tree->u.mcase.value_constraint = jvst_cnode_simplify(tree->u.mcase.value_constraint);
+
+		assert(tree->u.mcase.value_constraint != NULL);
+		if (tree->u.mcase.value_constraint->type == JVST_CNODE_INVALID) {
+			// an INVALID value constraint makes everything INVALID
+			tree->u.mcase.name_constraint = NULL;
+		}
+
 		return tree;
 
 	case JVST_CNODE_NUM_RANGE:
