@@ -4239,6 +4239,7 @@ static void test_ir_propertynames()
                             NULL),
                           NULL),
         SJP_NONE),
+
       /*
       newcnode_switch(&A, 0,
         SJP_OBJECT_BEG, newcnode_mswitch(&A, 
@@ -5261,7 +5262,7 @@ int main(void)
   test_ir_minmax_length_1();
   test_ir_str_constraints();
 
-  // test_ir_propertynames();
+  test_ir_propertynames();
 
   test_ir_items_1();
   test_ir_minmax_items();
