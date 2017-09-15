@@ -754,7 +754,7 @@ newcnode_mswitch(struct arena_info *A, struct jvst_cnode *dft, ...)
 
 	node = newcnode(A, JVST_CNODE_MATCH_SWITCH);
 	dftcase = newcnode(A, JVST_CNODE_MATCH_CASE);
-	dftcase->u.mcase.constraint = dft;
+	dftcase->u.mcase.value_constraint = dft;
 	node->u.mswitch.dft_case = dftcase;
 	cpp = &node->u.mswitch.cases;
 
@@ -789,7 +789,7 @@ newcnode_mcase(struct arena_info *A, struct jvst_cnode_matchset *mset,
 	struct jvst_cnode *node;
 	node = newcnode(A, JVST_CNODE_MATCH_CASE);
 	node->u.mcase.matchset = mset;
-	node->u.mcase.constraint = constraint;
+	node->u.mcase.value_constraint = constraint;
 
 	return node;
 }

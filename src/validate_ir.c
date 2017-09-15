@@ -1842,7 +1842,8 @@ obj_mswitch_case_translate(struct jvst_cnode *node, struct ir_object_builder *bu
 	assert(node->type == JVST_CNODE_MATCH_CASE);
 	assert(node->u.mcase.tmp == NULL);
 
-	stmt = obj_mswitch_translate_and_ensure_consume(node->u.mcase.constraint, builder);
+	// XXX - handle string constraints
+	stmt = obj_mswitch_translate_and_ensure_consume(node->u.mcase.value_constraint, builder);
 
 	mcase = ir_mcase_new(UNASSIGNED_MATCH, stmt);
 	mcase->matchset = node->u.mcase.matchset;
@@ -1951,7 +1952,10 @@ ir_translate_obj_inner(struct jvst_cnode *top, struct ir_object_builder *builder
 				assert(mc->next == NULL);
 
 				// FIXME: handle string constraints
-				// ir_obj_prepend_constraints(&mc->stmt, top->u.mswitch.constraints, builder);
+				if (caselist->u.mcase.name_constraint != NULL) {
+					ir_obj_prepend_constraints(&mc->stmt,
+						caselist->u.mcase.name_constraint, builder);
+				}
 
 				mc->which = ++which;
 				*builder->mcpp = mc;
@@ -1983,16 +1987,16 @@ ir_translate_obj_inner(struct jvst_cnode *top, struct ir_object_builder *builder
 				cnode_dft = top->u.mswitch.dft_case;
 				assert(cnode_dft != NULL);
 				assert(cnode_dft->type == JVST_CNODE_MATCH_CASE);
-				assert(cnode_dft->u.mcase.constraint != NULL);
+				assert(cnode_dft->u.mcase.value_constraint != NULL);
 
-				ir_dft = obj_mswitch_translate_and_ensure_consume(cnode_dft->u.mcase.constraint, builder);
+				// XXX - can we simplify this?  let's look at refactoring it to use the
+				// same mechanism as str_translate_concat_constraints
+				ir_dft = obj_mswitch_translate_and_ensure_consume(cnode_dft->u.mcase.value_constraint, builder);
 				if (cnode_dft->type != JVST_CNODE_INVALID) {
 					// if it's already invalid, don't bother with further
 					// constraints...
 
-					// FIXME: handle string
-					// constraints!
-					// ir_obj_prepend_constraints(&ir_dft, top->u.mswitch.constraints, builder);
+					ir_obj_prepend_constraints(&ir_dft, cnode_dft->u.mcase.name_constraint, builder);
 				}
 
 				builder->match->u.match.default_case = ir_dft;
@@ -2829,7 +2833,8 @@ str_translate_mswitch(struct jvst_cnode *top, struct ir_str_builder *builder)
 		ir_constraint = NULL;
 		spp = &ir_constraint;
 		
-		str_translate_concat_constraints(sw_cons, mcase->u.mcase.constraint, spp, builder);
+		str_translate_concat_constraints(mcase->u.mcase.name_constraint,
+			mcase->u.mcase.value_constraint, spp, builder);
 
 		mc = ir_mcase_new(++which, ir_constraint);
 		mc->matchset = mcase->u.mcase.matchset;
@@ -2847,7 +2852,8 @@ str_translate_mswitch(struct jvst_cnode *top, struct ir_str_builder *builder)
 	// translate the default case
 	assert(top->u.mswitch.dft_case != NULL);
 	assert(top->u.mswitch.dft_case->type == JVST_CNODE_MATCH_CASE);
-	str_translate_concat_constraints(sw_cons, top->u.mswitch.dft_case->u.mcase.constraint, dftpp, builder);
+	str_translate_concat_constraints(top->u.mswitch.dft_case->u.mcase.name_constraint,
+		top->u.mswitch.dft_case->u.mcase.value_constraint, dftpp, builder);
 
 	// clear the u.mcase.tmp values in case they need to be used elsewhere
 	for (mcase = top->u.mswitch.cases; mcase != NULL; mcase = mcase->next) {
