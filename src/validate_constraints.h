@@ -151,7 +151,8 @@ struct jvst_cnode {
 
 		struct {
 			struct jvst_cnode_matchset *matchset;
-			struct jvst_cnode *constraint;
+			struct jvst_cnode *name_constraint;
+			struct jvst_cnode *value_constraint;
 
 			// temp storage used in duplication
 			void *tmp;
