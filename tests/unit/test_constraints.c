@@ -2443,6 +2443,46 @@ void test_canonify_ored_schema(void)
           SJP_NONE),
     },
 
+    {
+      CANONIFY, 
+      // schema: {
+      //   "dependencies": {
+      //     "bar": {
+      //       "properties": {
+      //         "foo": {"type": "integer"},
+      //         "bar": {"type": "integer"}
+      //       }
+      //     }
+      //   }
+      // },
+      NULL,
+
+      // simplified tree
+      newcnode_switch(&A, 0, 
+          SJP_STRING, newcnode_bool(&A, JVST_CNODE_OR,
+                        newcnode_counts(&A, JVST_CNODE_LENGTH_RANGE, 0, 2, true),
+                        newcnode_counts(&A, JVST_CNODE_LENGTH_RANGE, 4, 0, false),
+                        NULL),
+          SJP_NONE),
+
+      // canonified tree
+      newcnode_switch(&A, 0, 
+          SJP_STRING, newcnode_mswitch(&A,
+                        // default case
+                        newcnode_mcase_namecons(&A,
+                          NULL,
+                          newcnode_bool(&A, JVST_CNODE_OR,
+                            newcnode_counts(&A, JVST_CNODE_LENGTH_RANGE, 0, 2, true),
+                            newcnode_counts(&A, JVST_CNODE_LENGTH_RANGE, 4, 0, false),
+                            NULL),
+                          newcnode_valid()
+                        ),
+
+                        NULL
+                      ),
+          SJP_NONE),
+    },
+
     { STOP },
   };
 

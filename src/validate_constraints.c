@@ -1911,6 +1911,40 @@ cnode_simplify_ctrl_combine_like(struct jvst_cnode *top)
 }
 
 static struct jvst_cnode *
+cnode_or_constraints(struct jvst_cnode *c1, struct jvst_cnode *c2)
+{
+	struct jvst_cnode *jxn;
+
+	assert(c1 != NULL);
+	assert(c2 != NULL);
+
+	assert(c1->next == NULL);
+	assert(c2->next == NULL);
+
+	if (c1->type == JVST_CNODE_VALID) {
+		return c1;
+	}
+
+	if (c1->type == JVST_CNODE_INVALID) {
+		return c2;
+	}
+
+	if (c2->type == JVST_CNODE_VALID) {
+		return c2;
+	}
+
+	if (c2->type == JVST_CNODE_INVALID) {
+		return c1;
+	}
+
+	jxn = jvst_cnode_alloc(JVST_CNODE_OR);
+	c1->next = c2;
+	jxn->u.ctrl = c1;
+
+	return jvst_cnode_simplify(jxn);
+}
+
+static struct jvst_cnode *
 cnode_and_constraints(struct jvst_cnode *c1, struct jvst_cnode *c2)
 {
 	struct jvst_cnode *jxn;
@@ -2284,6 +2318,10 @@ subtract_nd(const struct fsm *a, const struct fsm *b, void *opaque_compl, const 
 	return fsm_intersect(dfa1,dfa2);
 }
 
+static void
+merge_mcases_with_or(const struct fsm_state **orig, size_t n,
+	struct fsm *dfa, struct fsm_state *comb);
+
 static struct jvst_cnode *
 merge_mswitches_with_and(struct jvst_cnode *mswlst)
 {
@@ -2470,7 +2508,7 @@ mcase_add_name_constraint(struct jvst_cnode *c, struct jvst_cnode *name_cons)
 	} else {
 		struct jvst_cnode *top_jxn;
 
-		// We can do a better job not overallocating nodes
+		// We can do a better job of not overallocating nodes
 		// here!
 		top_jxn = jvst_cnode_alloc(JVST_CNODE_AND);
 		top_jxn->u.ctrl = jxn;
@@ -2479,6 +2517,179 @@ mcase_add_name_constraint(struct jvst_cnode *c, struct jvst_cnode *name_cons)
 		c->u.mcase.name_constraint = jvst_cnode_simplify(top_jxn);
 		assert(c->u.mcase.name_constraint->type != JVST_CNODE_MATCH_CASE);
 	}
+}
+
+static struct jvst_cnode *
+merge_mswitches_with_or(struct jvst_cnode *mswlst)
+{
+	struct jvst_cnode *n, *msw;
+
+	assert(mswlst != NULL);
+	assert(mswlst->type == JVST_CNODE_MATCH_SWITCH);
+
+	if (mswlst->next == NULL) {
+		return mswlst;
+	}
+
+	msw = cnode_deep_copy(mswlst);
+	for (n = mswlst->next; n != NULL; n = n->next) {
+		assert(n->type == JVST_CNODE_MATCH_SWITCH);
+
+		if (msw->u.mswitch.cases != NULL && n->u.mswitch.cases != NULL) {
+			struct fsm *dfa1, *dfa2, *both, *only1, *only2, *combined;
+			const struct fsm_options *orig_opts;
+			struct fsm_options opts;
+			struct jvst_cnode *mc1, *mc2;
+
+			// Combining match_switch nodes with OR
+			//
+			// Let the non-default cases for DFA1 be:
+			//   A_1, A_2, ... A_M, and the default case be A_0.
+			//
+			// Similarly, let the non-default cases for DFA2 be:
+			//   B_1, B_2, ... B_N, and the default case be B_0.
+			//
+			// First focus on something that matches case A_1.  There are two possibilities:
+			//
+			//   1. It also matches some non-default case in DFA2: say B_k
+			//   2. It matches the default case in DFA2: B_0
+			//
+			// If it matches B_k, then the combined constraint is:
+			//   OR(A_1, B_k).
+			//
+			// If it matches the default case, the combine constraint is:
+			//   OR(A_1, B_0).
+			//
+			// We have four general situations:
+			//
+			//   1. Matches non-default in DFA1 and non-default in DFA2
+			//
+			//      The combined states are given by intersect(DFA1,DFA2)
+			//
+			//   2. Matches non-default in DFA1 and default in DFA2
+			//
+			//      The combined states are given by subtract(DFA1,DFA2)
+			//   
+			//   3. Matches default in DFA1 and non-default in DFA2
+			//
+			//      The combined states are given by subtract(DFA2,DFA1)
+			//   
+			//   4. Matches default in DFA1 and default in DFA2
+			//
+			//      Indicates that nothing above has been matched.
+			//
+			// Thus we need:
+			//   both  = intersect(DFA1,DFA2)
+			//   only1 = subtract(DFA1,DFA2)
+			//   only2 = subtract(DFA2,DFA1)
+			//
+			//   combined = union(both, only1, only2)
+			//
+			// In all of these cases, we need the opaque values to be merged
+			// correctly.
+
+			dfa1 = msw->u.mswitch.dfa;
+			dfa2 = n->u.mswitch.dfa;
+
+			orig_opts = fsm_getoptions(dfa1);
+			opts = *orig_opts;
+			opts.carryopaque = merge_mcases_with_or;
+
+			// both = DFA1 & DFA2
+			both = intersect_nd(dfa1,dfa2,&opts);
+			if (!both) {
+				perror("intersecting (dfa1 & dfa2)");
+				abort();
+			}
+
+			if (!fsm_minimise(both)) {
+				perror("minimizing (dfa1 & dfa2)");
+				abort();
+			}
+
+			// only1 = DFA2 - DFA1
+			mc2 = cnode_deep_copy(n->u.mswitch.dft_case);
+			only1 = subtract_nd(dfa1,dfa2,mc2,&opts);
+			if (!only1) {
+				perror("subtracting (DFA1 - DFA2)");
+				abort();
+			}
+
+			if (!fsm_minimise(only1)) {
+				perror("minimizing (DFA1 - DFA2)");
+				abort();
+			}
+
+			// only2 = DFA2 - DFA1
+			mc1 = cnode_deep_copy(msw->u.mswitch.dft_case);
+			only2 = subtract_nd(dfa2,dfa1,mc1,&opts);
+			if (!only2) {
+				perror("subtracting (DFA2 - DFA1)");
+				abort();
+			}
+
+			if (!fsm_minimise(only2)) {
+				perror("minimizing (DFA2 - DFA1)");
+				abort();
+			}
+
+			// now union them together
+			combined = fsm_union(both, only1);
+			if (!combined) {
+				perror("unioning (both OR only1)");
+				abort();
+			}
+
+			combined = fsm_union(combined, only2);
+			if (!combined) {
+				perror("unioning (combined OR only2)");
+				abort();
+			}
+
+			if (!fsm_determinise(combined)) {
+				perror("determinising union");
+				abort();
+			}
+
+			fsm_setoptions(combined, orig_opts);
+
+			// now gather mcases
+			msw->u.mswitch.dfa = combined;
+			collect_mcases(combined, &msw->u.mswitch.cases);
+		} else if (n->u.mswitch.cases != NULL) {
+			assert(msw->u.mswitch.cases == NULL);
+
+			msw->u.mswitch.dfa = fsm_clone(n->u.mswitch.dfa);
+			msw->u.mswitch.cases = n->u.mswitch.cases;
+			mswitch_and_cases_with_default(msw, msw->u.mswitch.dft_case);
+		} else if (msw->u.mswitch.cases != NULL) {
+			// need to AND together msw's default case and
+			// each of n's cases
+			mswitch_and_cases_with_default(msw, n->u.mswitch.dft_case);
+		}
+
+		assert(msw->u.mswitch.dft_case != NULL);
+		assert(msw->u.mswitch.dft_case->type == JVST_CNODE_MATCH_CASE);
+
+		assert(n->u.mswitch.dft_case != NULL);
+		assert(n->u.mswitch.dft_case->type == JVST_CNODE_MATCH_CASE);
+
+		if (msw->u.mswitch.dft_case->u.mcase.name_constraint && n->u.mswitch.dft_case->u.mcase.name_constraint) {
+			msw->u.mswitch.dft_case->u.mcase.name_constraint = cnode_or_constraints(
+					msw->u.mswitch.dft_case->u.mcase.name_constraint,
+					n->u.mswitch.dft_case->u.mcase.name_constraint);
+		} else if (n->u.mswitch.dft_case->u.mcase.name_constraint) {
+			msw->u.mswitch.dft_case->u.mcase.name_constraint = cnode_deep_copy(
+				n->u.mswitch.dft_case->u.mcase.name_constraint);
+		}
+
+		msw->u.mswitch.dft_case->u.mcase.value_constraint = cnode_and_constraints(
+				msw->u.mswitch.dft_case->u.mcase.value_constraint,
+				n->u.mswitch.dft_case->u.mcase.value_constraint);
+	}
+
+	msw = jvst_cnode_simplify(msw);
+	return msw;
 }
 
 static struct jvst_cnode *
@@ -2579,6 +2790,42 @@ cnode_simplify_and_mswitch(struct jvst_cnode *top)
 }
 
 static struct jvst_cnode *
+cnode_simplify_or_mswitch(struct jvst_cnode *top)
+{
+	struct jvst_cnode *msw, **mswpp, **npp;
+
+	assert(top->type == JVST_CNODE_OR);
+
+	// collect all MATCH_SWITCH children and nodes we want to push
+	// into MATCH_SWITCH cases
+	msw = NULL;
+	mswpp = &msw;
+
+	for (npp = &top->u.ctrl; *npp != NULL; ) {
+		switch ((*npp)->type) {
+		case JVST_CNODE_MATCH_SWITCH:
+			*mswpp = *npp;
+			*npp = (*npp)->next;
+
+			mswpp = &(*mswpp)->next;
+			*mswpp = NULL;
+			break;
+
+		default:
+			npp = &(*npp)->next;
+			continue;
+		}
+	}
+
+	if (msw != NULL) {
+		msw = merge_mswitches_with_or(msw);
+		*npp = msw;
+	}
+
+	return top;
+}
+
+static struct jvst_cnode *
 cnode_simplify_andor_strmatch(struct jvst_cnode *top)
 {
 	/* TODO: strmatch cases (like propsets) can be combined more
@@ -2662,6 +2909,8 @@ cnode_simplify_andor(struct jvst_cnode *top)
 	/* combine AND'd match_switch nodes, moves any AND'd COUNT_RANGE nodes */
 	if (top->type == JVST_CNODE_AND) {
 		top = cnode_simplify_and_mswitch(top);
+	} else if (top->type == JVST_CNODE_OR) {
+		top = cnode_simplify_or_mswitch(top);
 	}
 
 	/* XXX - can also combine OR'd match_switch nodes */
@@ -2940,8 +3189,8 @@ cmp_matchsets(const void *pa, const void *pb)
 }
 
 static void
-merge_mcases(const struct fsm_state **orig, size_t n,
-	struct fsm *dfa, struct fsm_state *comb)
+merge_mcases_with_cjxn(const struct fsm_state **orig, size_t n,
+	struct fsm *dfa, struct fsm_state *comb, enum jvst_cnode_type cjxn_type)
 {
 	struct jvst_cnode *mcase, *njxn, **njpp, *vjxn, **vjpp;
 	struct jvst_cnode_matchset **mspp;
@@ -2949,6 +3198,8 @@ merge_mcases(const struct fsm_state **orig, size_t n,
 	struct jvst_cnode_matchset *mset_buf[8] = { 0 }, **msets;
 	size_t nstates, nuniq, nmatchsets;
 	size_t i,ind;
+
+	assert(cjxn_type == JVST_CNODE_AND || cjxn_type == JVST_CNODE_OR);
 
 	// first count states to make sure that we need to merge...
 	mcase = NULL;
@@ -3018,10 +3269,10 @@ merge_mcases(const struct fsm_state **orig, size_t n,
 	// sort cases, remove duplicates
 	qsort(mcases, nstates, sizeof *mcases, cmp_mcase_ptr);
 
-	njxn = jvst_cnode_alloc(JVST_CNODE_AND);
+	njxn = jvst_cnode_alloc(cjxn_type);
 	njpp = &njxn->u.ctrl;
 
-	vjxn = jvst_cnode_alloc(JVST_CNODE_AND);
+	vjxn = jvst_cnode_alloc(cjxn_type);
 	vjpp = &vjxn->u.ctrl;
 
 	// XXX: fix cnode_new_mcase to take both name and value
@@ -3106,6 +3357,20 @@ merge_mcases(const struct fsm_state **orig, size_t n,
 	if (mcases != &mcases_buf[0]) {
 		free(mcases);
 	}
+}
+
+static void
+merge_mcases(const struct fsm_state **orig, size_t n,
+	struct fsm *dfa, struct fsm_state *comb)
+{
+	merge_mcases_with_cjxn(orig, n, dfa, comb, JVST_CNODE_AND);
+}
+
+static void
+merge_mcases_with_or(const struct fsm_state **orig, size_t n,
+	struct fsm *dfa, struct fsm_state *comb)
+{
+	merge_mcases_with_cjxn(orig, n, dfa, comb, JVST_CNODE_OR);
 }
 
 static int
