@@ -29,7 +29,7 @@
 } while(0)
 
 #define EXPR_UNIMPLEMENTED(expr) do {						\
-	fprintf(stderr, "%s:%d (%s) IR statement %s not yet implemented\n",	\
+	fprintf(stderr, "%s:%d (%s) IR expression %s not yet implemented\n",	\
 		__FILE__, __LINE__, __func__,					\
 		jvst_ir_expr_type_name((expr)->type));				\
 	abort();								\
@@ -38,6 +38,11 @@
 #define UNKNOWN_CNODE(type) do { \
 	fprintf(stderr, "%s:%d (%s) unknown cnode type %d\n", \
 		__FILE__, __LINE__, __func__, (type)); 	   \
+	abort(); } while(0)
+
+#define UNIMPLEMENTED_CNODE(node) do { \
+	fprintf(stderr, "%s:%d (%s) unimplemented cnode %s\n", \
+		__FILE__, __LINE__, __func__, jvst_cnode_type_name((node)->type));    \
 	abort(); } while(0)
 
 #define UNKNOWN_STMT(type) do { \
@@ -2874,6 +2879,92 @@ str_translate_mswitch(struct jvst_cnode *top, struct ir_str_builder *builder)
 	return match;
 }
 
+static struct jvst_ir_expr *
+ir_length_range_expr(struct jvst_cnode *range)
+{
+	struct jvst_ir_expr *expr;
+
+	expr = NULL;
+	if (range->u.counts.min > 0) {
+		expr = ir_expr_op(JVST_IR_EXPR_GE,
+				ir_expr_new(JVST_IR_EXPR_TOK_LEN),
+				ir_expr_size(range->u.counts.min));
+	}
+
+	if (range->u.counts.upper) {
+		struct jvst_ir_expr *upper;
+
+		upper = ir_expr_op(JVST_IR_EXPR_LE,
+				ir_expr_new(JVST_IR_EXPR_TOK_LEN),
+				ir_expr_size(range->u.counts.max));
+
+		if (expr != NULL) {
+			expr = ir_expr_op(JVST_IR_EXPR_AND, expr, upper);
+		} else {
+			expr = upper;
+		}
+	}
+
+	assert(expr != NULL);
+
+	return expr;
+}
+
+static struct jvst_ir_expr *
+ir_complex_length_range_expr(struct jvst_cnode *range)
+{
+	struct jvst_cnode *n;
+	struct jvst_ir_expr *expr;
+	enum jvst_ir_expr_type op;
+
+	// All child nodes should be string constraints, which are currently
+	// LENGTH_RANGE nodes.  We want to construct one large boolean expression from
+	// the length_range nodes.
+
+	if (range->type == JVST_CNODE_OR) {
+		op = JVST_IR_EXPR_OR;
+	} else {
+		op = JVST_IR_EXPR_AND;
+	}
+
+	// FIXME: this won't handle complex expressions...
+	expr = NULL;
+	for (n = range->u.ctrl; n != NULL; n = n->next) {
+		struct jvst_ir_expr *term;
+
+		switch (n->type) {
+		case JVST_CNODE_LENGTH_RANGE:
+			term = ir_length_range_expr(n);
+			break;
+
+		case JVST_CNODE_OR:
+		case JVST_CNODE_AND:
+			term = ir_complex_length_range_expr(n);
+			break;
+
+		default:
+			UNIMPLEMENTED_CNODE(n);
+		}
+
+		assert(term != NULL);
+
+		if (expr == NULL) {
+			expr = term;
+		} else {
+			expr = ir_expr_op(op,expr,term);
+		}
+	}
+
+	if (expr == NULL) {
+		fprintf(stderr, "%s node has no constraints\n",
+			jvst_cnode_type_name(range->type));
+		jvst_cnode_print(stderr, range);
+		abort();
+	}
+
+	return expr;
+}
+
 static void
 ir_translate_string_inner(struct jvst_cnode *top, struct ir_str_builder *builder)
 {
@@ -2944,6 +3035,36 @@ ir_translate_string_inner(struct jvst_cnode *top, struct ir_str_builder *builder
 
 	case JVST_CNODE_OR:
 	case JVST_CNODE_AND:
+		{
+			struct jvst_ir_expr *cond;
+			struct jvst_ir_stmt *br, **spp;
+
+			cond = ir_complex_length_range_expr(top);
+
+			spp = builder->ipp;
+			if (!builder->consumed) {
+				struct jvst_ir_stmt *seq;
+				seq = ir_stmt_new(JVST_IR_STMT_SEQ);
+
+				*spp = seq;
+				spp = &seq->u.stmt_list;
+				
+				*spp = ir_stmt_new(JVST_IR_STMT_CONSUME);
+				spp = &(*spp)->next;
+			}
+
+			br = ir_stmt_if(cond, NULL,
+				ir_stmt_invalid(JVST_INVALID_STRING));
+
+			*spp = br;
+			spp = &br->u.if_.br_true;
+
+			*spp = ir_stmt_new(JVST_IR_STMT_NOP);
+
+			builder->ipp = spp;
+		}
+		return;
+
 
 	case JVST_CNODE_XOR:
 	case JVST_CNODE_NOT:
