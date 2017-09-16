@@ -5732,6 +5732,40 @@ void test_ir_anyof_allof_oneof_1(void)
       )
     },
 
+    {
+      TRANSLATE,
+
+      // simplified tree
+      newcnode_switch(&A, 0, 
+          SJP_NUMBER, newcnode_bool(&A, JVST_CNODE_OR,
+                        newcnode_range(&A, JVST_CNODE_RANGE_MIN, 3.0, 0.0),
+                        newcnode_range(&A, JVST_CNODE_RANGE_MAX, 0.0, 2.5),
+                        NULL),
+          SJP_NONE),
+
+      newir_frame(&A,
+          newir_stmt(&A, JVST_IR_STMT_TOKEN),
+          newir_if(&A, newir_istok(&A, SJP_NUMBER),
+            newir_if(&A,
+              newir_op(&A, JVST_IR_EXPR_OR, 
+                newir_op(&A, JVST_IR_EXPR_GE, 
+                  newir_expr(&A, JVST_IR_EXPR_TOK_NUM),
+                  newir_num(&A, 3.0)
+                ),
+                newir_op(&A, JVST_IR_EXPR_LE, 
+                  newir_expr(&A, JVST_IR_EXPR_TOK_NUM),
+                  newir_num(&A, 2.5)
+                )
+              ),
+              newir_stmt(&A, JVST_IR_STMT_VALID),
+              newir_invalid(&A, JVST_INVALID_NUMBER, "number not valid")
+            ),
+            newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token")
+          ),
+          NULL
+      )
+    },
+
     { STOP },
   };
 
