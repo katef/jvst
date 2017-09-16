@@ -1603,6 +1603,43 @@ cnode_simplify_andor_switches(struct jvst_cnode *top)
 	return sw;
 }
 
+static struct jvst_cnode *
+cnode_simplify_xor_switches(struct jvst_cnode *top)
+{
+	// check if all nodes are SWITCH nodes.  If they are, combine
+	// the switch clauses and simplify
+
+	struct jvst_cnode *node, **pp, *sw;
+	size_t i, n;
+
+	for (node = top->u.ctrl; node != NULL; node = node->next) {
+		if (node->type != JVST_CNODE_SWITCH) {
+			return top;
+		}
+	}
+
+	// all nodes are switch nodes...
+	sw = jvst_cnode_alloc(JVST_CNODE_SWITCH);
+	for (i = 0, n = ARRAYLEN(sw->u.sw); i < n; i++) {
+		struct jvst_cnode *jxn, **cpp;
+
+		jxn = jvst_cnode_alloc(top->type);
+		cpp = &jxn->u.ctrl;
+
+		for (node = top->u.ctrl; node != NULL; node = node->next) {
+			assert(node->type == JVST_CNODE_SWITCH);
+
+			*cpp = node->u.sw[i];
+			assert((*cpp)->next == NULL);
+			cpp = &(*cpp)->next;
+		}
+
+		sw->u.sw[i] = jvst_cnode_simplify(jxn);
+	}
+
+	return sw;
+}
+
 // merges any children that are PROPSET nodes into a single
 // PROPSET that contains all of the PROP_MATCHes.
 //
@@ -2926,6 +2963,105 @@ cnode_simplify_andor(struct jvst_cnode *top)
 }
 
 static struct jvst_cnode *
+cnode_simplify_xor(struct jvst_cnode *top)
+{
+	struct jvst_cnode *node, *next, **pp;
+	size_t num_valid;
+
+	cnode_simplify_ctrl_children(top);
+
+	// pass 1: remove VALID/INVALID nodes
+	//
+	// We have to handle this differently for XOR than for AND/OR.
+	//
+	// INVALID nodes are removed.  VALID nodes are removed and counted.
+	//
+	//   If we have no VALID nodes, then proceed normally.
+	// 
+	//   If we have one VALID node and any other nodes, then the VALID
+	//   node is removed and all the other nodes are placed under and
+	//   NOT(OR(...)).
+	//
+	//   If we have two or more VALID nodes, then the entire XOR becomes
+	//   INVALID.
+	num_valid = 0;
+	for (pp = &top->u.ctrl; *pp != NULL;) {
+		switch ((*pp)->type) {
+		case JVST_CNODE_INVALID:
+			// remove
+			*pp = (*pp)->next;
+			break;
+
+		case JVST_CNODE_VALID:
+			num_valid++;
+			// remove
+			*pp = (*pp)->next;
+			break;
+
+		default:
+			pp = &(*pp)->next;
+			break;
+		}
+	}
+
+	switch (num_valid) {
+	case 0:
+		// normal
+		break;
+
+	case 1:
+		if (top->u.ctrl == NULL) {
+			// no remaining nodes... so VALID
+			return jvst_cnode_alloc(JVST_CNODE_VALID);
+		} else {
+			struct jvst_cnode *not, *or;
+
+			// remaining nodes.  For the XOR to be VALID, none of these
+			// nodes may be valid, so replace this construct
+			// with a NOT(OR(...))
+
+			or = jvst_cnode_alloc(JVST_CNODE_OR);
+			or->u.ctrl = top->u.ctrl;
+
+			not = jvst_cnode_alloc(JVST_CNODE_NOT);
+			not->u.ctrl = or;
+
+			return jvst_cnode_simplify(not);
+		}
+
+	default:
+		// more than one... entire XOR is invalid
+		return jvst_cnode_alloc(JVST_CNODE_INVALID);
+	}
+
+	// all nodes were invalid
+	if (top->u.ctrl == NULL) {
+		return jvst_cnode_alloc(JVST_CNODE_INVALID);
+	}
+
+	assert(top->u.ctrl != NULL);
+	if (top->u.ctrl->next == NULL) {
+		// only one child
+		return top->u.ctrl;
+	}
+
+	// XOR semantics are kind of complicated compared to AND and OR.
+	// For now we only do a few simplifications.
+	if (top->type == JVST_CNODE_XOR) {
+		top = cnode_simplify_xor_switches(top);
+	}
+
+	if (top->type == JVST_CNODE_XOR) {
+		if (top->u.ctrl->next == NULL) {
+			// only one child
+			return top->u.ctrl;
+		}
+	}
+
+	return top;
+}
+
+static struct jvst_cnode *
 cnode_simplify_propset(struct jvst_cnode *tree)
 {
 	struct jvst_cnode *pm;
@@ -2978,8 +3114,7 @@ jvst_cnode_simplify(struct jvst_cnode *tree)
 		return cnode_simplify_andor(tree);
 
 	case JVST_CNODE_XOR:
-		// TODO: basic optimization for XOR
-		return tree;
+		return cnode_simplify_xor(tree);
 
 	case JVST_CNODE_NOT:
 		// TODO: basic optimizations for NOT
