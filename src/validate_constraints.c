@@ -2873,6 +2873,320 @@ cnode_simplify_andor_strmatch(struct jvst_cnode *top)
 	return top;
 }
 
+static int
+cmp_range_cnodes(const void *pa, const void *pb)
+{
+	static const size_t no_upper = (size_t)-1;
+	struct jvst_cnode *a, *b;
+	size_t max_a, max_b;
+
+	a = *((struct jvst_cnode **)pa);
+	b = *((struct jvst_cnode **)pb);
+
+	assert(a->type == JVST_CNODE_LENGTH_RANGE ||
+		a->type == JVST_CNODE_PROP_RANGE  ||
+		a->type == JVST_CNODE_ITEM_RANGE);
+
+	assert(b->type == JVST_CNODE_LENGTH_RANGE ||
+		b->type == JVST_CNODE_PROP_RANGE  ||
+		b->type == JVST_CNODE_ITEM_RANGE);
+
+	if (a->u.counts.min < b->u.counts.min) {
+		return -1;
+	}
+	
+	if (a->u.counts.min > b->u.counts.min) {
+		return 1;
+	}
+
+	max_a = a->u.counts.upper ? a->u.counts.max : no_upper;
+	max_b = b->u.counts.upper ? b->u.counts.max : no_upper;
+
+	if (max_a < max_b) {
+		return -1;
+	}
+
+	if (max_a > max_b) {
+		return 1;
+	}
+
+	return 0;
+}
+
+static struct jvst_cnode *
+cnode_simplify_ored_count_range(struct jvst_cnode *rlist)
+{
+	enum jvst_cnode_type type;
+	struct jvst_cnode *rn, *ret, *jxn, *ccn, **ccnpp;
+	struct jvst_cnode *node_buf[4], **node_arr;
+	size_t i,n;
+
+	/* ORing is somewhat harder than AND-ing them... ORed expressions
+	 * can encompass N disjoint regions.  We want to combine them in an
+	 * efficient way.
+	 *
+	 * To do this, we first collect and sort the nodes by their range.
+	 */
+
+	if (rlist == NULL) {
+		return NULL;
+	}
+
+	type = rlist->type;
+
+	// ensure that the first node is count range
+	assert(type == JVST_CNODE_LENGTH_RANGE ||
+		type == JVST_CNODE_PROP_RANGE  ||
+		type == JVST_CNODE_ITEM_RANGE);
+
+	n=0;
+	for (rn=rlist; rn != NULL; rn = rn->next) {
+		assert(rn->type == type);
+		n++;
+	}
+
+	assert(n > 0); // sanity check
+
+	if (n == 1) {
+		return rlist;
+	}
+
+	if (n <= ARRAYLEN(node_buf)) {
+		node_arr = &node_buf[0];
+	} else {
+		node_arr = malloc(n * sizeof node_arr[0]);
+	}
+
+	for (i=0, rn=rlist; rn != NULL; i++, rn = rn->next) {
+		assert(i < n);
+		assert(rn->type == type);
+		node_arr[i] = rn;
+	}
+
+	qsort(node_arr, n, sizeof *node_arr, cmp_range_cnodes);
+
+	// Now that the nodes are sorted by range, we traverse the list in
+	// the sorted order and combine adjacent nodes if possible.
+	//
+	// Set the current combined node (CCN) to a copy of node 0.
+	// Set i=1.
+	//
+	// Loop:
+	//   If node i overlaps or is adjacent to the CCN, then extend the
+	//   range of the CCN to hold both nodes.
+	//
+	//   Otherwise, copy node i, add the copy to the CCN list, and let
+	//   the copy be the CCN.
+	//
+	//   Set i = i+1.
+	//   If i < n, repeat the loop.
+	//
+	// After the CCN list is built, if it holds one item, return that
+	// item.  Otherwise place all items under an OR node and return the
+	// OR node.
+
+	ccn = cnode_deep_copy(node_arr[0]);
+	ccnpp = &ccn;
+
+	for (i=1; i < n; i++) {
+		// special case... if ccn has no upper bounds, it eats the rest of
+		// the nodes and we can drop out of the loop
+		if (!(*ccnpp)->u.counts.upper) {
+			break;
+		}
+
+		// if node[i] overlaps or is adjacent to the CCN, extend the
+		// max of the ccn to include the max of node[i]
+		if (node_arr[i]->u.counts.min <= (*ccnpp)->u.counts.max+1) {
+			if (!node_arr[i]->u.counts.upper) {
+				(*ccnpp)->u.counts.max = 0;
+				(*ccnpp)->u.counts.upper = false;
+			} else if (node_arr[i]->u.counts.max > (*ccnpp)->u.counts.max) {
+				(*ccnpp)->u.counts.max = node_arr[i]->u.counts.max;
+			}
+
+			continue;
+		}
+
+		// no overlap, add a copy of node[i] at the end of the
+		// CCN list.
+		ccnpp = &(*ccnpp)->next;
+		*ccnpp = cnode_deep_copy(node_arr[i]);
+	}
+
+	assert(ccn != NULL);
+
+	// clean up temporary list if we had to malloc it
+	if (&node_arr[0] != &node_buf[0]) {
+		free(node_arr);
+	}
+
+	if (ccn->next == NULL) {
+		// single item, return it
+		return ccn;
+	}
+
+	jxn = jvst_cnode_alloc(JVST_CNODE_OR);
+	jxn->u.ctrl = ccn;
+	return jxn;
+}
+
+static struct jvst_cnode *
+cnode_simplify_anded_count_range(struct jvst_cnode *rlist)
+{
+	enum jvst_cnode_type type;
+	struct jvst_cnode *rn, *ret;
+	size_t glb; // greatest lower bound
+	size_t lub; // least upper bound
+	bool upper;
+
+	if (rlist == NULL) {
+		return NULL;
+	}
+
+	type = rlist->type;
+
+	// ensure that the first node is count range
+	assert(type == JVST_CNODE_LENGTH_RANGE ||
+		type == JVST_CNODE_PROP_RANGE  ||
+		type == JVST_CNODE_ITEM_RANGE);
+
+	if (rlist->next == NULL) {
+		return rlist;
+	}
+
+	glb = 0;
+	upper = false;
+	for (rn=rlist; rn != NULL; rn = rn->next) {
+		assert(rn->type == type);  // all nodes should be the same type
+
+		if (rn->u.counts.min > glb) {
+			glb = rn->u.counts.min;
+		}
+
+		if (!rn->u.counts.upper) {
+			continue;
+		}
+
+		if (!upper) {
+			upper = true;
+			lub = rn->u.counts.max;
+		} else if (rn->u.counts.max < lub) {
+			lub = rn->u.counts.max;
+		}
+	}
+
+	if (upper && lub < glb) {
+		return jvst_cnode_alloc(JVST_CNODE_INVALID);
+	}
+
+	ret = jvst_cnode_alloc(type);
+	ret->u.counts.min = glb;
+	ret->u.counts.max = lub;
+	ret->u.counts.upper = upper;
+
+	return ret;
+}
+
+static struct jvst_cnode *
+cnode_simplify_count_range(enum jvst_cnode_type type, struct jvst_cnode *rlist)
+{
+	switch (type) {
+	case JVST_CNODE_AND:
+		return cnode_simplify_anded_count_range(rlist);
+
+	case JVST_CNODE_OR:
+		return cnode_simplify_ored_count_range(rlist);
+
+	default:
+		DIEF("cannot simplify count ranges combined with %s node",
+			jvst_cnode_type_name(type));
+	}
+
+	return rlist;
+}
+
+static struct jvst_cnode *
+cnode_simplify_bool_ranges(struct jvst_cnode *top)
+{
+	struct jvst_cnode *len_range, **lrpp, *prop_range, **prpp, *item_range, **irpp, **npp;
+	enum jvst_cnode_type type;
+
+	assert(top != NULL);
+
+	type = top->type;
+	assert(type == JVST_CNODE_AND || type == JVST_CNODE_OR);
+
+	assert(top->u.ctrl != NULL);
+
+	len_range = NULL; lrpp = &len_range;
+	prop_range = NULL; prpp = &prop_range;
+	item_range = NULL; irpp = &item_range;
+
+	for (npp = &top->u.ctrl; *npp != NULL;) {
+		switch ((*npp)->type) {
+		case JVST_CNODE_LENGTH_RANGE:
+			*lrpp = *npp;
+			*npp = (*npp)->next;
+			lrpp = &(*lrpp)->next;
+			*lrpp = NULL;
+			break;
+
+		case JVST_CNODE_PROP_RANGE:
+			*prpp = *npp;
+			*npp = (*npp)->next;
+			prpp = &(*prpp)->next;
+			*prpp = NULL;
+			break;
+
+		case JVST_CNODE_ITEM_RANGE:
+			*irpp = *npp;
+			*npp = (*npp)->next;
+			irpp = &(*irpp)->next;
+			*irpp = NULL;
+			break;
+
+		default:
+			npp = &(*npp)->next;
+			break;
+		}
+	}
+
+	assert(*npp == NULL);
+
+	if (len_range != NULL) {
+		len_range = cnode_simplify_count_range(type,len_range);
+		*npp = len_range;
+		for(; *npp != NULL; npp = &(*npp)->next) {
+			continue;
+		}
+	}
+
+	if (prop_range != NULL) {
+		prop_range = cnode_simplify_count_range(type,prop_range);
+		*npp = prop_range;
+		for(; *npp != NULL; npp = &(*npp)->next) {
+			continue;
+		}
+	}
+
+	if (item_range != NULL) {
+		item_range = cnode_simplify_count_range(type,item_range);
+		*npp = item_range;
+		for(; *npp != NULL; npp = &(*npp)->next) {
+			continue;
+		}
+	}
+
+	assert(top->u.ctrl != NULL);
+	if (top->u.ctrl->next == NULL) {
+		// only one item
+		return top->u.ctrl;
+	}
+
+	return top;
+}
+
 static struct jvst_cnode *
 cnode_simplify_andor(struct jvst_cnode *top)
 {
@@ -2939,6 +3253,10 @@ cnode_simplify_andor(struct jvst_cnode *top)
 		top = cnode_simplify_and_required(top);
 	}
 
+	if (top->type == JVST_CNODE_AND || top->type == JVST_CNODE_OR) {
+		top = cnode_simplify_bool_ranges(top);
+	}
+
 	if ((top->type == JVST_CNODE_AND) || (top->type == JVST_CNODE_OR)) {
 		top = cnode_simplify_andor_switches(top);
 	}
@@ -2959,6 +3277,12 @@ cnode_simplify_andor(struct jvst_cnode *top)
 		}
 	}
 
+	return top;
+}
+
+static struct jvst_cnode *
+cnode_simplify_xor_ranges(struct jvst_cnode *top)
+{
 	return top;
 }
 
@@ -3052,10 +3376,12 @@ cnode_simplify_xor(struct jvst_cnode *top)
 	}
 
 	if (top->type == JVST_CNODE_XOR) {
-		if (top->u.ctrl->next == NULL) {
-			// only one child
-			return top->u.ctrl;
-		}
+		top = cnode_simplify_xor_ranges(top);
+	}
+
+	if (top->type == JVST_CNODE_XOR && top->u.ctrl->next == NULL) {
+		// only one child
+		return top->u.ctrl;
 	}
 
 	return top;

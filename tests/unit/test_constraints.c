@@ -2372,6 +2372,291 @@ void test_simplify_allof_2(void)
   RUNTESTS(tests);
 }
 
+void test_simplify_anded_counts(void)
+{
+  struct arena_info A = {0};
+
+  const struct cnode_test tests[] = {
+    {
+      SIMPLIFY,
+      NULL,
+
+      newcnode_switch(&A, 0,
+        
+        SJP_ARRAY_BEG, newcnode_bool(&A, JVST_CNODE_AND,
+                         newcnode_counts(&A, JVST_CNODE_ITEM_RANGE, 0, 5, true),
+                         newcnode_counts(&A, JVST_CNODE_ITEM_RANGE, 0, 3, true),
+                         NULL),
+        SJP_NONE),
+
+      newcnode_switch(&A, 0,
+        SJP_ARRAY_BEG, newcnode_counts(&A, JVST_CNODE_ITEM_RANGE, 0, 3, true),
+        SJP_NONE)
+    },
+
+    {
+      SIMPLIFY,
+      NULL,
+
+      newcnode_switch(&A, 0,
+        SJP_ARRAY_BEG, newcnode_bool(&A, JVST_CNODE_AND,
+                         newcnode_counts(&A, JVST_CNODE_ITEM_RANGE, 5, 0, false),
+                         newcnode_counts(&A, JVST_CNODE_ITEM_RANGE, 0, 3, true),
+                         NULL),
+        SJP_NONE),
+
+      newcnode_switch(&A, 0,
+        SJP_ARRAY_BEG, newcnode_invalid(),
+        SJP_NONE)
+    },
+
+    {
+      SIMPLIFY,
+      NULL,
+
+      newcnode_switch(&A, 0,
+        SJP_ARRAY_BEG, newcnode_bool(&A, JVST_CNODE_AND,
+                         newcnode_counts(&A, JVST_CNODE_ITEM_RANGE, 3, 0, false),
+                         newcnode_counts(&A, JVST_CNODE_ITEM_RANGE, 0, 5, true),
+                         NULL),
+        SJP_NONE),
+
+      newcnode_switch(&A, 0,
+        SJP_ARRAY_BEG, newcnode_counts(&A, JVST_CNODE_ITEM_RANGE, 3, 5, true),
+        SJP_NONE)
+    },
+
+    {
+      SIMPLIFY,
+      NULL,
+
+      newcnode_switch(&A, 0,
+        SJP_ARRAY_BEG, newcnode_bool(&A, JVST_CNODE_AND,
+                         newcnode_counts(&A, JVST_CNODE_ITEM_RANGE, 1, 0, false),
+                         newcnode_counts(&A, JVST_CNODE_ITEM_RANGE, 2, 0, false),
+                         NULL),
+        SJP_NONE),
+
+      newcnode_switch(&A, 0,
+        SJP_ARRAY_BEG, newcnode_counts(&A, JVST_CNODE_ITEM_RANGE, 2, 0, false),
+        SJP_NONE)
+    },
+
+    {
+      SIMPLIFY,
+      NULL,
+
+      newcnode_switch(&A, 0,
+        SJP_ARRAY_BEG, newcnode_bool(&A, JVST_CNODE_AND,
+                         newcnode_counts(&A, JVST_CNODE_ITEM_RANGE, 3, 6, true),
+                         newcnode_counts(&A, JVST_CNODE_ITEM_RANGE, 1, 4, true),
+                         NULL),
+        SJP_NONE),
+
+      newcnode_switch(&A, 0,
+        SJP_ARRAY_BEG, newcnode_counts(&A, JVST_CNODE_ITEM_RANGE, 3, 4, true),
+        SJP_NONE)
+    },
+
+    {
+      SIMPLIFY,
+      NULL,
+
+      newcnode_switch(&A, 0,
+        SJP_ARRAY_BEG, newcnode_bool(&A, JVST_CNODE_AND,
+                         newcnode_counts(&A, JVST_CNODE_ITEM_RANGE, 3, 6, true),
+                         newcnode_counts(&A, JVST_CNODE_ITEM_RANGE, 1, 4, true),
+                         NULL),
+        SJP_STRING, newcnode_bool(&A, JVST_CNODE_AND,
+                         newcnode_counts(&A, JVST_CNODE_LENGTH_RANGE, 1, 20, true),
+                         newcnode_counts(&A, JVST_CNODE_LENGTH_RANGE, 0, 12, true),
+                         NULL),
+        SJP_NONE),
+
+      newcnode_switch(&A, 0,
+        SJP_ARRAY_BEG, newcnode_counts(&A, JVST_CNODE_ITEM_RANGE, 3, 4, true),
+        SJP_STRING, newcnode_counts(&A, JVST_CNODE_LENGTH_RANGE, 1, 12, true),
+        SJP_NONE)
+    },
+
+    {
+      SIMPLIFY,
+      NULL,
+
+      newcnode_switch(&A, 0,
+        SJP_ARRAY_BEG, newcnode_bool(&A, JVST_CNODE_AND,
+                         newcnode_counts(&A, JVST_CNODE_ITEM_RANGE, 3, 6, true),
+                         newcnode_counts(&A, JVST_CNODE_ITEM_RANGE, 1, 4, true),
+                         NULL),
+        SJP_STRING, newcnode_bool(&A, JVST_CNODE_AND,
+                         newcnode_counts(&A, JVST_CNODE_LENGTH_RANGE, 1, 20, true),
+                         newcnode_counts(&A, JVST_CNODE_LENGTH_RANGE, 0, 12, true),
+                         NULL),
+        SJP_NONE),
+
+      newcnode_switch(&A, 0,
+        SJP_ARRAY_BEG, newcnode_counts(&A, JVST_CNODE_ITEM_RANGE, 3, 4, true),
+        SJP_STRING, newcnode_counts(&A, JVST_CNODE_LENGTH_RANGE, 1, 12, true),
+        SJP_NONE)
+    },
+
+    { STOP },
+  };
+
+  RUNTESTS(tests);
+}
+
+void test_simplify_ored_counts(void)
+{
+  struct arena_info A = {0};
+
+  const struct cnode_test tests[] = {
+
+    // one interval includes the other (1)
+    {
+      SIMPLIFY,
+      NULL,
+
+      newcnode_switch(&A, 0,
+        
+        SJP_ARRAY_BEG, newcnode_bool(&A, JVST_CNODE_OR,
+                         newcnode_counts(&A, JVST_CNODE_ITEM_RANGE, 0, 5, true),
+                         newcnode_counts(&A, JVST_CNODE_ITEM_RANGE, 0, 3, true),
+                         NULL),
+        SJP_NONE),
+
+      newcnode_switch(&A, 0,
+        SJP_ARRAY_BEG, newcnode_counts(&A, JVST_CNODE_ITEM_RANGE, 0, 5, true),
+        SJP_NONE)
+    },
+
+    // one interval includes the other (2)
+    {
+      SIMPLIFY,
+      NULL,
+
+      newcnode_switch(&A, 0,
+        
+        SJP_ARRAY_BEG, newcnode_bool(&A, JVST_CNODE_OR,
+                         newcnode_counts(&A, JVST_CNODE_ITEM_RANGE, 20, 0, false),
+                         newcnode_counts(&A, JVST_CNODE_ITEM_RANGE, 12, 0, false),
+                         NULL),
+        SJP_NONE),
+
+      newcnode_switch(&A, 0,
+        SJP_ARRAY_BEG, newcnode_counts(&A, JVST_CNODE_ITEM_RANGE, 12, 0, false),
+        SJP_NONE)
+    },
+
+    // one interval includes the other (3)
+    {
+      SIMPLIFY,
+      NULL,
+
+      newcnode_switch(&A, 0,
+        
+        SJP_ARRAY_BEG, newcnode_bool(&A, JVST_CNODE_OR,
+                         newcnode_counts(&A, JVST_CNODE_ITEM_RANGE, 3, 20, true),
+                         newcnode_counts(&A, JVST_CNODE_ITEM_RANGE, 6, 12, true),
+                         NULL),
+        SJP_NONE),
+
+      newcnode_switch(&A, 0,
+        SJP_ARRAY_BEG, newcnode_counts(&A, JVST_CNODE_ITEM_RANGE, 3, 20, true),
+        SJP_NONE)
+    },
+
+    // intervals have no overlap (irreducible OR case)
+    {
+      SIMPLIFY,
+      NULL,
+
+      newcnode_switch(&A, 0,
+        SJP_ARRAY_BEG, newcnode_bool(&A, JVST_CNODE_OR,
+                         newcnode_counts(&A, JVST_CNODE_ITEM_RANGE, 5, 0, false),
+                         newcnode_counts(&A, JVST_CNODE_ITEM_RANGE, 0, 3, true),
+                         NULL),
+        SJP_NONE),
+
+      // intervals are sorted, though.
+      newcnode_switch(&A, 0,
+        SJP_ARRAY_BEG, newcnode_bool(&A, JVST_CNODE_OR,
+                         newcnode_counts(&A, JVST_CNODE_ITEM_RANGE, 0, 3, true),
+                         newcnode_counts(&A, JVST_CNODE_ITEM_RANGE, 5, 0, false),
+                         NULL),
+        SJP_NONE)
+    },
+
+    // intervals overlap but one is not a subset of the other
+    {
+      SIMPLIFY,
+      NULL,
+
+      newcnode_switch(&A, 0,
+        SJP_ARRAY_BEG, newcnode_bool(&A, JVST_CNODE_OR,
+                         newcnode_counts(&A, JVST_CNODE_ITEM_RANGE, 12, 20, true),
+                         newcnode_counts(&A, JVST_CNODE_ITEM_RANGE, 6, 16, true),
+                         NULL),
+        SJP_NONE),
+
+      newcnode_switch(&A, 0,
+        SJP_ARRAY_BEG, newcnode_counts(&A, JVST_CNODE_ITEM_RANGE, 6, 20, true),
+        SJP_NONE)
+    },
+
+    // several intervals, some have overlap, so do not
+    {
+      SIMPLIFY,
+      NULL,
+
+      newcnode_switch(&A, 0,
+        SJP_ARRAY_BEG, newcnode_bool(&A, JVST_CNODE_OR,
+                         newcnode_counts(&A, JVST_CNODE_ITEM_RANGE, 5, 8, true),
+                         newcnode_counts(&A, JVST_CNODE_ITEM_RANGE, 16, 0, false),
+                         newcnode_counts(&A, JVST_CNODE_ITEM_RANGE, 3, 5, true),
+                         newcnode_counts(&A, JVST_CNODE_ITEM_RANGE, 0, 3, true),
+                         newcnode_counts(&A, JVST_CNODE_ITEM_RANGE, 10, 12, true),
+                         NULL),
+        SJP_NONE),
+
+      // intervals are sorted, though.
+      newcnode_switch(&A, 0,
+        SJP_ARRAY_BEG, newcnode_bool(&A, JVST_CNODE_OR,
+                         newcnode_counts(&A, JVST_CNODE_ITEM_RANGE, 0, 8, true),
+                         newcnode_counts(&A, JVST_CNODE_ITEM_RANGE, 10, 12, true),
+                         newcnode_counts(&A, JVST_CNODE_ITEM_RANGE, 16, 0, false),
+                         NULL),
+        SJP_NONE)
+    },
+
+    // Multiple constraints; ensure that we don't mix them up
+    {
+      SIMPLIFY,
+      NULL,
+
+      newcnode_switch(&A, 0,
+        SJP_ARRAY_BEG, newcnode_bool(&A, JVST_CNODE_OR,
+                         newcnode_counts(&A, JVST_CNODE_ITEM_RANGE, 3, 6, true),
+                         newcnode_counts(&A, JVST_CNODE_ITEM_RANGE, 1, 4, true),
+                         NULL),
+        SJP_STRING, newcnode_bool(&A, JVST_CNODE_OR,
+                         newcnode_counts(&A, JVST_CNODE_LENGTH_RANGE, 1, 8, true),
+                         newcnode_counts(&A, JVST_CNODE_LENGTH_RANGE, 6, 12, true),
+                         NULL),
+        SJP_NONE),
+
+      newcnode_switch(&A, 0,
+        SJP_ARRAY_BEG, newcnode_counts(&A, JVST_CNODE_ITEM_RANGE, 1, 6, true),
+        SJP_STRING, newcnode_counts(&A, JVST_CNODE_LENGTH_RANGE, 1, 12, true),
+        SJP_NONE)
+    },
+
+    { STOP },
+  };
+
+  RUNTESTS(tests);
+}
+
 void test_simplify_oneof_2(void)
 {
   struct arena_info A = {0};
@@ -3471,6 +3756,9 @@ int main(void)
   test_simplify_patterns();
   test_simplify_allof_2();
   test_simplify_oneof_2();
+
+  test_simplify_anded_counts();
+  test_simplify_ored_counts();
 
   test_canonify_ored_schema();
   test_canonify_propsets();
