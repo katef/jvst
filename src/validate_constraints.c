@@ -3031,14 +3031,43 @@ cnode_simplify_ored_count_range(struct jvst_cnode *rlist)
 	return jxn;
 }
 
+static void
+and_range_pair(struct jvst_cnode *lhs, const struct jvst_cnode *rhs)
+{
+	enum jvst_cnode_type type;
+
+	assert(lhs != NULL);
+	assert(rhs != NULL);
+
+	type = lhs->type;
+
+	assert(type == JVST_CNODE_LENGTH_RANGE ||
+		type == JVST_CNODE_PROP_RANGE  ||
+		type == JVST_CNODE_ITEM_RANGE);
+
+	assert(type == rhs->type);
+
+	if (rhs->u.counts.min > lhs->u.counts.min) {
+		lhs->u.counts.min = rhs->u.counts.min;
+	}
+
+	if (!rhs->u.counts.upper) {
+		return;
+	}
+
+	if (!lhs->u.counts.upper) {
+		lhs->u.counts.upper = true;
+		lhs->u.counts.max = rhs->u.counts.max;
+	} else if (rhs->u.counts.max < lhs->u.counts.max) {
+		lhs->u.counts.max = rhs->u.counts.max;
+	}
+}
+
 static struct jvst_cnode *
 cnode_simplify_anded_count_range(struct jvst_cnode *rlist)
 {
 	enum jvst_cnode_type type;
 	struct jvst_cnode *rn, *ret;
-	size_t glb; // greatest lower bound
-	size_t lub; // least upper bound
-	bool upper;
 
 	if (rlist == NULL) {
 		return NULL;
@@ -3055,35 +3084,17 @@ cnode_simplify_anded_count_range(struct jvst_cnode *rlist)
 		return rlist;
 	}
 
-	glb = 0;
-	upper = false;
-	for (rn=rlist; rn != NULL; rn = rn->next) {
+	ret = jvst_cnode_alloc(rlist->type);
+	ret->u.counts = rlist->u.counts;
+
+	for (rn=rlist->next; rn != NULL; rn = rn->next) {
 		assert(rn->type == type);  // all nodes should be the same type
-
-		if (rn->u.counts.min > glb) {
-			glb = rn->u.counts.min;
-		}
-
-		if (!rn->u.counts.upper) {
-			continue;
-		}
-
-		if (!upper) {
-			upper = true;
-			lub = rn->u.counts.max;
-		} else if (rn->u.counts.max < lub) {
-			lub = rn->u.counts.max;
-		}
+		and_range_pair(ret, rn);
 	}
 
-	if (upper && lub < glb) {
-		return jvst_cnode_alloc(JVST_CNODE_INVALID);
+	if (ret->u.counts.upper && ret->u.counts.max < ret->u.counts.min) {
+		ret->type = JVST_CNODE_INVALID;
 	}
-
-	ret = jvst_cnode_alloc(type);
-	ret->u.counts.min = glb;
-	ret->u.counts.max = lub;
-	ret->u.counts.upper = upper;
 
 	return ret;
 }
@@ -3104,6 +3115,193 @@ cnode_simplify_count_range(enum jvst_cnode_type type, struct jvst_cnode *rlist)
 	}
 
 	return rlist;
+}
+
+static int
+all_children_of_type(struct jvst_cnode *top, enum jvst_cnode_type type)
+{
+	struct jvst_cnode *n;
+
+	switch (top->type) {
+	case JVST_CNODE_AND:
+	case JVST_CNODE_OR:
+	case JVST_CNODE_XOR:
+	case JVST_CNODE_NOT:
+		for (n = top->u.ctrl; n != NULL; n = n->next) {
+			if (n->type != type) {
+				return 0;
+			}
+		}
+
+		return 1;
+
+	default:
+		SHOULD_NOT_REACH();
+	}
+}
+
+static struct jvst_cnode *
+cnode_simplify_and_ored_ranges(enum jvst_cnode_type rtype, struct jvst_cnode *and)
+{
+	struct jvst_cnode **npp, *nl, **wlpp, *n, *wl;
+	size_t nsingle;
+
+	// Try to simplify ANDed ORed ranges...
+	//
+	// 1. AND(R1, OR(R2,R3))        --> OR(AND(R1,R2), AND(R1,R3))
+	// 2. AND(OR(R1,R2), OR(R3,R4)) --> OR(AND(R1,R3), AND(R1,R4), AND(R2,R3), AND(R2,R4))
+	// 3. same as (2) with more nodes per OR.
+	//
+	// First, remove a) any bare node of type rtype
+	//               b) any ORed nodes that have only rtype children
+	//
+	// All removed nodes should be kept on a list.  The non-removed nodes should be
+	// kept on a different list.
+	//
+	// Note that this should be done after AND simplification, so there should be only
+	// one bare node of type rtype.
+	//
+	// Let N_0 = the first item in the list.  Let A_j be each item in the list.
+	//
+	// Walk the list of removed nodes, attempting to simplify as follows:
+	// N_i = AND(N_i-1, A_j), where any ORs are expected:
+	//
+	//    AND(OR(a_0, a_1, ..., a_m), OR(b_0, b1_, ..., b_n)) -->
+	//      OR(AND(a_0,b_0), AND(a_0,b_1), ..., AND(a_0,b_n),
+	//         AND(a_1,b_0), AND(a_1,b_1), ..., AND(a_1,b_n),
+	//         ...
+	//         AND(a_m,b_0), AND(a_m,b_1), ..., AND(a_m,b_n))
+	//
+	// If either N_i-1 or A_j are single nodes, we treat them as ORs with a single
+	// term.
+	//
+
+	// TODO: There's a change that this expansion results in a lot more terms than the
+	// original.  So we need to keep track of the number of operations in the original
+	// and the new versions and choose the one that has the least terms.
+	//
+	// TODO: Can we be smarter about this if we structure this as a dynamic
+	// programming problem?
+
+	// Sanity checks
+	assert(and != NULL);
+	assert(and->type == JVST_CNODE_AND);
+	assert(rtype == JVST_CNODE_LENGTH_RANGE ||
+		rtype == JVST_CNODE_PROP_RANGE  ||
+		rtype == JVST_CNODE_ITEM_RANGE);
+
+	// Step 1: Build working list by factoring out bare nodes of type rtype and OR
+	//         nodes whose children are all type rtype
+	wl = NULL;
+	wlpp = &wl;
+
+	nsingle = 0;
+	for (npp = &and->u.ctrl; *npp != NULL;) {
+		if ((*npp)->type == rtype) {
+			*wlpp = *npp;
+			wlpp = &(*wlpp)->next;
+			*npp = (*npp)->next;
+			*wlpp = NULL;
+			continue;
+		}
+
+		if ((*npp)->type == JVST_CNODE_OR && all_children_of_type(*npp, rtype)) {
+			*wlpp = *npp;
+			wlpp = &(*wlpp)->next;
+			*npp = (*npp)->next;
+			*wlpp = NULL;
+			continue;
+		}
+
+		npp = &(*npp)->next;
+	}
+
+	// fast exit: no nodes to simplify
+	if (wl == NULL) {
+		return and;
+	}
+
+	// fast exit: only one node, cannot combine
+	if (wl->next == NULL) {
+		*npp = wl;
+		return and;
+	}
+
+	// Step 2: Build transformed list by iterating through the working list and
+	//         combining terms
+	nl = wl;
+
+	for (n = wl->next; n != NULL; n = n->next) {
+		struct jvst_cnode *terms1, *terms2, *t1, *t2, *terms3, **t3pp;
+		if (nl->type == JVST_CNODE_OR) {
+			terms1 = nl->u.ctrl;
+		} else if (nl->type == rtype) {
+			terms1 = nl;
+		} else {
+			SHOULD_NOT_REACH();
+		}
+
+		if (n->type == JVST_CNODE_OR) {
+			terms2 = n->u.ctrl;
+		} else if (n->type == rtype) {
+			terms2 = n;
+		} else {
+			SHOULD_NOT_REACH();
+		}
+
+		terms3 = NULL;
+		t3pp = &terms3;
+		for (t1 = terms1; t1 != NULL; t1 = t1->next) {
+			struct jvst_cnode **partial;
+
+			assert(t1->type == JVST_CNODE_LENGTH_RANGE ||
+				t1->type == JVST_CNODE_PROP_RANGE  ||
+				t1->type == JVST_CNODE_ITEM_RANGE);
+
+			for (t2 = terms2; t2 != NULL; t2 = t2->next) {
+				struct jvst_cnode *t3;
+
+				assert(t2->type == JVST_CNODE_LENGTH_RANGE ||
+					t2->type == JVST_CNODE_PROP_RANGE  ||
+					t2->type == JVST_CNODE_ITEM_RANGE);
+
+				assert(t1->type == t2->type);
+
+				t3 = jvst_cnode_alloc(t1->type);
+				t3->u.counts = t1->u.counts;
+				and_range_pair(t3, t2);
+
+				if (t3->u.counts.upper && t3->u.counts.min > t3->u.counts.max) {
+					continue;
+				}
+
+				*t3pp = t3;
+				t3pp = &t3->next;
+			}
+		}
+
+		// simplify terms3 list
+		if (terms3 != NULL) {
+			terms3 = cnode_simplify_ored_count_range(terms3);
+		}
+
+		if (terms3 == NULL) {
+			nl = NULL;
+		} else if (terms3->next == NULL) {
+			nl = terms3;
+		} else {
+			nl = jvst_cnode_alloc(JVST_CNODE_OR);
+			nl->u.ctrl = terms3;
+		}
+	}
+
+	// no term survives, so all are invalid, making the entire AND invalid
+	if (nl == NULL) {
+		return jvst_cnode_alloc(JVST_CNODE_INVALID);
+	}
+
+	*npp = nl;
+	return and;
 }
 
 static struct jvst_cnode *
@@ -3182,6 +3380,13 @@ cnode_simplify_bool_ranges(struct jvst_cnode *top)
 	if (top->u.ctrl->next == NULL) {
 		// only one item
 		return top->u.ctrl;
+	}
+
+	if (type == JVST_CNODE_AND) {
+		// Now that we've built the simplified AND, try to distribute ANDs over any ORs
+		top = cnode_simplify_and_ored_ranges(JVST_CNODE_LENGTH_RANGE, top);
+		top = cnode_simplify_and_ored_ranges(JVST_CNODE_PROP_RANGE, top);
+		top = cnode_simplify_and_ored_ranges(JVST_CNODE_ITEM_RANGE, top);
 	}
 
 	return top;
