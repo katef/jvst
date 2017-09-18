@@ -3540,10 +3540,71 @@ cnode_negate_range(struct jvst_cnode *range)
 	return ret;
 }
 
+static int
+cnode_is_range(struct jvst_cnode *n)
+{
+	if (n->type == JVST_CNODE_LENGTH_RANGE) {
+		return 1;
+	}
+
+	if (n->type == JVST_CNODE_PROP_RANGE) {
+		return 1;
+	}
+
+	if (n->type == JVST_CNODE_ITEM_RANGE) {
+		return 1;
+	}
+
+	return 0;
+}
+
 static struct jvst_cnode *
 cnode_simplify_xor_ranges(struct jvst_cnode *top)
 {
-	return top;
+	struct jvst_cnode *lhs, *rhs, *and, *not, *or, *dup, *newlhs;
+
+	// FIXME: we can probably do more efficiently (allocating fewer temporary nodes)
+	// FIXME: also, support more than two children!
+	// FIXME: also, support control nodes
+
+	assert(top->type == JVST_CNODE_XOR);
+	assert(top->u.ctrl != NULL);
+
+	lhs = top->u.ctrl;
+	rhs = top->u.ctrl->next;
+	if (rhs == NULL) {
+		return lhs;
+	}
+
+	if (rhs->next != NULL) {
+		// XXX - current limitation is two child nodes
+		return top;
+	}
+
+	if (!cnode_is_range(lhs) || !cnode_is_range(rhs)) {
+		return top;
+	}
+
+	// construct OR(AND(lhs,NOT(rhs)), AND(NOT(lhs),rhs)) and simplify
+	dup = cnode_deep_copy(lhs);
+	not = cnode_negate_range(rhs);
+	and = jvst_cnode_alloc(JVST_CNODE_AND);
+	dup->next = not;
+	and->u.ctrl = dup;
+	newlhs = jvst_cnode_simplify(and);
+
+	dup = cnode_deep_copy(rhs);
+	not = cnode_negate_range(lhs);
+	and = jvst_cnode_alloc(JVST_CNODE_AND);
+	dup->next = not;
+	and->u.ctrl = dup;
+	rhs = jvst_cnode_simplify(and);
+
+	or = jvst_cnode_alloc(JVST_CNODE_OR);
+	newlhs->next = rhs;
+	or->u.ctrl = newlhs;
+
+	return jvst_cnode_simplify(or);
 }
 
 static struct jvst_cnode *
