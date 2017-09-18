@@ -5224,6 +5224,8 @@ static void test_ir_minmax_properties_2(void);
 static void test_ir_anyof_allof_oneof_1(void);
 static void test_ir_anyof_2(void);
 
+static void test_ir_xor_numbers(void);
+
 static void test_ir_simplify_ands(void);
 static void test_ir_simplify_ored_schema(void);
 
@@ -5246,6 +5248,8 @@ int main(void)
   test_ir_dependencies();
 
   test_ir_anyof_allof_oneof_1();
+
+  test_ir_xor_numbers();
 
   /* incomplete tests... placeholders for conversion from cnode tests */
   test_ir_minproperties_3();
@@ -5795,6 +5799,76 @@ void test_ir_anyof_allof_oneof_1(void)
 
   RUNTESTS(tests);
   UNIMPLEMENTED(unimplemented_tests);
+}
+
+static void test_ir_xor_numbers(void)
+{
+  struct arena_info A = {0};
+
+  const struct ir_test tests[] = {
+    {
+      TRANSLATE,
+      newcnode_switch(&A, 1,
+        SJP_NUMBER, newcnode_bool(&A, JVST_CNODE_XOR,
+          newcnode(&A,JVST_CNODE_NUM_INTEGER),
+          newcnode_range(&A, JVST_CNODE_RANGE_MIN, 2.0, 0.0),
+          NULL),
+        SJP_NONE),
+
+      newir_frame(&A,
+          newir_counter(&A, 0, "xor_num"),
+          newir_stmt(&A, JVST_IR_STMT_TOKEN),
+          newir_if(&A, newir_istok(&A, SJP_NUMBER),
+            // NB: this is a slightly indirect way to translate XOR'd
+            // constraints.  Should we build the XOR sum into a
+            // expression node?  This might translate better into C.
+            //
+            // nbjoerg suggested !expr_a != !expr_b for two-node XOR in
+            // C.  Would this make sense here, as well?  We'd need to
+            // coerce the booleans into integers.
+            newir_seq(&A,
+              newir_if(&A,
+                newir_op(&A, JVST_IR_EXPR_GE, 
+                  newir_expr(&A, JVST_IR_EXPR_TOK_NUM),
+                  newir_num(&A, 2.0)
+                ),
+                newir_incr(&A, 0, "xor_num"),
+                newir_stmt(&A, JVST_IR_STMT_NOP)   // <--- XXX: there must be a better way!
+              ),
+
+              newir_if(&A,
+                newir_isint(&A, newir_expr(&A, JVST_IR_EXPR_TOK_NUM)),
+                newir_incr(&A, 0, "xor_num"),
+                newir_stmt(&A, JVST_IR_STMT_NOP)   // <--- XXX: there must be a better way!
+              ),
+
+              newir_if(&A,
+                newir_op(&A, JVST_IR_EXPR_EQ,
+                  newir_count(&A, 0, "xor_num"),
+                  newir_size(&A, 1)
+                ),
+                newir_stmt(&A, JVST_IR_STMT_VALID),
+                newir_invalid(&A, JVST_INVALID_NUMBER, "number not valid")
+              ),
+
+              NULL
+            ),
+            newir_if(&A, newir_istok(&A, SJP_OBJECT_END),
+              newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token"),
+              newir_if(&A, newir_istok(&A, SJP_ARRAY_END),
+                newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token"),
+                newir_stmt(&A, JVST_IR_STMT_VALID)
+              )
+            )
+          ),
+          NULL
+      )
+    },
+
+    { STOP },
+  };
+
+  RUNTESTS(tests);
 }
 
 void test_ir_anyof_2(void)
