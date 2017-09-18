@@ -2856,6 +2856,75 @@ void test_simplify_not_counts(void)
   RUNTESTS(tests);
 }
 
+void test_simplify_xored_counts(void)
+{
+  struct arena_info A = {0};
+
+  const struct cnode_test tests[] = {
+
+    {
+      SIMPLIFY,
+      NULL,
+
+      newcnode_switch(&A, 0,
+        SJP_ARRAY_BEG, newcnode_bool(&A, JVST_CNODE_XOR,
+                         newcnode_counts(&A, JVST_CNODE_ITEM_RANGE, 0, 6, true),
+                         newcnode_counts(&A, JVST_CNODE_ITEM_RANGE, 4, 8, true),
+                         NULL),
+        SJP_NONE),
+
+      newcnode_switch(&A, 0,
+        SJP_ARRAY_BEG, newcnode_bool(&A, JVST_CNODE_OR,
+                         newcnode_counts(&A, JVST_CNODE_ITEM_RANGE, 0, 3, true),
+                         newcnode_counts(&A, JVST_CNODE_ITEM_RANGE, 7, 8, true),
+                         NULL),
+        SJP_NONE),
+    },
+
+    {
+      SIMPLIFY,
+      NULL,
+
+      newcnode_switch(&A, 0,
+        SJP_ARRAY_BEG, newcnode_bool(&A, JVST_CNODE_XOR,
+                         newcnode_counts(&A, JVST_CNODE_ITEM_RANGE, 2, 6, true),
+                         newcnode_counts(&A, JVST_CNODE_ITEM_RANGE, 8, 12, true),
+                         NULL),
+        SJP_NONE),
+
+      newcnode_switch(&A, 0,
+        SJP_ARRAY_BEG, newcnode_bool(&A, JVST_CNODE_OR,
+                         newcnode_counts(&A, JVST_CNODE_ITEM_RANGE, 2, 6, true),
+                         newcnode_counts(&A, JVST_CNODE_ITEM_RANGE, 8, 12, true),
+                         NULL),
+        SJP_NONE),
+    },
+
+    {
+      SIMPLIFY,
+      NULL,
+
+      newcnode_switch(&A, 0,
+        SJP_ARRAY_BEG, newcnode_bool(&A, JVST_CNODE_XOR,
+                         newcnode_counts(&A, JVST_CNODE_ITEM_RANGE, 8, 12, true),
+                         newcnode_counts(&A, JVST_CNODE_ITEM_RANGE, 10, 0, false),
+                         NULL),
+        SJP_NONE),
+
+      newcnode_switch(&A, 0,
+        SJP_ARRAY_BEG, newcnode_bool(&A, JVST_CNODE_OR,
+                         newcnode_counts(&A, JVST_CNODE_ITEM_RANGE, 8, 9, true),
+                         newcnode_counts(&A, JVST_CNODE_ITEM_RANGE, 13, 0, false),
+                         NULL),
+        SJP_NONE),
+    },
+
+    { STOP },
+  };
+
+  RUNTESTS(tests);
+}
+
 void test_simplify_oneof_2(void)
 {
   struct arena_info A = {0};
@@ -3960,6 +4029,7 @@ int main(void)
   test_simplify_ored_counts();
   test_simplify_anded_ored_counts();
   test_simplify_not_counts();
+  test_simplify_xored_counts();
 
   test_canonify_ored_schema();
   test_canonify_propsets();
