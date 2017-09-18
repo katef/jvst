@@ -563,6 +563,12 @@ jvst_cnode_dump_inner(struct jvst_cnode *node, struct sbuf *buf, int indent)
 		sbuf_snprintf(buf, ")");
 		break;
 
+	case JVST_CNODE_NOT:
+		op = "NOT";
+		assert(node->u.ctrl != NULL);
+		assert(node->u.ctrl->next == NULL);  // NOT should have exactly one child
+		goto and_or_xor; // FIXME: rename this (also, maybe factor to a function?)
+
 	case JVST_CNODE_AND:
 		op = "AND";
 		goto and_or_xor;
@@ -818,7 +824,6 @@ and_or_xor:
 		}
 		break;
 
-	case JVST_CNODE_NOT:
 	case JVST_CNODE_ARR_UNIQUE:
 		fprintf(stderr, WHEREFMT "**not implemented**\n",
 			WHEREARGS);
@@ -3486,6 +3491,56 @@ cnode_simplify_andor(struct jvst_cnode *top)
 }
 
 static struct jvst_cnode *
+cnode_negate_range(struct jvst_cnode *range)
+{
+	struct jvst_cnode *ret;
+
+	switch (range->type) {
+	case JVST_CNODE_LENGTH_RANGE:
+	case JVST_CNODE_PROP_RANGE:
+	case JVST_CNODE_ITEM_RANGE:
+		// okay
+		break;
+
+	default:
+		SHOULD_NOT_REACH();
+	}
+
+	ret = NULL;
+	if (range->u.counts.min > 0) {
+		struct jvst_cnode *lower;
+
+		lower = jvst_cnode_alloc(range->type);
+		lower->u.counts.min = 0;
+		lower->u.counts.max = range->u.counts.min-1;
+		lower->u.counts.upper = true;
+
+		ret = lower;
+	}
+
+	if (range->u.counts.upper) {
+		struct jvst_cnode *upper;
+
+		upper = jvst_cnode_alloc(range->type);
+		upper->u.counts.min = range->u.counts.max+1;
+		upper->u.counts.max = 0;
+		upper->u.counts.upper = false;
+
+		if (ret == NULL) {
+			ret = upper;
+		} else {
+			struct jvst_cnode *jxn;
+			jxn = jvst_cnode_alloc(JVST_CNODE_OR);
+			ret->next = upper;
+			jxn->u.ctrl = ret;
+			ret = jxn;
+		}
+	}
+
+	return ret;
+}
+
+static struct jvst_cnode *
 cnode_simplify_xor_ranges(struct jvst_cnode *top)
 {
 	return top;
@@ -3593,6 +3648,40 @@ cnode_simplify_xor(struct jvst_cnode *top)
 }
 
 static struct jvst_cnode *
+cnode_simplify_not_range(struct jvst_cnode *top)
+{
+	struct jvst_cnode *range;
+
+	assert(top->type == JVST_CNODE_NOT);
+	assert(top->u.ctrl != NULL);
+
+	range = top->u.ctrl;
+	switch (range->type) {
+	case JVST_CNODE_LENGTH_RANGE:
+	case JVST_CNODE_PROP_RANGE:
+	case JVST_CNODE_ITEM_RANGE:
+		// okay
+		break;
+
+	default:
+		return top;
+	}
+
+	return cnode_negate_range(range);
+}
+
+static struct jvst_cnode *
+cnode_simplify_not(struct jvst_cnode *top)
+{
+	// currently simplification of NOT is pretty limited
+	if (top->type == JVST_CNODE_NOT) {
+		top = cnode_simplify_not_range(top);
+	}
+
+	return top;
+}
+
+static struct jvst_cnode *
 cnode_simplify_propset(struct jvst_cnode *tree)
 {
 	struct jvst_cnode *pm;
@@ -3648,8 +3737,8 @@ jvst_cnode_simplify(struct jvst_cnode *tree)
 		return cnode_simplify_xor(tree);
 
 	case JVST_CNODE_NOT:
-		// TODO: basic optimizations for NOT
-		return tree;
+		// TODO: improve optimizations for NOT
+		return cnode_simplify_not(tree);
 
 	case JVST_CNODE_SWITCH:
 		{
