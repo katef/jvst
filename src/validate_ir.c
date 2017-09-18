@@ -1612,7 +1612,7 @@ ir_translate_number_expr(struct jvst_cnode *top)
 }
 
 static struct jvst_ir_stmt *
-ir_translate_number(struct jvst_cnode *top)
+ir_translate_number(struct jvst_cnode *top, struct jvst_ir_stmt *frame)
 {
 	struct jvst_ir_stmt *stmt, **spp;
 	// struct jvst_ir_expr *expr, **epp;
@@ -1650,8 +1650,47 @@ ir_translate_number(struct jvst_cnode *top)
 		}
 		break;
 
-	case JVST_CNODE_NOT:
 	case JVST_CNODE_XOR:
+		{
+			struct jvst_cnode *n;
+			struct jvst_ir_stmt *counter, *seq;
+
+			// allocate a counter...
+			counter = ir_stmt_counter(frame, "xor_num");
+			seq = ir_stmt_new(JVST_IR_STMT_SEQ);
+			*spp = seq;
+			spp = &seq->u.stmt_list;
+
+			for (n = top->u.ctrl; n != NULL; n = n->next) {
+				struct jvst_ir_stmt *br;
+				struct jvst_ir_expr *cond;
+
+				cond = ir_translate_number_expr(n);
+				br = ir_stmt_if(cond,
+					ir_stmt_counter_op(JVST_IR_STMT_INCR, counter),
+					ir_stmt_new(JVST_IR_STMT_NOP));
+				*spp = br;
+				spp = &br->next;
+			}
+
+			{
+				struct jvst_ir_stmt *br;
+				struct jvst_ir_expr *cond;
+
+				cond = ir_expr_op(JVST_IR_EXPR_EQ,
+					ir_expr_count(counter),
+					ir_expr_size(1));
+
+				br = ir_stmt_if(cond,
+					ir_stmt_new(JVST_IR_STMT_VALID),
+					ir_stmt_invalid(JVST_INVALID_NUMBER));
+				*spp = br;
+			}
+
+		}
+		break;
+
+	case JVST_CNODE_NOT:
 		fprintf(stderr, "[%s:%d] cnode %s not yet implemented\n",
 				__FILE__, __LINE__, 
 				jvst_cnode_type_name(top->type));
@@ -3412,7 +3451,7 @@ ir_translate_type(enum SJP_EVENT type, struct jvst_cnode *top, struct jvst_ir_st
 {
 	switch (type) {
 	case SJP_NUMBER:
-		return ir_translate_number(top);
+		return ir_translate_number(top, frame);
 
 	case SJP_OBJECT_BEG:
 		return ir_translate_object(top, frame);
