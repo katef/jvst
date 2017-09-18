@@ -545,8 +545,16 @@ newcnode_bool(struct arena_info *A, enum jvst_cnode_type type, ...)
 	struct jvst_cnode *node, **pp;
 	va_list args;
 
-	if ((type != JVST_CNODE_AND) && (type != JVST_CNODE_OR) && (type != JVST_CNODE_XOR)) {
-		fprintf(stderr, "invalid cnode type for %s: %d\n", __func__, type);
+	switch (type) {
+	case JVST_CNODE_AND:
+	case JVST_CNODE_OR:
+	case JVST_CNODE_XOR:
+	case JVST_CNODE_NOT:
+		// okay
+		break;
+	default:
+		fprintf(stderr, "%s:%d (%s) invalid cnode type %s\n",
+			__FILE__, __LINE__, __func__, jvst_cnode_type_name(type));
 		abort();
 	}
 
