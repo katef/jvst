@@ -2293,7 +2293,7 @@ collect_mcases(struct fsm *dfa, struct jvst_cnode **mcpp)
 }
 
 static void
-merge_mcases(const struct fsm_state **orig, size_t n,
+merge_mcases_with_and(const struct fsm_state **orig, size_t n,
 	struct fsm *dfa, struct fsm_state *comb);
 
 // "non-destructive" intersection
@@ -2430,7 +2430,7 @@ merge_mswitches_with_and(struct jvst_cnode *mswlst)
 			dfa2 = n->u.mswitch.dfa;
 
 			opts = fsm_getoptions(dfa1);
-			assert(opts->carryopaque == merge_mcases);
+			assert(opts->carryopaque == merge_mcases_with_and);
 
 			// both = DFA1 & DFA2
 			both = intersect_nd(dfa1,dfa2,opts);
@@ -2562,7 +2562,8 @@ mcase_add_name_constraint(struct jvst_cnode *c, struct jvst_cnode *name_cons)
 }
 
 static struct jvst_cnode *
-merge_mswitches_with_or(struct jvst_cnode *mswlst)
+merge_mswitches(struct jvst_cnode *mswlst,
+	void (*mergefunc)(const struct fsm_state **, size_t, struct fsm *, struct fsm_state *))
 {
 	struct jvst_cnode *n, *msw;
 
@@ -2635,7 +2636,7 @@ merge_mswitches_with_or(struct jvst_cnode *mswlst)
 
 			orig_opts = fsm_getoptions(dfa1);
 			opts = *orig_opts;
-			opts.carryopaque = merge_mcases_with_or;
+			opts.carryopaque = mergefunc;
 
 			// both = DFA1 & DFA2
 			both = intersect_nd(dfa1,dfa2,&opts);
@@ -2789,7 +2790,7 @@ cnode_simplify_and_mswitch(struct jvst_cnode *top)
 		return top;
 	}
 
-	msw = merge_mswitches_with_and(msw);
+	msw = merge_mswitches(msw, merge_mcases_with_and);
 
 	*npp = msw;
 
@@ -2860,7 +2861,7 @@ cnode_simplify_or_mswitch(struct jvst_cnode *top)
 	}
 
 	if (msw != NULL) {
-		msw = merge_mswitches_with_or(msw);
+		msw = merge_mswitches(msw, merge_mcases_with_or);
 		*npp = msw;
 	}
 
@@ -4176,7 +4177,7 @@ merge_mcases_with_cjxn(const struct fsm_state **orig, size_t n,
 }
 
 static void
-merge_mcases(const struct fsm_state **orig, size_t n,
+merge_mcases_with_and(const struct fsm_state **orig, size_t n,
 	struct fsm *dfa, struct fsm_state *comb)
 {
 	merge_mcases_with_cjxn(orig, n, dfa, comb, JVST_CNODE_AND);
@@ -4414,7 +4415,7 @@ cnode_canonify_propset(struct jvst_cnode *top)
 	// into their own DFAs.  each RE gets a unique opaque value for
 	// all of its endstates.  When we union the DFAs together, we
 	// may need to merge these states, but not during compilation.
-	opts->carryopaque = merge_mcases;
+	opts->carryopaque = merge_mcases_with_and;
 
 	if (matches != NULL) {
 		// step 2: convert the FSM from an NFA to a DFA.
@@ -4484,7 +4485,7 @@ cnode_canonify_propset(struct jvst_cnode *top)
 		assert(names_match->next == NULL);
 
 		msw->next = names_match;
-		merged = merge_mswitches_with_and(msw);
+		merged = merge_mswitches(msw, merge_mcases_with_and);
 		return merged;
 	}
 }
