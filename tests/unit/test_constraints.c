@@ -55,7 +55,8 @@ static int run_test(const char *fname, const struct cnode_test *t)
     case CANONIFY:
       assert(t->cnode != NULL);
       assert(t->expected != NULL);
-      result = jvst_cnode_canonify(t->cnode);
+      result = jvst_cnode_simplify(t->cnode);
+      result = jvst_cnode_canonify(result);
       break;
 
     case ALL:
@@ -3070,39 +3071,24 @@ void test_canonify_ored_schema(void)
 
         // canonified tree
         newcnode_switch(&A, 0,
-          SJP_OBJECT_BEG, newcnode_bool(&A, JVST_CNODE_OR,
-                            newcnode_mswitch(&A, 
-                              // default case
-                              newcnode_valid(),
+          SJP_OBJECT_BEG, newcnode_mswitch(&A, 
+                            // default case
+                            newcnode_valid(),
 
-                              newcnode_mcase(&A,
-                                newmatchset(&A, RE_LITERAL, "bar", -1),
-                                newcnode_switch(&A, 0, SJP_STRING, newcnode_valid(), SJP_NONE)
-                              ),
-
-                              newcnode_mcase(&A,
-                                newmatchset(&A, RE_LITERAL, "foo", -1),
-                                newcnode_switch(&A, 0, SJP_NUMBER, newcnode_valid(), SJP_NONE)
-                              ),
-
-                              NULL
+                            newcnode_mcase(&A,
+                              newmatchset(&A, RE_LITERAL, "bar", -1),
+                              newcnode_switch(&A, 0,
+                                SJP_NUMBER, newcnode_valid(),
+                                SJP_STRING, newcnode_valid(),
+                                SJP_NONE)
                             ),
 
-                            newcnode_mswitch(&A, 
-                              // default case
-                              newcnode_valid(),
-
-                              newcnode_mcase(&A,
-                                newmatchset(&A, RE_LITERAL, "bar", -1),
-                                newcnode_switch(&A, 0, SJP_NUMBER, newcnode_valid(), SJP_NONE)
-                              ),
-
-                              newcnode_mcase(&A,
-                                newmatchset(&A, RE_LITERAL, "foo", -1),
-                                newcnode_switch(&A, 0, SJP_STRING, newcnode_valid(), SJP_NONE)
-                              ),
-
-                              NULL
+                            newcnode_mcase(&A,
+                              newmatchset(&A, RE_LITERAL, "foo", -1),
+                              newcnode_switch(&A, 0,
+                                SJP_NUMBER, newcnode_valid(),
+                                SJP_TRUE, newcnode_valid(),
+                                SJP_NONE)
                             ),
 
                             NULL
