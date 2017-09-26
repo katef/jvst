@@ -2020,6 +2020,24 @@ cnode_and_constraints(struct jvst_cnode *c1, struct jvst_cnode *c2)
 	return jvst_cnode_simplify(jxn);
 }
 
+static struct jvst_cnode *cnode_jxn_constraints(struct jvst_cnode *c1, struct jvst_cnode *c2, enum jvst_cnode_type jxntype)
+{
+	switch (jxntype) {
+	case JVST_CNODE_AND:
+		return cnode_and_constraints(c1,c2);
+
+	case JVST_CNODE_OR:
+		return cnode_or_constraints(c1,c2);
+
+	default:
+		DIEF("combining constraints with %s not yet implemented\n",
+			jvst_cnode_type_name(jxntype));
+	}
+}
+
+static void
+collect_mcases(struct fsm *dfa, struct jvst_cnode **mcpp);
+
 static struct jvst_cnode *
 mswitch_and_cases_with_default(struct jvst_cnode *msw, struct jvst_cnode *dft)
 {
@@ -2563,13 +2581,29 @@ mcase_add_name_constraint(struct jvst_cnode *c, struct jvst_cnode *name_cons)
 }
 
 static struct jvst_cnode *
-merge_mswitches(struct jvst_cnode *mswlst,
-	void (*mergefunc)(const struct fsm_state **, size_t, struct fsm *, struct fsm_state *))
+merge_mswitches(struct jvst_cnode *mswlst, enum jvst_cnode_type jxntype)
 {
 	struct jvst_cnode *n, *msw;
+	void (*mergefunc)(const struct fsm_state **, size_t, struct fsm *, struct fsm_state *);
+
+	static const volatile int dbg = 1;
 
 	assert(mswlst != NULL);
 	assert(mswlst->type == JVST_CNODE_MATCH_SWITCH);
+
+	switch (jxntype) {
+	case JVST_CNODE_AND:
+		mergefunc = merge_mcases_with_and;
+		break;
+
+	case JVST_CNODE_OR:
+		mergefunc = merge_mcases_with_or;
+		break;
+		
+	default:
+		DIEF("merging mswitches combined with %s not yet implemented\n",
+			jvst_cnode_type_name(jxntype));
+	}
 
 	if (mswlst->next == NULL) {
 		return mswlst;
@@ -2719,9 +2753,10 @@ merge_mswitches(struct jvst_cnode *mswlst,
 		assert(n->u.mswitch.dft_case->type == JVST_CNODE_MATCH_CASE);
 
 		if (msw->u.mswitch.dft_case->u.mcase.name_constraint && n->u.mswitch.dft_case->u.mcase.name_constraint) {
-			msw->u.mswitch.dft_case->u.mcase.name_constraint = cnode_or_constraints(
+			msw->u.mswitch.dft_case->u.mcase.name_constraint = cnode_jxn_constraints(
 					msw->u.mswitch.dft_case->u.mcase.name_constraint,
-					n->u.mswitch.dft_case->u.mcase.name_constraint);
+					n->u.mswitch.dft_case->u.mcase.name_constraint,
+					jxntype);
 		} else if (n->u.mswitch.dft_case->u.mcase.name_constraint) {
 			msw->u.mswitch.dft_case->u.mcase.name_constraint = cnode_deep_copy(
 				n->u.mswitch.dft_case->u.mcase.name_constraint);
@@ -2791,7 +2826,8 @@ cnode_simplify_and_mswitch(struct jvst_cnode *top)
 		return top;
 	}
 
-	msw = merge_mswitches(msw, merge_mcases_with_and);
+	// msw = merge_mswitches_with_and(msw);
+	msw = merge_mswitches(msw, JVST_CNODE_AND);
 
 	*npp = msw;
 
@@ -2862,7 +2898,15 @@ cnode_simplify_or_mswitch(struct jvst_cnode *top)
 	}
 
 	if (msw != NULL) {
-		msw = merge_mswitches(msw, merge_mcases_with_or);
+		switch (top->type) {
+		case JVST_CNODE_OR:
+			msw = merge_mswitches(msw, JVST_CNODE_OR);
+			break;
+
+		default:
+			SHOULD_NOT_REACH();
+		}
+
 		*npp = msw;
 	}
 
@@ -4017,7 +4061,14 @@ merge_mcases_with_cjxn(const struct fsm_state **orig, size_t n,
 	size_t nstates, nuniq, nmatchsets;
 	size_t i,ind;
 
-	assert(cjxn_type == JVST_CNODE_AND || cjxn_type == JVST_CNODE_OR);
+	switch (cjxn_type) {
+	case JVST_CNODE_AND:
+	case JVST_CNODE_OR:
+		/* okay */
+		break;
+	default:
+		SHOULD_NOT_REACH();
+	}
 
 	// first count states to make sure that we need to merge...
 	mcase = NULL;
@@ -4486,7 +4537,8 @@ cnode_canonify_propset(struct jvst_cnode *top)
 		assert(names_match->next == NULL);
 
 		msw->next = names_match;
-		merged = merge_mswitches(msw, merge_mcases_with_and);
+		// merged = merge_mswitches_with_and(msw);
+		merged = merge_mswitches(msw, JVST_CNODE_AND);
 		return merged;
 	}
 }
