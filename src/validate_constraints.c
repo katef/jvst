@@ -4881,6 +4881,7 @@ jvst_cnode_canonify(struct jvst_cnode *tree)
 	tree = cnode_canonify_pass1(tree);
 	tree = jvst_cnode_simplify(tree);
 	tree = cnode_canonify_pass2(tree);
+	tree = jvst_cnode_simplify(tree);
 	return tree;
 }
 
