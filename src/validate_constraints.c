@@ -2672,6 +2672,7 @@ merge_mswitches(struct jvst_cnode *mswlst, enum jvst_cnode_type jxntype)
 			orig_opts = fsm_getoptions(dfa1);
 			opts = *orig_opts;
 			opts.carryopaque = mergefunc;
+			opts.tidy = false;
 
 			// both = DFA1 & DFA2
 			both = intersect_nd(dfa1,dfa2,&opts);
@@ -2680,9 +2681,9 @@ merge_mswitches(struct jvst_cnode *mswlst, enum jvst_cnode_type jxntype)
 				abort();
 			}
 
-			if (!fsm_minimise(both)) {
-				perror("minimizing (dfa1 & dfa2)");
-				abort();
+			if (dbg) {
+				fprintf(stderr, "\n---> both <---\n");
+				fsm_print(both, stderr, FSM_OUT_FSM);
 			}
 
 			// only1 = DFA2 - DFA1
@@ -2693,10 +2694,18 @@ merge_mswitches(struct jvst_cnode *mswlst, enum jvst_cnode_type jxntype)
 				abort();
 			}
 
+			/*
 			if (!fsm_minimise(only1)) {
 				perror("minimizing (DFA1 - DFA2)");
 				abort();
 			}
+			*/
+
+			if (dbg) {
+				fprintf(stderr, "\n---> only1 <---\n");
+				fsm_print(only1, stderr, FSM_OUT_FSM);
+			}
+
 
 			// only2 = DFA2 - DFA1
 			mc1 = cnode_deep_copy(msw->u.mswitch.dft_case);
@@ -2706,9 +2715,20 @@ merge_mswitches(struct jvst_cnode *mswlst, enum jvst_cnode_type jxntype)
 				abort();
 			}
 
+			mc1 = cnode_deep_copy(msw->u.mswitch.dft_case);
+
+			fsm_setendopaque(dfa1, mc1);
+			only2 = fsm_intersect(dfa2, dfa1);
+			/*
 			if (!fsm_minimise(only2)) {
 				perror("minimizing (DFA2 - DFA1)");
 				abort();
+			}
+			*/
+
+			if (dbg) {
+				fprintf(stderr, "\n---> only2 <---\n");
+				fsm_print(only2, stderr, FSM_OUT_FSM);
 			}
 
 			// now union them together
@@ -2727,6 +2747,11 @@ merge_mswitches(struct jvst_cnode *mswlst, enum jvst_cnode_type jxntype)
 			if (!fsm_determinise(combined)) {
 				perror("determinising union");
 				abort();
+			}
+
+			if (dbg) {
+				fprintf(stderr, "\n---> combined <---\n");
+				fsm_print(combined, stderr, FSM_OUT_FSM);
 			}
 
 			fsm_setoptions(combined, orig_opts);
