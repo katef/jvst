@@ -2090,7 +2090,8 @@ mswitch_and_cases_with_default(struct jvst_cnode *msw, struct jvst_cnode *dft)
 	return msw;
 }
 
-static int matchset_cmp(const void *p0, const void *p1)
+static int
+matchset_cmp(const void *p0, const void *p1)
 {
 	const struct jvst_cnode_matchset *const *ms0, *const *ms1;
 	int diff;
