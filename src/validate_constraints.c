@@ -2039,11 +2039,10 @@ static void
 collect_mcases(struct fsm *dfa, struct jvst_cnode **mcpp);
 
 static struct jvst_cnode *
-mswitch_and_cases_with_default(struct jvst_cnode *msw, struct jvst_cnode *dft)
+mcase_list_and_with_default(struct jvst_cnode *mcases, struct jvst_cnode *dft, struct fsm *dfa)
 {
 	struct jvst_cnode *vcons, *ncons, *c, *new_cases, **ncpp;
 
-	assert(msw->type == JVST_CNODE_MATCH_SWITCH);
 	assert(dft->type == JVST_CNODE_MATCH_CASE);
 
 	ncons = dft->u.mcase.name_constraint;
@@ -2058,12 +2057,12 @@ mswitch_and_cases_with_default(struct jvst_cnode *msw, struct jvst_cnode *dft)
 	// always VALID name constraints and always VALID default
 	// constriants)
 	if (ncons == NULL && vcons->type == JVST_CNODE_VALID) {
-		return msw;
+		return mcases;
 	}
 
 	new_cases = NULL;
 	ncpp = &new_cases;
-	for (c = msw->u.mswitch.cases; c != NULL; c = c->next) {
+	for (c = mcases; c != NULL; c = c->next) {
 		struct jvst_cnode *nc, *vdft;
 		assert(c->type == JVST_CNODE_MATCH_CASE);
 
@@ -2094,15 +2093,36 @@ mswitch_and_cases_with_default(struct jvst_cnode *msw, struct jvst_cnode *dft)
 		ncpp = &nc->next;
 	}
 
-	fsm_walk_states(msw->u.mswitch.dfa, NULL, mcase_update_opaque);
+	// update states in the dfa
+	fsm_walk_states(dfa, NULL, mcase_update_opaque);
 
 	// reset the tmp fields
-	for (c = msw->u.mswitch.cases; c != NULL; c = c->next) {
+	for (c = mcases; c != NULL; c = c->next) {
 		assert(c->type == JVST_CNODE_MATCH_CASE);
 		assert(c->u.mcase.tmp != NULL);
 		c->u.mcase.tmp = NULL;
 	}
 
+	return new_cases;
+}
+
+static struct jvst_cnode *
+dfa_and_cases_with_default(struct fsm *dfa, struct jvst_cnode *dft)
+{
+	struct jvst_cnode *cases;
+
+	cases = NULL;
+	collect_mcases(dfa, &cases);
+
+	return mcase_list_and_with_default(cases, dft, dfa);
+}
+
+static struct jvst_cnode *
+mswitch_and_cases_with_default(struct jvst_cnode *msw, struct jvst_cnode *dft)
+{
+	struct jvst_cnode *vcons, *ncons, *c, *new_cases, **ncpp;
+
+	new_cases = mcase_list_and_with_default(msw->u.mswitch.cases, dft, msw->u.mswitch.dfa);
 	msw->u.mswitch.cases = new_cases;
 
 	return msw;
@@ -2279,11 +2299,12 @@ mcase_collector(const struct fsm *dfa, const struct fsm_state *st, void *opaque)
 		return 1;
 	}
 
-	assert(node->next == NULL);
 	assert(collector->mcpp != &node->next);
 
 	*collector->mcpp = node;
 	collector->mcpp = &node->next;
+	*collector->mcpp = NULL;
+
 	node->u.mcase.collected = 1;
 
 	return 1;
@@ -2346,7 +2367,7 @@ intersect_nd(const struct fsm *a, const struct fsm *b, const struct fsm_options 
 // subtract(a, b) = intersect(a, complement(b)).
 // sets the opaque value of end states of complement(b) to opaque_compl
 static struct fsm *
-subtract_nd(const struct fsm *a, const struct fsm *b, void *opaque_compl, const struct fsm_options *opts)
+subtract_nd(const struct fsm *a, const struct fsm *b, const struct fsm_options *opts)
 {
 	struct fsm *dfa1, *dfa2;
 
@@ -2369,14 +2390,7 @@ subtract_nd(const struct fsm *a, const struct fsm *b, void *opaque_compl, const 
 
 	fsm_setoptions(dfa2, opts);
 
-	if (!fsm_complement(dfa2)) {
-		fsm_free(dfa1);
-		fsm_free(dfa2);
-		return NULL;
-	}
-	fsm_setendopaque(dfa2, opaque_compl);
-
-	return fsm_intersect(dfa1,dfa2);
+	return fsm_subtract(dfa1,dfa2);
 }
 
 static void
@@ -2464,30 +2478,24 @@ merge_mswitches_with_and(struct jvst_cnode *mswlst)
 			}
 
 			// only1 = DFA2 - DFA1
-			mc2 = cnode_deep_copy(n->u.mswitch.dft_case);
-			only1 = subtract_nd(dfa1,dfa2,mc2,opts);
+			only1 = subtract_nd(dfa1,dfa2,opts);
 			if (!only1) {
 				perror("subtracting (DFA1 - DFA2)");
 				abort();
 			}
 
-			if (!fsm_minimise(only1)) {
-				perror("minimizing (DFA1 - DFA2)");
-				abort();
-			}
+			mc2 = cnode_deep_copy(n->u.mswitch.dft_case);
+			dfa_and_cases_with_default(only1, mc2);
 
 			// only2 = DFA2 - DFA1
-			mc1 = cnode_deep_copy(msw->u.mswitch.dft_case);
-			only2 = subtract_nd(dfa2,dfa1,mc1,opts);
+			only2 = subtract_nd(dfa2,dfa1,opts);
 			if (!only2) {
 				perror("subtracting (DFA2 - DFA1)");
 				abort();
 			}
 
-			if (!fsm_minimise(only2)) {
-				perror("minimizing (DFA2 - DFA1)");
-				abort();
-			}
+			mc1 = cnode_deep_copy(msw->u.mswitch.dft_case);
+			dfa_and_cases_with_default(only2, mc1);
 
 			// now union both, only1, and only2 together
 			combined = fsm_union(both, only1);
@@ -2507,7 +2515,7 @@ merge_mswitches_with_and(struct jvst_cnode *mswlst)
 				abort();
 			}
 
-			// now gather mcases
+			// Finally, gather mcases
 			msw->u.mswitch.dfa = combined;
 			collect_mcases(combined, &msw->u.mswitch.cases);
 		} else if (n->u.mswitch.cases != NULL) {
@@ -2586,7 +2594,7 @@ merge_mswitches(struct jvst_cnode *mswlst, enum jvst_cnode_type jxntype)
 	struct jvst_cnode *n, *msw;
 	void (*mergefunc)(const struct fsm_state **, size_t, struct fsm *, struct fsm_state *);
 
-	static const volatile int dbg = 1;
+	static const int dbg = 0;
 
 	assert(mswlst != NULL);
 	assert(mswlst->type == JVST_CNODE_MATCH_SWITCH);
@@ -2687,12 +2695,14 @@ merge_mswitches(struct jvst_cnode *mswlst, enum jvst_cnode_type jxntype)
 			}
 
 			// only1 = DFA2 - DFA1
-			mc2 = cnode_deep_copy(n->u.mswitch.dft_case);
-			only1 = subtract_nd(dfa1,dfa2,mc2,&opts);
+			only1 = subtract_nd(dfa1,dfa2,&opts);
 			if (!only1) {
 				perror("subtracting (DFA1 - DFA2)");
 				abort();
 			}
+
+			mc2 = cnode_deep_copy(n->u.mswitch.dft_case);
+			dfa_and_cases_with_default(only1, mc2);
 
 			/*
 			if (!fsm_minimise(only1)) {
@@ -2706,19 +2716,13 @@ merge_mswitches(struct jvst_cnode *mswlst, enum jvst_cnode_type jxntype)
 				fsm_print(only1, stderr, FSM_OUT_FSM);
 			}
 
-
 			// only2 = DFA2 - DFA1
-			mc1 = cnode_deep_copy(msw->u.mswitch.dft_case);
-			only2 = subtract_nd(dfa2,dfa1,mc1,&opts);
+			only2 = subtract_nd(dfa2,dfa1,&opts);
 			if (!only2) {
 				perror("subtracting (DFA2 - DFA1)");
 				abort();
 			}
 
-			mc1 = cnode_deep_copy(msw->u.mswitch.dft_case);
-
-			fsm_setendopaque(dfa1, mc1);
-			only2 = fsm_intersect(dfa2, dfa1);
 			/*
 			if (!fsm_minimise(only2)) {
 				perror("minimizing (DFA2 - DFA1)");
@@ -2726,12 +2730,15 @@ merge_mswitches(struct jvst_cnode *mswlst, enum jvst_cnode_type jxntype)
 			}
 			*/
 
+			mc1 = cnode_deep_copy(msw->u.mswitch.dft_case);
+			dfa_and_cases_with_default(only2, mc1);
+
 			if (dbg) {
 				fprintf(stderr, "\n---> only2 <---\n");
 				fsm_print(only2, stderr, FSM_OUT_FSM);
 			}
 
-			// now union them together
+			// now union DFA1&DFA2, DFA1-DFA2, and DFA2-DFA1 together
 			combined = fsm_union(both, only1);
 			if (!combined) {
 				perror("unioning (both OR only1)");
@@ -2756,7 +2763,7 @@ merge_mswitches(struct jvst_cnode *mswlst, enum jvst_cnode_type jxntype)
 
 			fsm_setoptions(combined, orig_opts);
 
-			// now gather mcases
+			// Finally, gather mcases
 			msw->u.mswitch.dfa = combined;
 			collect_mcases(combined, &msw->u.mswitch.cases);
 		} else if (n->u.mswitch.cases != NULL) {
@@ -4130,7 +4137,6 @@ merge_mcases_with_cjxn(const struct fsm_state **orig, size_t n,
 
 	if (nstates == 1 || nuniq == 1) {
 		assert(mcase != NULL);
-		assert(mcase->next == NULL);
 		fsm_setopaque(dfa, comb, mcase);
 		return;
 	}

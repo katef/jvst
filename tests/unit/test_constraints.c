@@ -3060,7 +3060,7 @@ void test_canonify_ored_schema(void)
 
                           newcnode_propset(&A,
                             newcnode_prop_match(&A, RE_LITERAL, "foo",
-                              newcnode_switch(&A, 0, SJP_STRING, newcnode_valid(), SJP_NONE)),
+                              newcnode_switch(&A, 0, SJP_TRUE, newcnode_valid(), SJP_NONE)),
                             newcnode_prop_match(&A, RE_LITERAL, "bar",
                               newcnode_switch(&A, 0, SJP_NUMBER, newcnode_valid(), SJP_NONE)),
                             NULL),
