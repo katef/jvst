@@ -512,7 +512,7 @@ newcnode_switch(struct arena_info *A, int isvalid, ...)
 		node->u.sw[i] = isvalid ? newcnode_valid() : newcnode_invalid();
 	}
 
-	// ARRAY_END and OBJECT_END should not be valid by default...
+	// NONE, ARRAY_END, and OBJECT_END should not be valid by default...
 	node->u.sw[SJP_ARRAY_END]  = newcnode_invalid();
 	node->u.sw[SJP_OBJECT_END] = newcnode_invalid();
 
