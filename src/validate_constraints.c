@@ -1987,6 +1987,36 @@ cnode_or_constraints(struct jvst_cnode *c1, struct jvst_cnode *c2)
 }
 
 static struct jvst_cnode *
+cnode_xor_constraints(struct jvst_cnode *c1, struct jvst_cnode *c2)
+{
+	struct jvst_cnode *jxn;
+
+	assert(c1 != NULL);
+	assert(c2 != NULL);
+
+	assert(c1->next == NULL);
+	assert(c2->next == NULL);
+
+	if (c1->type == JVST_CNODE_INVALID) {
+		return c2;
+	}
+
+	if (c2->type == JVST_CNODE_INVALID) {
+		return c1;
+	}
+
+	if (c1->type == JVST_CNODE_VALID && c2->type == JVST_CNODE_VALID) {
+		return jvst_cnode_alloc(JVST_CNODE_INVALID);
+	}
+
+	jxn = jvst_cnode_alloc(JVST_CNODE_XOR);
+	c1->next = c2;
+	jxn->u.ctrl = c1;
+
+	return jvst_cnode_simplify(jxn);
+}
+
+static struct jvst_cnode *
 cnode_and_constraints(struct jvst_cnode *c1, struct jvst_cnode *c2)
 {
 	struct jvst_cnode *jxn;
@@ -2029,6 +2059,9 @@ static struct jvst_cnode *cnode_jxn_constraints(struct jvst_cnode *c1, struct jv
 	case JVST_CNODE_OR:
 		return cnode_or_constraints(c1,c2);
 
+	case JVST_CNODE_XOR:
+		return cnode_xor_constraints(c1,c2);
+
 	default:
 		DIEF("combining constraints with %s not yet implemented\n",
 			jvst_cnode_type_name(jxntype));
@@ -2039,7 +2072,7 @@ static void
 collect_mcases(struct fsm *dfa, struct jvst_cnode **mcpp);
 
 static struct jvst_cnode *
-mcase_list_and_with_default(struct jvst_cnode *mcases, struct jvst_cnode *dft, struct fsm *dfa)
+mcase_list_jxn_with_default(struct jvst_cnode *mcases, struct jvst_cnode *dft, struct fsm *dfa, enum jvst_cnode_type jxntype)
 {
 	struct jvst_cnode *vcons, *ncons, *c, *new_cases, **ncpp;
 
@@ -2053,11 +2086,12 @@ mcase_list_and_with_default(struct jvst_cnode *mcases, struct jvst_cnode *dft, s
 		ncons = NULL;
 	}
 
-	// fast exit for default cases that won't change anything (no or
-	// always VALID name constraints and always VALID default
-	// constriants)
-	if (ncons == NULL && vcons->type == JVST_CNODE_VALID) {
-		return mcases;
+	// fast exit for AND and OR jxn types: default cases that won't change anything
+	// (no or always VALID name constraints and always VALID default constriants)
+	if (jxntype == JVST_CNODE_AND || jxntype == JVST_CNODE_OR) {
+		if (ncons == NULL && vcons->type == JVST_CNODE_VALID) {
+			return mcases;
+		}
 	}
 
 	new_cases = NULL;
@@ -2078,12 +2112,13 @@ mcase_list_and_with_default(struct jvst_cnode *mcases, struct jvst_cnode *dft, s
 		       } else {
 			       assert(nc->u.mcase.name_constraint->type != JVST_CNODE_MATCH_CASE);
 
-			       nc->u.mcase.name_constraint = cnode_and_constraints(nc->u.mcase.name_constraint, nnc);
+			       nc->u.mcase.name_constraint = 
+				       cnode_jxn_constraints(nc->u.mcase.name_constraint, nnc, jxntype);
 		       }
 		}
 
 		vdft = cnode_deep_copy(vcons);
-		nc->u.mcase.value_constraint = cnode_and_constraints(nc->u.mcase.value_constraint, vdft);
+		nc->u.mcase.value_constraint = cnode_jxn_constraints(nc->u.mcase.value_constraint, vdft, jxntype);
 
 		// so the dfa can be updated with the revised MATCH_CASE
 		// nodes
@@ -2107,22 +2142,22 @@ mcase_list_and_with_default(struct jvst_cnode *mcases, struct jvst_cnode *dft, s
 }
 
 static struct jvst_cnode *
-dfa_and_cases_with_default(struct fsm *dfa, struct jvst_cnode *dft)
+dfa_jxn_cases_with_default(struct fsm *dfa, struct jvst_cnode *dft, enum jvst_cnode_type jxntype)
 {
 	struct jvst_cnode *cases;
 
 	cases = NULL;
 	collect_mcases(dfa, &cases);
 
-	return mcase_list_and_with_default(cases, dft, dfa);
+	return mcase_list_jxn_with_default(cases, dft, dfa, jxntype);
 }
 
 static struct jvst_cnode *
-mswitch_and_cases_with_default(struct jvst_cnode *msw, struct jvst_cnode *dft)
+mswitch_jxn_cases_with_default(struct jvst_cnode *msw, struct jvst_cnode *dft, enum jvst_cnode_type jxntype)
 {
 	struct jvst_cnode *vcons, *ncons, *c, *new_cases, **ncpp;
 
-	new_cases = mcase_list_and_with_default(msw->u.mswitch.cases, dft, msw->u.mswitch.dfa);
+	new_cases = mcase_list_jxn_with_default(msw->u.mswitch.cases, dft, msw->u.mswitch.dfa, jxntype);
 	msw->u.mswitch.cases = new_cases;
 
 	return msw;
@@ -2398,6 +2433,10 @@ merge_mcases_with_or(const struct fsm_state **orig, size_t n,
 	struct fsm *dfa, struct fsm_state *comb);
 
 static void
+merge_mcases_with_xor(const struct fsm_state **orig, size_t n,
+	struct fsm *dfa, struct fsm_state *comb);
+
+static void
 mcase_add_name_constraint(struct jvst_cnode *c, struct jvst_cnode *name_cons)
 {
 	struct jvst_cnode *top_jxn, *jxn;
@@ -2450,7 +2489,11 @@ merge_mswitches(struct jvst_cnode *mswlst, enum jvst_cnode_type jxntype)
 	case JVST_CNODE_OR:
 		mergefunc = merge_mcases_with_or;
 		break;
-		
+
+	case JVST_CNODE_XOR:
+		mergefunc = merge_mcases_with_xor;
+		break;
+
 	default:
 		DIEF("merging mswitches combined with %s not yet implemented\n",
 			jvst_cnode_type_name(jxntype));
@@ -2545,14 +2588,7 @@ merge_mswitches(struct jvst_cnode *mswlst, enum jvst_cnode_type jxntype)
 			}
 
 			mc2 = cnode_deep_copy(n->u.mswitch.dft_case);
-			dfa_and_cases_with_default(only1, mc2);
-
-			/*
-			if (!fsm_minimise(only1)) {
-				perror("minimizing (DFA1 - DFA2)");
-				abort();
-			}
-			*/
+			dfa_jxn_cases_with_default(only1, mc2, jxntype);
 
 			if (dbg) {
 				fprintf(stderr, "\n---> only1 <---\n");
@@ -2574,7 +2610,7 @@ merge_mswitches(struct jvst_cnode *mswlst, enum jvst_cnode_type jxntype)
 			*/
 
 			mc1 = cnode_deep_copy(msw->u.mswitch.dft_case);
-			dfa_and_cases_with_default(only2, mc1);
+			dfa_jxn_cases_with_default(only2, mc1, jxntype);
 
 			if (dbg) {
 				fprintf(stderr, "\n---> only2 <---\n");
@@ -2614,11 +2650,11 @@ merge_mswitches(struct jvst_cnode *mswlst, enum jvst_cnode_type jxntype)
 
 			msw->u.mswitch.dfa = fsm_clone(n->u.mswitch.dfa);
 			msw->u.mswitch.cases = n->u.mswitch.cases;
-			mswitch_and_cases_with_default(msw, msw->u.mswitch.dft_case);
+			mswitch_jxn_cases_with_default(msw, msw->u.mswitch.dft_case, jxntype);
 		} else if (msw->u.mswitch.cases != NULL) {
 			// need to AND together msw's default case and
 			// each of n's cases
-			mswitch_and_cases_with_default(msw, n->u.mswitch.dft_case);
+			mswitch_jxn_cases_with_default(msw, n->u.mswitch.dft_case, jxntype);
 		}
 
 		assert(msw->u.mswitch.dft_case != NULL);
@@ -2637,9 +2673,10 @@ merge_mswitches(struct jvst_cnode *mswlst, enum jvst_cnode_type jxntype)
 				n->u.mswitch.dft_case->u.mcase.name_constraint);
 		}
 
-		msw->u.mswitch.dft_case->u.mcase.value_constraint = cnode_and_constraints(
+		msw->u.mswitch.dft_case->u.mcase.value_constraint = cnode_jxn_constraints(
 				msw->u.mswitch.dft_case->u.mcase.value_constraint,
-				n->u.mswitch.dft_case->u.mcase.value_constraint);
+				n->u.mswitch.dft_case->u.mcase.value_constraint,
+				jxntype);
 	}
 
 	msw = jvst_cnode_simplify(msw);
@@ -2745,11 +2782,11 @@ cnode_simplify_and_mswitch(struct jvst_cnode *top)
 }
 
 static struct jvst_cnode *
-cnode_simplify_or_mswitch(struct jvst_cnode *top)
+cnode_simplify_or_xor_mswitch(struct jvst_cnode *top)
 {
 	struct jvst_cnode *msw, **mswpp, **npp;
 
-	assert(top->type == JVST_CNODE_OR);
+	assert(top->type == JVST_CNODE_OR || top->type == JVST_CNODE_XOR);
 
 	// collect all MATCH_SWITCH children and nodes we want to push
 	// into MATCH_SWITCH cases
@@ -2776,6 +2813,10 @@ cnode_simplify_or_mswitch(struct jvst_cnode *top)
 		switch (top->type) {
 		case JVST_CNODE_OR:
 			msw = merge_mswitches(msw, JVST_CNODE_OR);
+			break;
+
+		case JVST_CNODE_XOR:
+			msw = merge_mswitches(msw, JVST_CNODE_XOR);
 			break;
 
 		default:
@@ -3396,7 +3437,7 @@ cnode_simplify_andor(struct jvst_cnode *top)
 	if (top->type == JVST_CNODE_AND) {
 		top = cnode_simplify_and_mswitch(top);
 	} else if (top->type == JVST_CNODE_OR) {
-		top = cnode_simplify_or_mswitch(top);
+		top = cnode_simplify_or_xor_mswitch(top);
 	}
 
 	/* XXX - can also combine OR'd match_switch nodes */
@@ -3585,12 +3626,19 @@ cnode_simplify_xor(struct jvst_cnode *top)
 			// remaining nodes.  For the XOR to be VALID, none of these
 			// nodes may be valid, so replace this construct
 			// with a NOT(OR(...))
-
-			or = jvst_cnode_alloc(JVST_CNODE_OR);
-			or->u.ctrl = top->u.ctrl;
+			//
+			// special case: if there's only one remaining node, then the OR
+			// isn't necessary
 
 			not = jvst_cnode_alloc(JVST_CNODE_NOT);
-			not->u.ctrl = or;
+			if (top->u.ctrl->next == NULL) {
+				not->u.ctrl = top->u.ctrl;
+			} else {
+				or = jvst_cnode_alloc(JVST_CNODE_OR);
+				or->u.ctrl = top->u.ctrl;
+
+				not->u.ctrl = or;
+			}
 
 			return jvst_cnode_simplify(not);
 		}
@@ -3619,6 +3667,10 @@ cnode_simplify_xor(struct jvst_cnode *top)
 
 	if (top->type == JVST_CNODE_XOR) {
 		top = cnode_simplify_xor_ranges(top);
+	}
+
+	if (top->type == JVST_CNODE_XOR) {
+		top = cnode_simplify_or_xor_mswitch(top);
 	}
 
 	if (top->type == JVST_CNODE_XOR && top->u.ctrl->next == NULL) {
@@ -3653,11 +3705,70 @@ cnode_simplify_not_range(struct jvst_cnode *top)
 }
 
 static struct jvst_cnode *
+cnode_simplify_not_switch(struct jvst_cnode *top)
+{
+	struct jvst_cnode *sw, *sw0;
+	size_t i,n;
+
+	assert(top->type == JVST_CNODE_NOT);
+	assert(top->u.ctrl != NULL);
+
+	sw0 = top->u.ctrl;
+	if (sw0->type != JVST_CNODE_SWITCH) {
+		SHOULD_NOT_REACH();
+	}
+
+	sw = jvst_cnode_alloc(JVST_CNODE_SWITCH);
+	for (i = 0, n = ARRAYLEN(sw->u.sw); i < n; i++) {
+		struct jvst_cnode *not, *n;
+
+		// these are never valid switch cases
+		if (i == SJP_ARRAY_END || i == SJP_OBJECT_END) {
+			sw->u.sw[i] = jvst_cnode_alloc(JVST_CNODE_INVALID);
+			continue;
+		}
+
+		not = jvst_cnode_alloc(JVST_CNODE_NOT);
+		not->u.ctrl = sw0->u.sw[i];
+
+		sw->u.sw[i] = jvst_cnode_simplify(not);
+	}
+
+	return sw;
+}
+
+static struct jvst_cnode *
 cnode_simplify_not(struct jvst_cnode *top)
 {
+	assert(top != NULL);
+	assert(top->type == JVST_CNODE_NOT);
+	assert(top->u.ctrl != NULL);
+	assert(top->u.ctrl->next == NULL);
+
+	if (top->u.ctrl->type == JVST_CNODE_SWITCH) {
+		// fast exit if then child node is a SWITCH node: the NOT is pushed into
+		// each case of the switch, so there's no further simplification to be
+		// done on the top node
+		return cnode_simplify_not_switch(top);
+	}
+
 	// currently simplification of NOT is pretty limited
 	if (top->type == JVST_CNODE_NOT) {
 		top = cnode_simplify_not_range(top);
+	}
+
+	if (top->type == JVST_CNODE_NOT) {
+		switch (top->u.ctrl->type) {
+		case JVST_CNODE_INVALID:
+			return jvst_cnode_alloc(JVST_CNODE_VALID);
+
+		case JVST_CNODE_VALID:
+			return jvst_cnode_alloc(JVST_CNODE_INVALID);
+
+		default:
+			/* nop */
+			break;
+		}
 	}
 
 	return top;
@@ -3939,6 +4050,7 @@ merge_mcases_with_cjxn(const struct fsm_state **orig, size_t n,
 	switch (cjxn_type) {
 	case JVST_CNODE_AND:
 	case JVST_CNODE_OR:
+	case JVST_CNODE_XOR:
 		/* okay */
 		break;
 	default:
@@ -4114,6 +4226,13 @@ merge_mcases_with_or(const struct fsm_state **orig, size_t n,
 	struct fsm *dfa, struct fsm_state *comb)
 {
 	merge_mcases_with_cjxn(orig, n, dfa, comb, JVST_CNODE_OR);
+}
+
+static void
+merge_mcases_with_xor(const struct fsm_state **orig, size_t n,
+	struct fsm *dfa, struct fsm_state *comb)
+{
+	merge_mcases_with_cjxn(orig, n, dfa, comb, JVST_CNODE_XOR);
 }
 
 static int
