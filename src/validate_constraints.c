@@ -3437,7 +3437,10 @@ cnode_simplify_andor(struct jvst_cnode *top)
 	if (top->type == JVST_CNODE_AND) {
 		top = cnode_simplify_and_mswitch(top);
 	} else if (top->type == JVST_CNODE_OR) {
-		top = cnode_simplify_or_xor_mswitch(top);
+		// need to limit when we do this.  otherwise it causes
+		// problems...
+		//
+		// top = cnode_simplify_or_xor_mswitch(top);
 	}
 
 	/* XXX - can also combine OR'd match_switch nodes */
@@ -3670,7 +3673,10 @@ cnode_simplify_xor(struct jvst_cnode *top)
 	}
 
 	if (top->type == JVST_CNODE_XOR) {
-		top = cnode_simplify_or_xor_mswitch(top);
+		// need to limit when we do this.  otherwise it causes
+		// problems...
+		//
+		// top = cnode_simplify_or_xor_mswitch(top);
 	}
 
 	if (top->type == JVST_CNODE_XOR && top->u.ctrl->next == NULL) {
