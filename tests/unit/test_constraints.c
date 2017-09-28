@@ -3998,6 +3998,41 @@ static void test_xlate_minmax_items(void)
   RUNTESTS(tests);
 }
 
+void test_xlate_contains(void)
+{
+  struct arena_info A = {0};
+
+  const struct cnode_test tests[] = {
+    {
+      TRANSLATE,
+      newschema_p(&A, 0,
+          "contains", newschema_p(&A, 0, "minimum", 5.0, NULL),
+          NULL),
+
+      NULL,
+
+      newcnode_switch(&A, 1,
+          SJP_ARRAY_BEG, newcnode_bool(&A, JVST_CNODE_AND,
+                           newcnode_contains(&A,
+                             newcnode_switch(&A, 1,
+                               SJP_NUMBER, newcnode_bool(&A, JVST_CNODE_AND,
+                                             newcnode_range(&A, JVST_CNODE_RANGE_MIN, 5.0, 0.0),
+                                             newcnode_valid(),
+                                             NULL),
+                               SJP_NONE)
+                           ),
+                           newcnode_valid(),
+                           NULL
+                         ),
+          SJP_NONE),
+    },
+
+    { STOP },
+  };
+
+  RUNTESTS(tests);
+}
+
 int main(void)
 {
   test_xlate_empty_schema();
@@ -4032,8 +4067,8 @@ int main(void)
   test_xlate_minmax_length_1();
 
   test_xlate_items_1();
-
   test_xlate_minmax_items();
+  test_xlate_contains();
 
   test_simplify_ands();
   test_simplify_ored_schema();
