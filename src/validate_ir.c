@@ -2179,6 +2179,7 @@ ir_translate_obj_inner(struct jvst_cnode *top, struct ir_object_builder *builder
 
 	case JVST_CNODE_ARR_ITEM:
 	case JVST_CNODE_ARR_ADDITIONAL:
+	case JVST_CNODE_ARR_CONTAINS:
 	case JVST_CNODE_ARR_UNIQUE:
 	case JVST_CNODE_STR_MATCH:
 	case JVST_CNODE_NUM_RANGE:
@@ -2239,6 +2240,7 @@ cnode_and_requires_split(struct jvst_cnode *and_node)
 		case JVST_CNODE_OBJ_REQUIRED:
 		case JVST_CNODE_ARR_ITEM:
 		case JVST_CNODE_ARR_ADDITIONAL:
+		case JVST_CNODE_ARR_CONTAINS:
 		case JVST_CNODE_ARR_UNIQUE:
 		case JVST_CNODE_OBJ_REQMASK:
 		case JVST_CNODE_OBJ_REQBIT:
@@ -2316,6 +2318,7 @@ cnode_count_splits(struct jvst_cnode *top, size_t *np)
 	case JVST_CNODE_OBJ_REQUIRED:
 	case JVST_CNODE_ARR_ITEM:
 	case JVST_CNODE_ARR_ADDITIONAL:
+	case JVST_CNODE_ARR_CONTAINS:
 	case JVST_CNODE_ARR_UNIQUE:
 	case JVST_CNODE_OBJ_REQMASK:
 	case JVST_CNODE_OBJ_REQBIT:
@@ -2387,6 +2390,7 @@ separate_control_nodes(struct jvst_cnode *top, struct jvst_cnode **cpp, struct j
 		case JVST_CNODE_OBJ_REQUIRED:
 		case JVST_CNODE_ARR_ITEM:
 		case JVST_CNODE_ARR_ADDITIONAL:
+		case JVST_CNODE_ARR_CONTAINS:
 		case JVST_CNODE_ARR_UNIQUE:
 		case JVST_CNODE_OBJ_REQMASK:
 		case JVST_CNODE_OBJ_REQBIT:
@@ -2597,6 +2601,7 @@ split_gather(struct jvst_cnode *top, struct split_gather_data *data,
 	case JVST_CNODE_OBJ_REQUIRED:
 	case JVST_CNODE_ARR_ITEM:
 	case JVST_CNODE_ARR_ADDITIONAL:
+	case JVST_CNODE_ARR_CONTAINS:
 	case JVST_CNODE_ARR_UNIQUE:
 	case JVST_CNODE_OBJ_REQMASK:
 	case JVST_CNODE_OBJ_REQBIT:
@@ -3182,6 +3187,7 @@ ir_translate_string_inner(struct jvst_cnode *top, struct ir_str_builder *builder
 	case JVST_CNODE_OBJ_REQUIRED:
 	case JVST_CNODE_ARR_ITEM:
 	case JVST_CNODE_ARR_ADDITIONAL:
+	case JVST_CNODE_ARR_CONTAINS:
 	case JVST_CNODE_ARR_UNIQUE:
 	case JVST_CNODE_OBJ_REQMASK:
 	case JVST_CNODE_OBJ_REQBIT:
@@ -3459,6 +3465,7 @@ ir_translate_array_inner(struct jvst_cnode *top, struct ir_arr_builder *builder)
 			return NULL;
 		}
 
+	case JVST_CNODE_ARR_CONTAINS:
 	case JVST_CNODE_ARR_UNIQUE:
 
 	case JVST_CNODE_OR:
@@ -3489,7 +3496,7 @@ ir_translate_array_inner(struct jvst_cnode *top, struct ir_arr_builder *builder)
 	case JVST_CNODE_NUM_INTEGER:
 	case JVST_CNODE_OBJ_REQMASK:
 	case JVST_CNODE_OBJ_REQBIT:
-		fprintf(stderr, "[%s:%d] unexpected cnode %s in string translation\n",
+		fprintf(stderr, "[%s:%d] unexpected cnode %s in array translation\n",
 				__FILE__, __LINE__, 
 				jvst_cnode_type_name(top->type));
 		abort();

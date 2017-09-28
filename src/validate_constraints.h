@@ -70,6 +70,7 @@ enum jvst_cnode_type {
 	JVST_CNODE_ARR_ITEM,
 	JVST_CNODE_ARR_ADDITIONAL,
 	JVST_CNODE_ARR_UNIQUE,
+	JVST_CNODE_ARR_CONTAINS,
 
 	// The following node types are only present after
 	// canonification.
@@ -137,9 +138,6 @@ struct jvst_cnode {
 		struct jvst_cnode *prop_default;
 		struct jvst_cnode *prop_names;
 
-		// for array item and additional_item constraints
-		struct jvst_cnode *arr_item;
-
 		/* Nodes used for simplifying property matching */
 		struct {
 			struct jvst_cnode *dft_case;
@@ -179,7 +177,11 @@ struct jvst_cnode {
 			size_t bit;
 		} reqbit;
 
+		// for array item and additional_item constraints
 		struct jvst_cnode *items;
+
+		// for array contains constraint
+		struct jvst_cnode *contains;
 	} u;
 };
 
