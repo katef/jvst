@@ -2876,7 +2876,7 @@ str_translate_mswitch(struct jvst_cnode *top, struct ir_str_builder *builder)
 
 		ir_constraint = NULL;
 		spp = &ir_constraint;
-		
+
 		str_translate_concat_constraints(mcase->u.mcase.name_constraint,
 			mcase->u.mcase.value_constraint, spp, builder);
 
@@ -3004,6 +3004,38 @@ ir_complex_length_range_expr(struct jvst_cnode *range)
 	return expr;
 }
 
+// Special case if all children of an AND(...) or OR(...) are LENGTH_RANGE constraints
+static void
+str_translate_split_length_ranges(struct jvst_cnode *top, struct ir_str_builder *builder)
+{
+	struct jvst_ir_expr *cond;
+	struct jvst_ir_stmt *br, **spp;
+
+	cond = ir_complex_length_range_expr(top);
+
+	spp = builder->ipp;
+	if (!builder->consumed) {
+		struct jvst_ir_stmt *seq;
+		seq = ir_stmt_new(JVST_IR_STMT_SEQ);
+
+		*spp = seq;
+		spp = &seq->u.stmt_list;
+
+		*spp = ir_stmt_new(JVST_IR_STMT_CONSUME);
+		spp = &(*spp)->next;
+	}
+
+	br = ir_stmt_if(cond, NULL,
+			ir_stmt_invalid(JVST_INVALID_STRING));
+
+	*spp = br;
+	spp = &br->u.if_.br_true;
+
+	*spp = ir_stmt_new(JVST_IR_STMT_NOP);
+
+	builder->ipp = spp;
+}
+
 static void
 ir_translate_string_inner(struct jvst_cnode *top, struct ir_str_builder *builder)
 {
@@ -3075,35 +3107,28 @@ ir_translate_string_inner(struct jvst_cnode *top, struct ir_str_builder *builder
 	case JVST_CNODE_OR:
 	case JVST_CNODE_AND:
 		{
-			struct jvst_ir_expr *cond;
-			struct jvst_ir_stmt *br, **spp;
-
-			cond = ir_complex_length_range_expr(top);
-
-			spp = builder->ipp;
-			if (!builder->consumed) {
-				struct jvst_ir_stmt *seq;
-				seq = ir_stmt_new(JVST_IR_STMT_SEQ);
-
-				*spp = seq;
-				spp = &seq->u.stmt_list;
-				
-				*spp = ir_stmt_new(JVST_IR_STMT_CONSUME);
-				spp = &(*spp)->next;
+			struct jvst_cnode *n;
+			int all_length_range;
+			
+			all_length_range = 1;
+			for (n = top->u.ctrl; n != NULL; n = n->next) {
+				if (n->type != JVST_CNODE_LENGTH_RANGE) {
+					all_length_range = 0;
+					break;
+				}
 			}
 
-			br = ir_stmt_if(cond, NULL,
-				ir_stmt_invalid(JVST_INVALID_STRING));
+			if (all_length_range) {
+				str_translate_split_length_ranges(top, builder);
+				return;
+			}
 
-			*spp = br;
-			spp = &br->u.if_.br_true;
-
-			*spp = ir_stmt_new(JVST_IR_STMT_NOP);
-
-			builder->ipp = spp;
+			fprintf(stderr, "[%s:%d] string translation for cnode %s not yet implemented\n",
+					__FILE__, __LINE__, 
+					jvst_cnode_type_name(top->type));
+			abort();
 		}
 		return;
-
 
 	case JVST_CNODE_XOR:
 	case JVST_CNODE_NOT:
