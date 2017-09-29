@@ -2387,7 +2387,8 @@ separate_control_nodes(struct jvst_cnode *top, struct jvst_cnode **cpp, struct j
 }
 
 static struct jvst_ir_expr *
-split_gather(struct jvst_cnode *top, struct split_gather_data *data)
+split_gather(struct jvst_cnode *top, struct split_gather_data *data,
+	struct jvst_ir_stmt *(*xlatefunc)(struct jvst_cnode *, struct jvst_ir_stmt *))
 {
 	struct jvst_cnode *node;
 	size_t nf;
@@ -2430,7 +2431,7 @@ split_gather(struct jvst_cnode *top, struct split_gather_data *data)
 				data->nframe++;
 
 				fr = ir_stmt_frame();
-				fr->u.frame.stmts = ir_translate_object_inner(top, fr);
+				fr->u.frame.stmts = xlatefunc(top, fr);
 				*data->fpp = fr;
 				data->fpp = &fr->next;
 
@@ -2460,7 +2461,7 @@ split_gather(struct jvst_cnode *top, struct split_gather_data *data)
 			// 3. Create separate frames for all control nodes.
 			for (node = ctrl; node != NULL; node = node->next) {
 				struct jvst_ir_expr *e_ctrl;
-				e_ctrl = split_gather(node, data);
+				e_ctrl = split_gather(node, data, ir_translate_object_inner);
 				if (node->next == NULL) {
 					*epp = e_ctrl;
 				} else {
@@ -2510,7 +2511,7 @@ split_gather(struct jvst_cnode *top, struct split_gather_data *data)
 					data->nframe++;
 
 					fr = ir_stmt_frame();
-					fr->u.frame.stmts = ir_translate_object_inner(node, fr);
+					fr->u.frame.stmts = xlatefunc(node, fr);
 					*data->fpp = fr;
 					data->fpp = &fr->next;
 
@@ -2539,7 +2540,7 @@ split_gather(struct jvst_cnode *top, struct split_gather_data *data)
 			// 3. Create separate frames for all control nodes.
 			for (node = ctrl; node != NULL; node = node->next) {
 				struct jvst_ir_expr *e_ctrl;
-				e_ctrl = split_gather(node, data);
+				e_ctrl = split_gather(node, data, ir_translate_object_inner);
 				if (node->next == NULL) {
 					*epp = e_ctrl;
 				} else {
@@ -2608,7 +2609,8 @@ gather_remove_bvec(struct jvst_ir_stmt *frame, struct split_gather_data *gather)
 }
 
 static struct jvst_ir_stmt *
-ir_translate_object_split(struct jvst_cnode *top, struct jvst_ir_stmt *frame)
+ir_translate_split(struct jvst_cnode *top, struct jvst_ir_stmt *frame,
+	struct jvst_ir_stmt *(*xlatefunc)(struct jvst_cnode *, struct jvst_ir_stmt *))
 {
 	struct jvst_cnode *node;
 	struct jvst_ir_stmt *frames, *cond, **spp;
@@ -2620,7 +2622,7 @@ ir_translate_object_split(struct jvst_cnode *top, struct jvst_ir_stmt *frame)
 	gather.fpp = &frames;
 	gather.bvec = ir_stmt_bitvec(frame, "splitvec", 0);
 
-	split = split_gather(top, &gather);
+	split = split_gather(top, &gather, xlatefunc);
 	assert(frames != NULL);
 
 	if (gather.nctrl == 0) {
@@ -2630,7 +2632,7 @@ ir_translate_object_split(struct jvst_cnode *top, struct jvst_ir_stmt *frame)
 		gather_remove_bvec(frame, &gather);
 
 		// retranslate to remove the extra frame
-		return ir_translate_object_inner(top, frame);
+		return xlatefunc(top, frame);
 	}
 
 	if (gather.nctrl == 1) {
@@ -2694,6 +2696,12 @@ ir_translate_object_split(struct jvst_cnode *top, struct jvst_ir_stmt *frame)
 		ir_stmt_invalid(JVST_INVALID_SPLIT_CONDITION));  // XXX - improve error message!
 
 	return cond;
+}
+
+static struct jvst_ir_stmt *
+ir_translate_object_split(struct jvst_cnode *top, struct jvst_ir_stmt *frame)
+{
+	return ir_translate_split(top, frame, ir_translate_object_inner);
 }
 
 static struct jvst_ir_stmt *
@@ -3108,6 +3116,7 @@ ir_translate_string_inner(struct jvst_cnode *top, struct ir_str_builder *builder
 	case JVST_CNODE_AND:
 		{
 			struct jvst_cnode *n;
+			struct jvst_ir_stmt *stmt;
 			int all_length_range;
 			
 			all_length_range = 1;
@@ -3123,10 +3132,9 @@ ir_translate_string_inner(struct jvst_cnode *top, struct ir_str_builder *builder
 				return;
 			}
 
-			fprintf(stderr, "[%s:%d] string translation for cnode %s not yet implemented\n",
-					__FILE__, __LINE__, 
-					jvst_cnode_type_name(top->type));
-			abort();
+			stmt = ir_translate_split(top, builder->frame, ir_translate_string);
+			*builder->ipp = stmt;
+			// builder->ipp = &stmt->next;
 		}
 		return;
 
