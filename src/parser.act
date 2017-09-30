@@ -471,6 +471,18 @@
                 }
         @};
 
+        <set-contains>: (sch :ast-schema) -> () = @{
+                struct ast_schema *s = @sch;
+                assert(s != NULL);
+
+                ast->contains = s;
+
+		if (debug & DEBUG_ACT) {
+			fprintf(stderr, "<set-contains>:\n");
+                        // FIXME: print out schema
+                }
+        @};
+
         <set-items-list>: (lst :ast-schema-list) -> () = @{
                 ast_schema_list_t items;
 
