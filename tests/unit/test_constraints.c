@@ -3071,26 +3071,48 @@ void test_canonify_ored_schema(void)
 
         // canonified tree
         newcnode_switch(&A, 0,
-          SJP_OBJECT_BEG, newcnode_mswitch(&A, 
-                            // default case
-                            newcnode_valid(),
+          SJP_OBJECT_BEG, newcnode_bool(&A, JVST_CNODE_OR,
+                            newcnode_mswitch(&A, 
+                              // default case
+                              newcnode_valid(),
 
-                            newcnode_mcase(&A,
-                              newmatchset(&A, RE_LITERAL, "bar", -1),
-                              newcnode_switch(&A, 0,
-                                SJP_NUMBER, newcnode_valid(),
-                                SJP_STRING, newcnode_valid(),
-                                SJP_NONE)
+                              newcnode_mcase(&A,
+                                newmatchset(&A, RE_LITERAL, "bar", -1),
+                                newcnode_switch(&A, 0,
+                                  SJP_STRING, newcnode_valid(),
+                                  SJP_NONE)
+                              ),
+
+                              newcnode_mcase(&A,
+                                newmatchset(&A, RE_LITERAL, "foo", -1),
+                                newcnode_switch(&A, 0,
+                                  SJP_NUMBER, newcnode_valid(),
+                                  SJP_NONE)
+                              ),
+
+                              NULL
                             ),
 
-                            newcnode_mcase(&A,
-                              newmatchset(&A, RE_LITERAL, "foo", -1),
-                              newcnode_switch(&A, 0,
-                                SJP_NUMBER, newcnode_valid(),
-                                SJP_TRUE, newcnode_valid(),
-                                SJP_NONE)
-                            ),
+                            newcnode_mswitch(&A, 
+                              // default case
+                              newcnode_valid(),
 
+                              newcnode_mcase(&A,
+                                newmatchset(&A, RE_LITERAL, "bar", -1),
+                                newcnode_switch(&A, 0,
+                                  SJP_NUMBER, newcnode_valid(),
+                                  SJP_NONE)
+                              ),
+
+                              newcnode_mcase(&A,
+                                newmatchset(&A, RE_LITERAL, "foo", -1),
+                                newcnode_switch(&A, 0,
+                                  SJP_TRUE, newcnode_valid(),
+                                  SJP_NONE)
+                              ),
+
+                              NULL
+                            ),
                             NULL
                           ),
           SJP_NONE),
@@ -3209,126 +3231,31 @@ void test_canonify_ored_schema(void)
 
       // canonified tree
       newcnode_switch(&A, 0, 
-          SJP_STRING, newcnode_mswitch(&A,
-                        // default case
-                        newcnode_mcase_namecons(&A,
-                          NULL,
-                          newcnode_bool(&A, JVST_CNODE_OR,
+          SJP_STRING, newcnode_bool(&A, JVST_CNODE_OR,
+                        newcnode_mswitch(&A,
+                          // default case
+                          newcnode_mcase_namecons(&A,
+                            NULL,
                             newcnode_counts(&A, JVST_CNODE_LENGTH_RANGE, 0, 2, true),
-                            newcnode_counts(&A, JVST_CNODE_LENGTH_RANGE, 4, 0, false),
-                            NULL),
-                          newcnode_valid()
-                        ),
-
-                        NULL
-                      ),
-          SJP_NONE),
-    },
-
-    { STOP },
-  };
-
-  RUNTESTS(tests);
-}
-
-void test_canonify_xored_schema(void)
-{
-  struct arena_info A = {0};
-
-  const struct cnode_test tests[] = {
-    {
-      CANONIFY,
-      NULL,
-
-      newcnode_switch(&A, 0,
-        SJP_STRING, newcnode_bool(&A, JVST_CNODE_XOR,
-                      newcnode_counts(&A, JVST_CNODE_LENGTH_RANGE, 2, 0, false),
-                      newcnode_counts(&A, JVST_CNODE_LENGTH_RANGE, 0, 4, true),
-                      NULL
-                    ),
-        SJP_NONE),
-
-      newcnode_switch(&A, 0, 
-          SJP_STRING, newcnode_mswitch(&A,
-                        // default case
-                        newcnode_mcase_namecons(&A,
-                          NULL,
-                          newcnode_bool(&A, JVST_CNODE_OR,
-                            newcnode_counts(&A, JVST_CNODE_LENGTH_RANGE, 0, 1, true),
-                            newcnode_counts(&A, JVST_CNODE_LENGTH_RANGE, 5, 0, false),
-                            NULL),
-                          newcnode_valid()
-                        ),
-
-                        NULL
-                      ),
-          SJP_NONE),
-    },
-
-    {
-      CANONIFY,
-      NULL,
-
-      // simplified tree
-      newcnode_switch(&A, 0,
-        SJP_OBJECT_BEG, newcnode_bool(&A, JVST_CNODE_XOR,
-                          newcnode_propset(&A, 
-                            newcnode_prop_match(&A, RE_LITERAL, "foo",
-                              newcnode_switch(&A, 0, SJP_STRING, newcnode_valid(), SJP_NONE)
-                            ),
-                            newcnode_prop_match(&A, RE_LITERAL, "bar",
-                              newcnode_switch(&A, 0,
-                                SJP_STRING, newcnode_valid(),
-                                SJP_NUMBER, newcnode_valid(),
-                                SJP_NONE)
-                            ),
-                            newcnode_prop_match(&A, RE_LITERAL, "baz",
-                              newcnode_switch(&A, 0,
-                                SJP_TRUE, newcnode_valid(),
-                                SJP_FALSE, newcnode_valid(),
-                                SJP_NONE)
-                            ),
-                            NULL
-                          ),
-
-                          newcnode_propset(&A,
-                            newcnode_prop_match(&A, RE_LITERAL, "foo",
-                              newcnode_switch(&A, 0, SJP_STRING, newcnode_valid(), SJP_NONE)),
-                            newcnode_prop_match(&A, RE_LITERAL, "bar",
-                              newcnode_switch(&A, 0, SJP_NUMBER, newcnode_valid(), SJP_NONE)),
-                            NULL
+                            newcnode_valid()
                           ),
 
                           NULL
                         ),
-        SJP_NONE),
 
-        // canonified tree
-        newcnode_switch(&A, 0,
-          SJP_OBJECT_BEG, newcnode_mswitch(&A, 
-                            // default case
-                            newcnode_invalid(),
-
-                            newcnode_mcase(&A,
-                              newmatchset(&A, RE_LITERAL, "bar", -1),
-                              newcnode_switch(&A, 0, SJP_STRING, newcnode_valid(), SJP_NONE)
-                            ),
-
-                            newcnode_mcase(&A,
-                              newmatchset(&A, RE_LITERAL, "baz", -1),
-                              newcnode_switch(&A, 1,
-                                SJP_TRUE,       newcnode_invalid(),
-                                SJP_FALSE,      newcnode_invalid(),
-                                SJP_NONE)
-                            ),
-
-                            newcnode_mcase(&A,
-                              newmatchset(&A, RE_LITERAL, "foo", -1),
-                              newcnode_switch(&A, 0, SJP_NONE)
-                            ),
-
-                            NULL
+                        newcnode_mswitch(&A,
+                          // default case
+                          newcnode_mcase_namecons(&A,
+                            NULL,
+                            newcnode_counts(&A, JVST_CNODE_LENGTH_RANGE, 4, 0, false),
+                            newcnode_valid()
                           ),
+
+                          NULL
+                        ),
+
+                        NULL
+                      ),
           SJP_NONE),
     },
 
@@ -4125,7 +4052,6 @@ int main(void)
   test_simplify_xored_counts();
 
   test_canonify_ored_schema();
-  test_canonify_xored_schema();
   test_canonify_propsets();
   test_canonify_propertynames();
   test_canonify_required();
