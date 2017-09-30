@@ -212,6 +212,21 @@ ir_stmt_valid(void)
 }
 
 static inline struct jvst_ir_stmt *
+ir_consume_and_valid(void)
+{
+	struct jvst_ir_stmt *seq, **spp;
+	seq = ir_stmt_new(JVST_IR_STMT_SEQ);
+	spp = &seq->u.stmt_list;
+
+	*spp = ir_stmt_new(JVST_IR_STMT_CONSUME);
+	spp = &(*spp)->next;
+
+	*spp = ir_stmt_valid();
+	spp = &(*spp)->next;
+	return seq;
+}
+
+static inline struct jvst_ir_stmt *
 ir_stmt_if(struct jvst_ir_expr *cond, struct jvst_ir_stmt *br_true, struct jvst_ir_stmt *br_false)
 {
 	struct jvst_ir_stmt *br;
@@ -1622,7 +1637,8 @@ ir_translate_number(struct jvst_cnode *top, struct jvst_ir_stmt *frame)
 
 	switch (top->type) {
 	case JVST_CNODE_VALID:
-		*spp = ir_stmt_new(JVST_IR_STMT_VALID);
+		// *spp = ir_stmt_valid();
+		*spp = ir_consume_and_valid();
 		break;
 
 	case JVST_CNODE_INVALID:
@@ -1644,7 +1660,8 @@ ir_translate_number(struct jvst_cnode *top, struct jvst_ir_stmt *frame)
 				: JVST_INVALID_NOT_INTEGER;
 
 			br = ir_stmt_if(cond,
-				ir_stmt_new(JVST_IR_STMT_VALID),
+				// ir_stmt_valid(),
+				ir_consume_and_valid(),
 				ir_stmt_invalid(ecode));
 			*spp = br;
 		}
@@ -1682,7 +1699,7 @@ ir_translate_number(struct jvst_cnode *top, struct jvst_ir_stmt *frame)
 					ir_expr_size(1));
 
 				br = ir_stmt_if(cond,
-					ir_stmt_new(JVST_IR_STMT_VALID),
+					ir_stmt_valid(),
 					ir_stmt_invalid(JVST_INVALID_NUMBER));
 				*spp = br;
 			}
@@ -1865,8 +1882,9 @@ obj_mswitch_translate_and_ensure_consume(struct jvst_cnode *constraint, struct i
 		spp = &seq->u.stmt_list;
 		*spp = stmt;
 		spp = &(*spp)->next;
+
 		*spp = ir_stmt_new(JVST_IR_STMT_CONSUME);
-		
+
 		stmt = seq;
 	}
 
@@ -2670,7 +2688,7 @@ ir_translate_split(struct jvst_cnode *top, struct jvst_ir_stmt *frame,
 		}
 
 		cond = ir_stmt_if(cmp,
-			ir_stmt_new(JVST_IR_STMT_VALID),
+			ir_stmt_valid(),
 			ir_stmt_invalid(JVST_INVALID_SPLIT_CONDITION));  // XXX - improve error message!
 
 		return cond;
@@ -2692,7 +2710,7 @@ ir_translate_split(struct jvst_cnode *top, struct jvst_ir_stmt *frame,
 	spp = &(*spp)->next;
 	*spp = ir_stmt_new(JVST_IR_STMT_IF);
 	*spp = ir_stmt_if(split,
-		ir_stmt_new(JVST_IR_STMT_VALID),
+		ir_stmt_valid(),
 		ir_stmt_invalid(JVST_INVALID_SPLIT_CONDITION));  // XXX - improve error message!
 
 	return cond;
@@ -2776,6 +2794,7 @@ ir_translate_object_inner(struct jvst_cnode *top, struct jvst_ir_stmt *frame)
 		assert(*npp == NULL);
 
 		*npp = builder.match->next;
+		// ensure that we consume the property's name token
 		*matchpp = ir_stmt_new(JVST_IR_STMT_CONSUME);
 		matchpp = &(*matchpp)->next;
 		*matchpp = builder.match->u.match.default_case;
@@ -2783,7 +2802,7 @@ ir_translate_object_inner(struct jvst_cnode *top, struct jvst_ir_stmt *frame)
 
 	// handle post-loop constraints
 	if (*builder.post_loop == NULL) {
-		*builder.post_loop = ir_stmt_new(JVST_IR_STMT_VALID);
+		*builder.post_loop = ir_stmt_valid();
 	}
 
 	return stmt;
@@ -3579,7 +3598,7 @@ ir_translate(struct jvst_cnode *ctree, bool first_token)
 			break;
 
 		case JVST_CNODE_VALID:
-			br_true = ir_stmt_valid();
+			br_true = ir_consume_and_valid();
 			break;
 
 		default:
@@ -3592,7 +3611,7 @@ ir_translate(struct jvst_cnode *ctree, bool first_token)
 	}
 
 	*spp = (dft_case == JVST_CNODE_VALID)
-		? ir_stmt_new(JVST_IR_STMT_VALID) 
+		? ir_consume_and_valid()
 		: ir_stmt_invalid(JVST_INVALID_UNEXPECTED_TOKEN)
 		;
 
