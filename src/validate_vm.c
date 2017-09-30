@@ -811,10 +811,10 @@ debug_state(struct jvst_vm *vm)
 	buf.len = 0;
 	buf.np = 0;
 	vm_dumpregs(&buf, vm);
-	fprintf(stderr, "REGS > %s", buf.buf);
-	vm_dumpstack(stderr, vm);
 	fprintf(stderr, "STATE> vm=%p nobj=%zu, narr=%zu, consumed=%d, nexttok=%d, error=%d, dfa_st=%d\n",
 		(void *)vm, vm->nobj, vm->narr, vm->consumed, vm->nexttok, vm->error, vm->dfa_st);
+	fprintf(stderr, "REGS > %s", buf.buf);
+	vm_dumpstack(stderr, vm);
 }
 
 static void
@@ -1248,7 +1248,7 @@ loop:
 		// consume token, then return to previous frame or, if top of
 		// stack, return JVST_VALID
 		ret = consume_current_value(vm);
-		if (ret != JVST_VALID) {
+		if (ret != JVST_VALID && ret != JVST_NEXT) {
 			return ret;
 		}
 
