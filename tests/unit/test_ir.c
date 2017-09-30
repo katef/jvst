@@ -404,7 +404,11 @@ static void test_ir_type_integer(void)
           newir_stmt(&A, JVST_IR_STMT_TOKEN),
           newir_if(&A, newir_istok(&A, SJP_NUMBER),
             newir_if(&A, newir_isint(&A, newir_expr(&A, JVST_IR_EXPR_TOK_NUM)),
-              newir_stmt(&A, JVST_IR_STMT_VALID),
+              newir_seq(&A,
+                newir_stmt(&A, JVST_IR_STMT_CONSUME),
+                newir_stmt(&A, JVST_IR_STMT_VALID),
+                NULL
+              ),
               newir_invalid(&A, JVST_INVALID_NOT_INTEGER, "number is not an integer")),
             newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token")
           ),
@@ -511,7 +515,11 @@ void test_ir_minimum(void)
               newir_op(&A, JVST_IR_EXPR_GE, 
                 newir_expr(&A, JVST_IR_EXPR_TOK_NUM),
                 newir_num(&A, 1.1)),
-              newir_stmt(&A, JVST_IR_STMT_VALID),
+              newir_seq(&A,
+                newir_stmt(&A, JVST_IR_STMT_CONSUME),
+                newir_stmt(&A, JVST_IR_STMT_VALID),
+                NULL
+              ),
               newir_invalid(&A, JVST_INVALID_NUMBER, "number not valid")),
             newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token")
           ),
