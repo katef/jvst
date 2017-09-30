@@ -1,4 +1,4 @@
-#! /bin/sh
+#! /bin/bash
 
 if [ -z "${JVST}" ]; then
   echo "JVST must be set"
@@ -10,6 +10,7 @@ if [ -z "${OUTDIR}" ]; then
   exit 1
 fi
 
+declare -a failures
 succ=0
 skip=0
 fail=0
@@ -24,7 +25,7 @@ while [ $# -gt 0 ]; do
 
   if [ ! -r $schema ]; then
     echo "cannot find schema in ${schema}"
-    exit 1
+    continue
   fi
 
   outcase=${OUTDIR}/${testdir}
@@ -89,6 +90,7 @@ while [ $# -gt 0 ]; do
       fail=$(( $fail + 1 ))
       fail_case=$(( $fail_case + 1 ))
       result="FAILED"
+      failures+=("${testdir} :: ${testbase}")
     fi
 
     if [ "$COLORIZE" = "1" ]; then
@@ -112,3 +114,11 @@ done
 
 nfail=$(( $ntotcase - $succ ))
 echo "SUMMARY: ${succ} successes, ${nfail} failures, ${ntotcase} cases"
+if [ $nfail -gt 0 ]; then
+  echo "Failed tests:"
+  for f in "${failures[@]}"; do
+    setname=${f% ::*}
+    testname=${f#*:: }
+    printf "%-20.20s\t%s\n" "$setname" "$testname"
+  done
+fi
