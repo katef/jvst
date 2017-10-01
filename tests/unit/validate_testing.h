@@ -23,6 +23,12 @@ struct arena_info {
 	size_t npnames;
 	size_t nset;
 
+	/* json value related, for const/enum tests */
+	size_t njson;
+	size_t njsonelt;  // json array elements
+	size_t njsonprop; // json object properties
+	size_t nvset;
+
 	/* cnode related */
 	size_t ncnode;
 	size_t nmatchsets;
@@ -82,6 +88,27 @@ newpatternprops(struct arena_info *A, ...);
 struct ast_property_names *
 newpropnames(struct arena_info *A, ...);
 
+
+/** JSON values **/
+struct json_value *
+newjson_num(struct arena_info *A, double x);
+
+struct json_value *
+newjson_str(struct arena_info *A, const char *s);
+
+struct json_value *
+newjson_array(struct arena_info *A, ...);
+
+struct json_value *
+newjson_object(struct arena_info *A, ...);
+
+struct json_value *
+newjson_bool(struct arena_info *A, int b);
+
+struct json_value *
+newjson_null(struct arena_info *A);
+
+/** cnodes **/
 struct jvst_cnode *
 newcnode(struct arena_info *A, enum jvst_cnode_type type);
 
