@@ -1539,27 +1539,41 @@ ir_translate_number_expr(struct jvst_cnode *top)
 	case JVST_CNODE_NUM_RANGE:
 		{
 			struct jvst_ir_expr *lower, *upper;
+			enum jvst_cnode_rangeflags flags;
+			double min,max;
+			
+			flags = top->u.num_range.flags;
+			min = top->u.num_range.min;
+			max = top->u.num_range.max;
 
 			lower = NULL;
 			upper = NULL;
-			if (top->u.num_range.flags & JVST_CNODE_RANGE_EXCL_MIN) {
-				lower = ir_expr_op(JVST_IR_EXPR_GT,
-						ir_expr_new(JVST_IR_EXPR_TOK_NUM),
-						ir_expr_num(top->u.num_range.min));
-			} else if (top->u.num_range.flags & JVST_CNODE_RANGE_MIN) {
-				lower = ir_expr_op(JVST_IR_EXPR_GE,
-						ir_expr_new(JVST_IR_EXPR_TOK_NUM),
-						ir_expr_num(top->u.num_range.min));
-			}
 
-			if (top->u.num_range.flags & JVST_CNODE_RANGE_EXCL_MAX) {
-				upper = ir_expr_op(JVST_IR_EXPR_LT,
+			// special case for equality
+			if (min == max && flags == (JVST_CNODE_RANGE_MIN|JVST_CNODE_RANGE_MAX)) {
+				lower = ir_expr_op(JVST_IR_EXPR_EQ,
 						ir_expr_new(JVST_IR_EXPR_TOK_NUM),
-						ir_expr_num(top->u.num_range.max));
-			} else if (top->u.num_range.flags & JVST_CNODE_RANGE_MAX) {
-				upper = ir_expr_op(JVST_IR_EXPR_LE,
-						ir_expr_new(JVST_IR_EXPR_TOK_NUM),
-						ir_expr_num(top->u.num_range.max));
+						ir_expr_num(min));
+			} else {
+				if (flags & JVST_CNODE_RANGE_EXCL_MIN) {
+					lower = ir_expr_op(JVST_IR_EXPR_GT,
+							ir_expr_new(JVST_IR_EXPR_TOK_NUM),
+							ir_expr_num(min));
+				} else if (flags & JVST_CNODE_RANGE_MIN) {
+					lower = ir_expr_op(JVST_IR_EXPR_GE,
+							ir_expr_new(JVST_IR_EXPR_TOK_NUM),
+							ir_expr_num(min));
+				}
+
+				if (flags & JVST_CNODE_RANGE_EXCL_MAX) {
+					upper = ir_expr_op(JVST_IR_EXPR_LT,
+							ir_expr_new(JVST_IR_EXPR_TOK_NUM),
+							ir_expr_num(max));
+				} else if (flags & JVST_CNODE_RANGE_MAX) {
+					upper = ir_expr_op(JVST_IR_EXPR_LE,
+							ir_expr_new(JVST_IR_EXPR_TOK_NUM),
+							ir_expr_num(max));
+				}
 			}
 
 			assert((lower != NULL) || (upper != NULL));
