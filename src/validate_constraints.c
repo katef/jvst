@@ -1483,18 +1483,31 @@ jvst_cnode_translate_ast(const struct ast_schema *ast)
 
 	if (ast->xenum != NULL) {
 		struct ast_value_set *v;
-		struct jvst_cnode *top_jxn, *jxn, **jpp;
-		top_jxn = jvst_cnode_alloc(JVST_CNODE_AND);
-		jxn = jvst_cnode_alloc(JVST_CNODE_OR);
-		jpp = &jxn->u.ctrl;
+		struct jvst_cnode *top_jxn, *cons, **jpp;
+
+		cons = NULL;
+		jpp = &cons;
 
 		for (v=ast->xenum; v != NULL; v = v->next) {
 			*jpp = cnode_enum_translate(&v->value);
 			jpp = &(*jpp)->next;
 		}
 
-		jxn->next = node;
-		top_jxn->u.ctrl = jxn;
+		top_jxn = jvst_cnode_alloc(JVST_CNODE_AND);
+		assert(cons != NULL);
+		if (cons->next == NULL) {
+			cons->next = node;
+			top_jxn->u.ctrl = cons;
+		} else {
+			struct jvst_cnode *jxn;
+
+			jxn = jvst_cnode_alloc(JVST_CNODE_OR);
+			jxn->u.ctrl = cons;
+			jxn->next = node;
+
+			top_jxn->u.ctrl = jxn;
+		}
+
 		node = top_jxn;
 	}
 
