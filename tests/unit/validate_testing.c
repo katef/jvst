@@ -40,6 +40,11 @@ static struct ast_string_set ar_stringsets[NUM_TEST_THINGS];
 static struct ast_property_names ar_propnames[NUM_TEST_THINGS];
 static struct ast_schema_set ar_schemasets[NUM_TEST_THINGS];
 
+static struct json_value ar_json[NUM_TEST_THINGS];
+static struct json_element ar_json_elements[NUM_TEST_THINGS];
+static struct json_property ar_json_properties[NUM_TEST_THINGS];
+static struct ast_value_set ar_ast_vsets[NUM_TEST_THINGS];
+
 static struct jvst_cnode ar_cnodes[NUM_TEST_THINGS];
 static struct jvst_cnode_matchset ar_cnode_matchsets[NUM_TEST_THINGS];
 
@@ -255,6 +260,9 @@ newschema(struct arena_info *A, int types)
 	return s;
 }
 
+static struct ast_value_set *
+newvalue_set(struct arena_info *A, struct json_value *v);
+
 struct ast_schema *
 newschema_p(struct arena_info *A, int types, ...)
 {
@@ -383,6 +391,23 @@ newschema_p(struct arena_info *A, int types, ...)
 			s->some_of.set = sset;
 			s->some_of.min = 1;
 			s->some_of.max = 1;
+		} else if (strcmp(pname, "const") == 0) {
+			struct ast_value_set *vset;
+			struct json_value *v;
+
+			v = va_arg(args, struct json_value *);
+			vset = newvalue_set(A, v);
+			s->xenum = vset;
+		} else if (strcmp(pname, "enum") == 0) {
+			struct ast_value_set *vset, **vpp;
+			struct json_value *v;
+
+			v = va_arg(args, struct json_value *);
+			vset = newvalue_set(A, v);
+			for (vpp = &s->xenum; *vpp != NULL; vpp = &(*vpp)->next) {
+				continue;
+			}
+			*vpp = vset;
 		} else {
 			// okay to abort() a test if the test writer forgot to add a
 			// property to the big dumb if-else chain
@@ -455,6 +480,182 @@ newpatternprops(struct arena_info *A, ...)
 	va_end(args);
 	return props;
 }
+
+static struct ast_value_set *
+newvalue_set(struct arena_info *A, struct json_value *v)
+{
+	static const struct ast_value_set zero;
+	struct ast_value_set *vset;
+	size_t max;
+
+	max = ARRAYLEN(ar_ast_vsets);
+	if (A->nvset >= max) {
+		fprintf(stderr, "too many value sets: %zu max\n", max);
+		abort();
+	}
+
+	vset = &ar_ast_vsets[A->nvset++];
+
+	*vset = zero;
+	vset->value = *v;
+
+	return vset;
+}
+
+static struct json_element *
+newjson_element(struct arena_info *A, struct json_value *v)
+{
+	static const struct json_element zero;
+	struct json_element *elt;
+	size_t max;
+
+	max = ARRAYLEN(ar_json_elements);
+	if (A->njsonelt >= max) {
+		fprintf(stderr, "too many json elements: %zu max\n", max);
+		abort();
+	}
+
+	elt = &ar_json_elements[A->njsonelt++];
+
+	*elt = zero;
+	elt->value = *v;
+
+	return elt;
+}
+
+static struct json_property *
+newjson_property(struct arena_info *A, const char *name, struct json_value *v)
+{
+	static const struct json_property zero;
+	struct json_property *prop;
+	size_t max;
+
+	max = ARRAYLEN(ar_json_properties);
+	if (A->njsonprop >= max) {
+		fprintf(stderr, "too many json elements: %zu max\n", max);
+		abort();
+	}
+
+	prop = &ar_json_properties[A->njsonprop++];
+
+	*prop = zero;
+	prop->name = newstr(name);
+	prop->value = *v;
+
+	return prop;
+}
+
+static struct json_value *
+newjson_value(struct arena_info *A, enum json_valuetype type)
+{
+	static const struct json_value zero = { 0 };
+	struct json_value *v;
+	size_t max;
+
+	max = ARRAYLEN(ar_json);
+	if (A->njson >= max) {
+		fprintf(stderr, "too many json values: %zu max\n", max);
+		abort();
+	}
+
+	v = &ar_json[A->njson++];
+	*v = zero;
+	v->type = type;
+	return v;
+}
+
+struct json_value *
+newjson_num(struct arena_info *A, double x)
+{
+	struct json_value *v;
+	v = newjson_value(A, JSON_VALUE_NUMBER);
+	v->u.n = x;
+	return v;
+}
+
+struct json_value *
+newjson_str(struct arena_info *A, const char *s)
+{
+	struct json_value *v;
+	v = newjson_value(A, JSON_VALUE_STRING);
+	v->u.str = newstr(s);
+	return v;
+}
+
+struct json_value *
+newjson_bool(struct arena_info *A, int b)
+{
+	struct json_value *v;
+	v = newjson_value(A,JSON_VALUE_BOOL);
+	v->u.v = !!b;
+	return v;
+}
+
+struct json_value *
+newjson_null(struct arena_info *A)
+{
+	return newjson_value(A,JSON_VALUE_NULL);
+}
+
+struct json_value *
+newjson_array(struct arena_info *A, ...)
+{
+	struct json_value *arr;
+	struct json_element **eltpp;
+
+	va_list args;
+	va_start(args, A);
+
+	arr = newjson_value(A, JSON_VALUE_ARRAY);
+	eltpp = &arr->u.arr;
+
+	for(;;) {
+		struct json_element *elt;
+		struct json_value *itm;
+
+		itm = va_arg(args, struct json_value *);
+		if (itm == NULL) {
+			break;
+		}
+
+		*eltpp = newjson_element(A, itm);
+		eltpp = &(*eltpp)->next;
+	}
+
+	return arr;
+}
+
+struct json_value *
+newjson_object(struct arena_info *A, ...)
+{
+	struct json_value *obj;
+	struct json_property **proppp;
+
+	va_list args;
+	va_start(args, A);
+
+	obj = newjson_value(A, JSON_VALUE_OBJECT);
+	proppp = &obj->u.obj;
+
+	for(;;) {
+		struct json_propery *prop;
+		const char *k;
+		struct json_value *v;
+
+		k = va_arg(args, const char *);
+		if (k == NULL) {
+			break;
+		}
+
+		v = va_arg(args, struct json_value *);
+
+		*proppp = newjson_property(A, k,v);
+		proppp = &(*proppp)->next;
+	}
+
+	return obj;
+}
+
 
 const char *
 jvst_ret2name(int ret)
