@@ -15,6 +15,9 @@
         ast-schema;
         ast-schema-list;
         ast-prop-schema;
+
+	ast-string-set;
+
         regexp;
         re-dialect;
 
@@ -34,6 +37,12 @@
 	NULL;
 
 %productions%
+
+	/* some helpers */
+	<new-string-set>: () -> (:ast-string-set);
+	<append-string-set>: (:ast-string-set, :string) -> ();
+
+	/*** schema keywords ***/
 
 	<kw-lookup>:   (:string) -> (:kw);
 	<type-lookup>: (:string) -> (:type);
@@ -98,6 +107,9 @@
         <set-additional-properties>:
                                     (:ast-schema) -> ();
         <set-property-names>:       (:ast-schema) -> ();
+
+	<add-string-dependency>:    (:string,:ast-string-set) -> ();
+	<add-schema-dependency>:    (:string,:ast-schema) -> ();
 
         <set-items-list>:           (:ast-schema-list) -> ();
         <set-items-single>:         (:ast-schema) -> ();
@@ -322,6 +334,60 @@
                 <set-property-names>(sch);
         };
 
+	directive-dependencies [
+		single-dependency [
+			string-deps: () -> (ss :ast-string-set) [
+				list-of-strings: (ss :ast-string-set) -> () = {
+					s = STRING;
+					<append-string-set>(ss, s);
+					{
+						comma;
+						list-of-strings(ss);
+					||
+						$;
+					};
+				};
+			] = {
+				ss = <new-string-set>;
+				OBRACKET;
+				{
+					list-of-strings(ss);
+				||
+					$;
+				};
+				CBRACKET;
+			};
+		] = {
+			n = STRING;
+			colon;
+			{
+				ss = string-deps;
+				<add-string-dependency>(n,ss);
+			||
+				sch = <parse-schema>;
+				<add-schema-dependency>(n,sch);
+			};
+		};
+		
+		dependency-list = {
+			single-dependency;
+			{
+				comma;
+				dependency-list;
+			||
+				$;
+			};
+		};
+	] = {
+		OCURLY;
+		{
+			dependency-list;
+		||
+			$;
+		};
+		CCURLY;
+	};
+
         directive-pattern = {
                 s = STRING;
                 dialect = <re-pattern>;
@@ -503,7 +569,7 @@
                 directive-additional-properties;
 	||
 		? = <kw-dependencies>(k);
-		placeholder;
+		directive-dependencies;
 	||
 		? = <kw-property-names>(k);
 		directive-property-names;
