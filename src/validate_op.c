@@ -1456,7 +1456,11 @@ op_assemble_cond(struct op_assembler *opasm, struct jvst_ir_expr *cond)
 
 			div = cond->u.multiple_of.divisor;
 
-			b = emit_float_arg(opasm, div);
+			if (ceil(div) == div && div < MAX_CONST_VALUE) {
+				b = arg_const((int64_t)div);
+			} else {
+				b = emit_float_arg(opasm, div);
+			}
 			a = emit_op_arg(opasm, cond->u.multiple_of.arg);
 			emit_cond(opasm, JVST_OP_FINT, a,b);
 		}
