@@ -310,7 +310,7 @@ static void test_xlate_type_integer(void)
   RUNTESTS(tests);
 }
 
-void test_xlate_minimum(void)
+static void test_xlate_minimum(void)
 {
   struct arena_info A = {0};
   struct ast_schema *schema = newschema_p(&A, 0,
@@ -326,6 +326,33 @@ void test_xlate_minimum(void)
                       NULL),
         SJP_NONE),
     },
+    { STOP },
+  };
+
+  RUNTESTS(tests);
+}
+
+static void test_xlate_multiple_of(void)
+{
+  struct arena_info A = {0};
+
+  const struct cnode_test tests[] = {
+    {
+      TRANSLATE,
+      newschema_p(&A, 0,
+          "multipleOf", 3.0,
+          NULL),
+
+      NULL,
+
+      newcnode_switch(&A, 1,
+        SJP_NUMBER, newcnode_bool(&A, JVST_CNODE_AND,
+                      newcnode_multiple_of(&A, 3.0),
+                      newcnode_valid(),
+                      NULL),
+        SJP_NONE),
+    },
+
     { STOP },
   };
 
@@ -4305,6 +4332,7 @@ int main(void)
   test_xlate_type_integer();
 
   test_xlate_minimum();
+  test_xlate_multiple_of();
 
   test_xlate_properties();
   test_xlate_propertynames();

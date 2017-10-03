@@ -59,6 +59,7 @@ enum jvst_cnode_type {
 
 	JVST_CNODE_NUM_RANGE,
 	JVST_CNODE_NUM_INTEGER,
+	JVST_CNODE_NUM_MULTIPLE_OF,
 
 	JVST_CNODE_OBJ_PROP_SET,
 	JVST_CNODE_OBJ_PROP_MATCH,
@@ -123,6 +124,9 @@ struct jvst_cnode {
 			double min;
 			double max;
 		} num_range;
+
+		/* for multipleOf constraints */
+		double multiple_of;
 
 		/* support for required properties */
 		struct ast_string_set *required;

@@ -65,6 +65,9 @@ jvst_invalid_msg(enum jvst_invalid_code code)
 	case JVST_INVALID_NOT_INTEGER:
 		return "number is not an integer";
 
+	case JVST_INVALID_NOT_MULTIPLE:
+		return "number is not an integer multiple";
+
 	case JVST_INVALID_NUMBER:
 		return "number not valid";
 
@@ -566,6 +569,7 @@ ir_expr_tmp(struct jvst_ir_stmt *frame, struct jvst_ir_expr *expr)
 	case JVST_IR_EXPR_BOOL:
 	case JVST_IR_EXPR_ISTOK:
 	case JVST_IR_EXPR_ISINT:
+	case JVST_IR_EXPR_MULTIPLE_OF:
 	case JVST_IR_EXPR_AND:
 	case JVST_IR_EXPR_OR:
 	case JVST_IR_EXPR_NOT:
@@ -654,6 +658,7 @@ ir_expr_op(enum jvst_ir_expr_type op,
 	case JVST_IR_EXPR_BCOUNT:
 	case JVST_IR_EXPR_ISTOK:
 	case JVST_IR_EXPR_ISINT:
+	case JVST_IR_EXPR_MULTIPLE_OF:
 	case JVST_IR_EXPR_NOT:
 	case JVST_IR_EXPR_SPLIT:
 	case JVST_IR_EXPR_SLOT:
@@ -902,6 +907,9 @@ jvst_ir_expr_type_name(enum jvst_ir_expr_type type)
 	case JVST_IR_EXPR_ISINT:
 		return "ISINT";
 
+	case JVST_IR_EXPR_MULTIPLE_OF:
+		return "MULTIPLE_OF";
+
 	case JVST_IR_EXPR_SPLIT:
 		return "SPLIT";
 
@@ -1042,6 +1050,16 @@ jvst_ir_dump_expr(struct sbuf *buf, const struct jvst_ir_expr *expr, int indent)
 			sbuf_indent(buf, indent);
 			sbuf_snprintf(buf, ")");
 		}
+		return;
+
+	case JVST_IR_EXPR_MULTIPLE_OF:
+		sbuf_snprintf(buf, "MULTIPLE_OF(\n");
+		jvst_ir_dump_expr(buf,expr->u.multiple_of.arg,indent+2);
+		sbuf_snprintf(buf, ",\n");
+		sbuf_indent(buf, indent+2);
+		sbuf_snprintf(buf, "%g\n", expr->u.multiple_of.divisor);
+		sbuf_indent(buf, indent);
+		sbuf_snprintf(buf, ")");
 		return;
 
 	case JVST_IR_EXPR_ISINT:
@@ -1536,6 +1554,12 @@ ir_translate_number_expr(struct jvst_cnode *top)
 		cond->u.isint.arg = ir_expr_new(JVST_IR_EXPR_TOK_NUM);
 		return cond;
 
+	case JVST_CNODE_NUM_MULTIPLE_OF:
+		cond = ir_expr_new(JVST_IR_EXPR_MULTIPLE_OF);
+		cond->u.multiple_of.arg = ir_expr_new(JVST_IR_EXPR_TOK_NUM);
+		cond->u.multiple_of.divisor = top->u.multiple_of;
+		return cond;
+
 	case JVST_CNODE_NUM_RANGE:
 		{
 			struct jvst_ir_expr *lower, *upper;
@@ -1664,6 +1688,7 @@ ir_translate_number(struct jvst_cnode *top, struct jvst_ir_stmt *frame)
 	case JVST_CNODE_AND:
 	case JVST_CNODE_OR:
 	case JVST_CNODE_NUM_INTEGER:
+	case JVST_CNODE_NUM_MULTIPLE_OF:
 	case JVST_CNODE_NUM_RANGE:
 		{
 			struct jvst_ir_stmt *br;
@@ -1671,9 +1696,13 @@ ir_translate_number(struct jvst_cnode *top, struct jvst_ir_stmt *frame)
 			enum jvst_invalid_code ecode;
 
 			cond = ir_translate_number_expr(top);
-			ecode = (top->type != JVST_CNODE_NUM_INTEGER)
-				? JVST_INVALID_NUMBER
-				: JVST_INVALID_NOT_INTEGER;
+			if (top->type == JVST_CNODE_NUM_INTEGER) {
+				ecode = JVST_INVALID_NOT_INTEGER;
+			} else if (top->type == JVST_CNODE_NUM_MULTIPLE_OF) {
+				ecode = JVST_INVALID_NOT_MULTIPLE;
+			} else {
+				ecode = JVST_INVALID_NUMBER;
+			}
 
 			br = ir_stmt_if(cond,
 				// ir_stmt_valid(),
@@ -2200,6 +2229,7 @@ ir_translate_obj_inner(struct jvst_cnode *top, struct ir_object_builder *builder
 	case JVST_CNODE_STR_MATCH:
 	case JVST_CNODE_NUM_RANGE:
 	case JVST_CNODE_NUM_INTEGER:
+	case JVST_CNODE_NUM_MULTIPLE_OF:
 		fprintf(stderr, "[%s:%d] invalid cnode type %s for OBJECT\n",
 				__FILE__, __LINE__, 
 				jvst_cnode_type_name(top->type));
@@ -2249,6 +2279,7 @@ cnode_and_requires_split(struct jvst_cnode *and_node)
 		case JVST_CNODE_STR_MATCH:
 		case JVST_CNODE_NUM_RANGE:
 		case JVST_CNODE_NUM_INTEGER:
+		case JVST_CNODE_NUM_MULTIPLE_OF:
 		case JVST_CNODE_OBJ_PROP_SET:
 		case JVST_CNODE_OBJ_PROP_MATCH:
 		case JVST_CNODE_OBJ_PROP_DEFAULT:
@@ -2327,6 +2358,7 @@ cnode_count_splits(struct jvst_cnode *top, size_t *np)
 	case JVST_CNODE_STR_MATCH:
 	case JVST_CNODE_NUM_RANGE:
 	case JVST_CNODE_NUM_INTEGER:
+	case JVST_CNODE_NUM_MULTIPLE_OF:
 	case JVST_CNODE_OBJ_PROP_SET:
 	case JVST_CNODE_OBJ_PROP_MATCH:
 	case JVST_CNODE_OBJ_PROP_DEFAULT:
@@ -2399,6 +2431,7 @@ separate_control_nodes(struct jvst_cnode *top, struct jvst_cnode **cpp, struct j
 		case JVST_CNODE_STR_MATCH:
 		case JVST_CNODE_NUM_RANGE:
 		case JVST_CNODE_NUM_INTEGER:
+		case JVST_CNODE_NUM_MULTIPLE_OF:
 		case JVST_CNODE_OBJ_PROP_SET:
 		case JVST_CNODE_OBJ_PROP_MATCH:
 		case JVST_CNODE_OBJ_PROP_DEFAULT:
@@ -2610,6 +2643,7 @@ split_gather(struct jvst_cnode *top, struct split_gather_data *data,
 	case JVST_CNODE_STR_MATCH:
 	case JVST_CNODE_NUM_RANGE:
 	case JVST_CNODE_NUM_INTEGER:
+	case JVST_CNODE_NUM_MULTIPLE_OF:
 	case JVST_CNODE_OBJ_PROP_SET:
 	case JVST_CNODE_OBJ_PROP_MATCH:
 	case JVST_CNODE_OBJ_PROP_DEFAULT:
@@ -3196,6 +3230,7 @@ ir_translate_string_inner(struct jvst_cnode *top, struct ir_str_builder *builder
 	case JVST_CNODE_SWITCH:
 	case JVST_CNODE_NUM_RANGE:
 	case JVST_CNODE_NUM_INTEGER:
+	case JVST_CNODE_NUM_MULTIPLE_OF:
 	case JVST_CNODE_OBJ_PROP_SET:
 	case JVST_CNODE_OBJ_PROP_MATCH:
 	case JVST_CNODE_OBJ_PROP_DEFAULT:
@@ -3678,6 +3713,7 @@ ir_translate_array_inner(struct jvst_cnode *top, struct ir_arr_builder *builder)
 	case JVST_CNODE_SWITCH:
 	case JVST_CNODE_NUM_RANGE:
 	case JVST_CNODE_NUM_INTEGER:
+	case JVST_CNODE_NUM_MULTIPLE_OF:
 	case JVST_CNODE_OBJ_REQMASK:
 	case JVST_CNODE_OBJ_REQBIT:
 		fprintf(stderr, "[%s:%d] unexpected cnode %s in array translation\n",
@@ -3843,6 +3879,10 @@ jvst_ir_expr_copy(struct jvst_ir_expr *ir, struct addr_fixup_list *fixups, struc
 	switch (ir->type) {
 	case JVST_IR_EXPR_ISTOK:
 		copy->u.istok = ir->u.istok;
+		return copy;
+
+	case JVST_IR_EXPR_MULTIPLE_OF:
+		copy->u.multiple_of = ir->u.multiple_of;
 		return copy;
 
 	case JVST_IR_EXPR_ITEMP:
@@ -5153,6 +5193,7 @@ ir_linearize_cond(struct op_linearizer *oplin, struct jvst_ir_expr *cond, struct
 	case JVST_IR_EXPR_BOOL:
 	case JVST_IR_EXPR_ISTOK:
 	case JVST_IR_EXPR_ISINT:
+	case JVST_IR_EXPR_MULTIPLE_OF:
 		brcond = cond;
 		break;
 
@@ -5288,6 +5329,7 @@ ir_linearize_rewrite_expr(struct jvst_ir_stmt *frame, struct jvst_ir_expr *expr)
 	case JVST_IR_EXPR_BOOL:
 	case JVST_IR_EXPR_ISTOK:
 	case JVST_IR_EXPR_ISINT:
+	case JVST_IR_EXPR_MULTIPLE_OF:
 	case JVST_IR_EXPR_NONE:
 	case JVST_IR_EXPR_NUM:
 	case JVST_IR_EXPR_INT:

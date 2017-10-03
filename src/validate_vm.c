@@ -1192,13 +1192,26 @@ loop:
 	case JVST_OP_FINT:
 		{
 			double v;
-			uint32_t arg0;
+			uint32_t arg0, arg1;
 			int slot;
 
 			arg0 = jvst_vm_decode_arg0(opcode);
+			arg1 = jvst_vm_decode_arg1(opcode);
 			assert(jvst_vm_arg_isslot(arg0));
 
 			v = vm_fvalptr(vm, fp, arg0)[0];
+			if (arg1 != 0) {
+				double div;
+
+				if (jvst_vm_arg_isslot(arg1)) {
+					div = vm_fvalptr(vm, fp, arg1)[0];
+				} else {
+					div = jvst_vm_arg_tolit(arg1);
+				}
+
+				v /= div;
+			}
+
 			vm->r_flag = flag = isfinite(v) && (v == ceil(v));
 		}
 		NEXT;
