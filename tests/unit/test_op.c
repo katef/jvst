@@ -858,6 +858,203 @@ static void test_op_multiple_of(void)
     {
       ASSEMBLE,
       newcnode_switch(&A, 1,
+          SJP_NUMBER, newcnode_multiple_of(&A, 1.5),
+          SJP_NONE),
+
+      newir_frame(&A,
+          newir_stmt(&A, JVST_IR_STMT_TOKEN),
+          newir_if(&A, newir_istok(&A, SJP_NUMBER),
+            newir_if(&A, newir_multiple_of(&A, newir_expr(&A, JVST_IR_EXPR_TOK_NUM), 1.5),
+              newir_seq(&A,
+                newir_stmt(&A, JVST_IR_STMT_CONSUME),
+                newir_stmt(&A, JVST_IR_STMT_VALID),
+                NULL
+              ),
+              newir_invalid(&A, JVST_INVALID_NOT_MULTIPLE, "number is not an integer multiple")
+            ),
+            newir_if(&A, newir_istok(&A, SJP_OBJECT_END),
+              newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token"),
+              newir_if(&A, newir_istok(&A, SJP_ARRAY_END),
+                newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token"),
+                newir_seq(&A,
+                  newir_stmt(&A, JVST_IR_STMT_CONSUME),
+                  newir_stmt(&A, JVST_IR_STMT_VALID),
+                  NULL
+                )
+              )
+            )
+          ),
+          NULL
+      ),
+
+      newop_program(&A,
+          opfloat, 1.5,
+
+          newop_proc(&A,
+            opslots, 1,
+
+            oplabel, "entry_0",
+            newop_instr(&A, JVST_OP_TOKEN),
+            newop_cmp(&A, JVST_OP_IEQ, oparg_tt(), oparg_tok(SJP_NUMBER)),
+            newop_br(&A, JVST_OP_CBT, "true_2"),
+
+            oplabel, "false_8",
+            newop_cmp(&A, JVST_OP_IEQ, oparg_tt(), oparg_tok(SJP_OBJECT_END)),
+            newop_br(&A, JVST_OP_CBT, "invalid_1_11"),
+
+            oplabel, "false_12",
+            newop_cmp(&A, JVST_OP_IEQ, oparg_tt(), oparg_tok(SJP_ARRAY_END)),
+            newop_br(&A, JVST_OP_CBT, "invalid_1_11"),
+
+            oplabel, "false_15",
+            newop_instr(&A, JVST_OP_CONSUME),
+
+            oplabel, "valid_5",
+            newop_instr(&A, JVST_OP_VALID),
+
+            oplabel, "true_2",
+            newop_load(&A, JVST_OP_FLOAD, oparg_slot(0), oparg_lit(0)),
+            newop_cmp(&A, JVST_OP_FINT, oparg_tnum(), oparg_slot(0)),
+            newop_br(&A, JVST_OP_CBT, "true_4"),
+
+            oplabel, "invalid_17_7",
+            newop_invalid(&A, 17),
+
+            oplabel, "true_4",
+            newop_instr(&A, JVST_OP_CONSUME),
+            newop_br(&A, JVST_OP_BR, "valid_5"),
+
+            oplabel, "invalid_1_11",
+            newop_invalid(&A, 1),
+
+            NULL
+          ),
+
+          NULL
+      ),
+
+    },
+
+    {
+      ENCODE,
+      newcnode_switch(&A, 1,
+          SJP_NUMBER, newcnode_multiple_of(&A, 1.5),
+          SJP_NONE),
+
+      newir_frame(&A,
+          newir_stmt(&A, JVST_IR_STMT_TOKEN),
+          newir_if(&A, newir_istok(&A, SJP_NUMBER),
+            newir_if(&A, newir_multiple_of(&A, newir_expr(&A, JVST_IR_EXPR_TOK_NUM), 1.5),
+              newir_seq(&A,
+                newir_stmt(&A, JVST_IR_STMT_CONSUME),
+                newir_stmt(&A, JVST_IR_STMT_VALID),
+                NULL
+              ),
+              newir_invalid(&A, JVST_INVALID_NOT_MULTIPLE, "number is not an integer multiple")
+            ),
+            newir_if(&A, newir_istok(&A, SJP_OBJECT_END),
+              newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token"),
+              newir_if(&A, newir_istok(&A, SJP_ARRAY_END),
+                newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token"),
+                newir_seq(&A,
+                  newir_stmt(&A, JVST_IR_STMT_CONSUME),
+                  newir_stmt(&A, JVST_IR_STMT_VALID),
+                  NULL
+                )
+              )
+            )
+          ),
+          NULL
+      ),
+
+      newop_program(&A,
+          opfloat, 1.5,
+
+          newop_proc(&A,
+            opslots, 1,
+
+            oplabel, "entry_0",
+            newop_instr(&A, JVST_OP_TOKEN),
+            newop_cmp(&A, JVST_OP_IEQ, oparg_tt(), oparg_tok(SJP_NUMBER)),
+            newop_br(&A, JVST_OP_CBT, "true_2"),
+
+            oplabel, "false_8",
+            newop_cmp(&A, JVST_OP_IEQ, oparg_tt(), oparg_tok(SJP_OBJECT_END)),
+            newop_br(&A, JVST_OP_CBT, "invalid_1_11"),
+
+            oplabel, "false_12",
+            newop_cmp(&A, JVST_OP_IEQ, oparg_tt(), oparg_tok(SJP_ARRAY_END)),
+            newop_br(&A, JVST_OP_CBT, "invalid_1_11"),
+
+            oplabel, "false_15",
+            newop_instr(&A, JVST_OP_CONSUME),
+
+            oplabel, "valid_5",
+            newop_instr(&A, JVST_OP_VALID),
+
+            oplabel, "true_2",
+            newop_load(&A, JVST_OP_FLOAD, oparg_slot(0), oparg_lit(0)),
+            newop_cmp(&A, JVST_OP_FINT, oparg_tnum(), oparg_slot(0)),
+            newop_br(&A, JVST_OP_CBT, "true_4"),
+
+            oplabel, "invalid_17_7",
+            newop_invalid(&A, 17),
+
+            oplabel, "true_4",
+            newop_instr(&A, JVST_OP_CONSUME),
+            newop_br(&A, JVST_OP_BR, "valid_5"),
+
+            oplabel, "invalid_1_11",
+            newop_invalid(&A, 1),
+
+            NULL
+          ),
+
+          NULL
+      ),
+
+      newvm_program(&A,
+          VM_FLOATS, 1, 1.5,
+
+          JVST_OP_PROC, VMLIT(1), VMLIT(0),
+          JVST_OP_TOKEN, 0, 0,
+          JVST_OP_IEQ, VMREG(JVST_VM_TT), VMLIT(SJP_NUMBER),
+          JVST_OP_CBT, "true_2",
+
+          VM_LABEL, "false_8",
+          JVST_OP_IEQ, VMREG(JVST_VM_TT), VMLIT(SJP_OBJECT_END),
+          JVST_OP_CBT, "invalid_1_11",
+
+          VM_LABEL, "false_12",
+          JVST_OP_IEQ, VMREG(JVST_VM_TT), VMLIT(SJP_ARRAY_END),
+          JVST_OP_CBT, "invalid_1_11",
+
+          VM_LABEL, "false_15",
+          JVST_OP_CONSUME, 0, 0,
+
+          VM_LABEL, "valid_5",
+          JVST_OP_VALID, 0, 0,
+
+          VM_LABEL, "true_2",
+          JVST_OP_FLOAD, VMSLOT(0), VMLIT(0),
+          JVST_OP_FINT, VMREG(JVST_VM_TNUM), VMSLOT(0),
+          JVST_OP_CBT, "true_4",
+
+          JVST_OP_INVALID, VMLIT(17), 0,
+
+          VM_LABEL, "true_4",
+          JVST_OP_CONSUME, 0, 0,
+          JVST_OP_BR, "valid_5",
+
+          VM_LABEL, "invalid_1_11",
+          JVST_OP_INVALID, VMLIT(1), 0,
+
+          VM_END)
+    },
+
+    {
+      ASSEMBLE,
+      newcnode_switch(&A, 1,
           SJP_NUMBER, newcnode_multiple_of(&A, 3.0),
           SJP_NONE),
 
@@ -888,11 +1085,7 @@ static void test_op_multiple_of(void)
       ),
 
       newop_program(&A,
-          opfloat, 3.0,
-
           newop_proc(&A,
-            opslots, 1,
-
             oplabel, "entry_0",
             newop_instr(&A, JVST_OP_TOKEN),
             newop_cmp(&A, JVST_OP_IEQ, oparg_tt(), oparg_tok(SJP_NUMBER)),
@@ -913,8 +1106,7 @@ static void test_op_multiple_of(void)
             newop_instr(&A, JVST_OP_VALID),
 
             oplabel, "true_2",
-            newop_load(&A, JVST_OP_FLOAD, oparg_slot(0), oparg_lit(0)),
-            newop_cmp(&A, JVST_OP_FINT, oparg_tnum(), oparg_slot(0)),
+            newop_cmp(&A, JVST_OP_FINT, oparg_tnum(), oparg_lit(3)),
             newop_br(&A, JVST_OP_CBT, "true_4"),
 
             oplabel, "invalid_17_7",
@@ -968,11 +1160,7 @@ static void test_op_multiple_of(void)
       ),
 
       newop_program(&A,
-          opfloat, 3.0,
-
           newop_proc(&A,
-            opslots, 1,
-
             oplabel, "entry_0",
             newop_instr(&A, JVST_OP_TOKEN),
             newop_cmp(&A, JVST_OP_IEQ, oparg_tt(), oparg_tok(SJP_NUMBER)),
@@ -1014,9 +1202,7 @@ static void test_op_multiple_of(void)
       ),
 
       newvm_program(&A,
-          VM_FLOATS, 1, 3.0,
-
-          JVST_OP_PROC, VMLIT(1), VMLIT(0),
+          JVST_OP_PROC, VMLIT(0), VMLIT(0),
           JVST_OP_TOKEN, 0, 0,
           JVST_OP_IEQ, VMREG(JVST_VM_TT), VMLIT(SJP_NUMBER),
           JVST_OP_CBT, "true_2",
@@ -1036,8 +1222,7 @@ static void test_op_multiple_of(void)
           JVST_OP_VALID, 0, 0,
 
           VM_LABEL, "true_2",
-          JVST_OP_FLOAD, VMSLOT(0), VMLIT(0),
-          JVST_OP_FINT, VMREG(JVST_VM_TNUM), VMSLOT(0),
+          JVST_OP_FINT, VMREG(JVST_VM_TNUM), VMLIT(3),
           JVST_OP_CBT, "true_4",
 
           JVST_OP_INVALID, VMLIT(17), 0,
@@ -1051,7 +1236,6 @@ static void test_op_multiple_of(void)
 
           VM_END)
     },
-
     { STOP },
   };
 
