@@ -12,6 +12,9 @@
 
 	kw;
 	type;
+
+	!path; /* path is a persistent and currently does not appear explicitly */
+
         ast-schema;
         ast-schema-list;
         ast-prop-schema;
@@ -75,6 +78,13 @@
 	/* some helpers */
 	<new-string-set>: () -> (:ast-string-set);
 	<append-string-set>: (:ast-string-set, :string) -> ();
+
+
+	/* id helpers */
+	<path-push-str>:	(:string) -> ();
+	<path-push-num-zero>:	() -> ();
+	<path-push-num-next>:	() -> ();
+	<path-pop>:		() -> ();
 
 	/*** schema keywords ***/
 
@@ -457,7 +467,9 @@
                 prop-schema: (dialect :re-dialect) -> (ps :ast-prop-schema) = {
                         s = STRING;
                         colon;
+			<path-push-str>(s);
                         sch = <parse-schema>;
+			<path-pop>;
                         re = <new-regexp>(dialect,s);
                         ps = <new-prop-schema>(re,sch);
                 };
@@ -519,7 +531,9 @@
 				ss = string-deps;
 				<add-string-dependency>(n,ss);
 			||
+				<path-push-str>(n);
 				sch = <parse-schema>;
+				<path-pop>;
 				<add-schema-dependency>(n,sch);
 			};
 		};
@@ -574,6 +588,7 @@
                         next-schema(lst);
                         {
                                 comma;
+				<path-push-num-next>;
                                 list-of-schema(lst);
                         ||
                                 $;
@@ -581,9 +596,11 @@
                 };
         ] = {
                 lst = <new-schema-list>;
+		<path-push-num-zero>;
                 OBRACKET;
                 list-of-schema(lst);
                 CBRACKET;
+		<path-pop>;
         };
 
         directive-items = {
@@ -797,8 +814,10 @@
 	list-of-directives = {
 		s = STRING;
 		k = <kw-lookup>(s);
+		<path-push-str>(s);
 		colon;
 		directive(k);
+		<path-pop>;
 		{
 			comma;
 			list-of-directives;

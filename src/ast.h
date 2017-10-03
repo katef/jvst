@@ -117,7 +117,11 @@ struct ast_schema {
 		KWS_MAX_PROPERTIES        = 1 << 10, /* .min_properties and .max_properties */
 
 		KWS_SINGLETON_ITEMS	  = 1 << 11, /* .items was not an array */
+
+		KWS_HAS_REF		  = 1 << 12, /* .ref, must ignore everything else */
 	} kws;
+
+	struct json_string ref;
 
 	/* TODO: transform post-parse to populate AST_STRING to .pattern instead */
 	struct json_value value;
@@ -209,6 +213,7 @@ struct ast_schema {
 
 	struct json_string schema;
 	struct json_string id;
+	struct json_string path;	/* for json pointer */
 	struct json_string title;
 	struct json_string description;
 

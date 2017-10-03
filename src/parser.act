@@ -14,6 +14,7 @@
 	lex_state :lex_state;
 	act_state :act_state;
 	ast       :ast;
+	path	  :path;
 
 %maps%
 
@@ -39,12 +40,15 @@
         ast-json-property-pair -> ast_json_ppair_t;
         ast-json-item-list     -> ast_json_ilist_t;
 
+	path -> path_t;
+
 %header% @{
 
 	#include <assert.h>
 	#include <stdarg.h>
 	#include <stdlib.h>
 	#include <string.h>
+	#include <limits.h>
 
 	#include "sjp_lexer.h"
 
@@ -67,6 +71,88 @@
 
 	typedef enum re_dialect re_dialect_t;
 	typedef struct ast_regexp ast_regexp_t;
+
+	struct path_element {
+		int isnum;
+		union {
+			size_t num;
+			struct json_string str;
+		} u;
+	};
+
+	struct path {
+		size_t len;
+		size_t cap;
+
+		struct path_element *items;
+	};
+
+	static struct path_element *push_element(struct path *p)
+	{
+		if (p->len >= p->cap) {
+			size_t newcap;
+			newcap = p->cap;
+			if (newcap < 8) {
+				newcap = 8;
+			}
+			newcap *= 2;
+
+			p->items = xrealloc(p->items, newcap * sizeof p->items[0]);
+			p->cap = newcap;
+		}
+
+		assert(p->len < p->cap);
+		return &p->items[p->len++];
+	}
+
+	static struct path_element *peek_element(struct path *p)
+	{
+		if (p->len == 0) {
+			return NULL;
+		}
+
+		assert(p->len <= p->cap);
+		return &p->items[p->len-1];
+	}
+
+	static struct json_string copy_json_string(struct json_string s);
+
+	static void path_push_str(struct path *p, struct json_string s)
+	{
+		struct path_element *elt;
+		elt = push_element(p);
+
+		elt->isnum = 0;
+		elt->u.str = copy_json_string(s);
+	}
+
+	static void path_push_num_zero(struct path *p)
+	{
+		struct path_element *elt;
+		elt = push_element(p);
+
+		elt->isnum = 1;
+		elt->u.num = 0;
+	}
+
+	static void path_push_num_next(struct path *p)
+	{
+		struct path_element *elt;
+		elt = peek_element(p);
+
+		assert(elt != NULL);
+		assert(elt->isnum != 0);
+
+		elt->u.num++;
+	}
+
+	static void path_pop(struct path *p)
+	{
+		assert(p->len > 0);
+		p->len--;
+	}
+
+	typedef struct path *path_t;
 
 	struct string_set {
 		struct ast_string_set *head;
@@ -156,6 +242,61 @@
 			fprintf(stderr, "invalid json value type 0x%x\n", v.type);
 			abort();
 		}
+	}
+
+	static struct json_string current_path(struct path *p)
+	{
+		static const struct json_string zero;
+		struct json_string result = zero;
+		size_t i;
+
+		// XXX - fixed-size limits how deep schema can get.  maybe this should be
+		// user-adjustable?
+		char path[2048], *s, *e;
+
+		s = &path[0];
+		e = &path[sizeof path];
+
+		*s++ = '#';
+		for (i=0; i < p->len; i++) {
+			int nc;
+
+			if (p->items[i].isnum) {
+				nc = snprintf(s, e-s, "/%zu", p->items[i].u.num);
+			} else {
+				size_t len = p->items[i].u.str.len;
+				const char *str = p->items[i].u.str.s;
+
+				if (len > INT_MAX) {
+					// XXX - handle error more gracefully?
+					fprintf(stderr, "path element is too long:");
+					fwrite(str, 1, len, stderr);
+					fprintf(stderr, "\n");
+					abort();
+				}
+
+				nc = snprintf(s, e-s, "/%.*s", (int)len, str);
+			}
+
+			if (nc < 0) {
+				// XXX - handle error more gracefully?
+				perror("building path string");
+				abort();
+			}
+
+			if (nc > e-s) {
+				// XXX - handle error more gracefully?
+				fprintf(stderr, "path is too long: %s\n", path);
+				abort();
+			}
+
+			s += nc;
+		}
+
+		// fprintf(stderr, "path: %s\n", path);
+		result.len = e-s;
+		result.s = xstrndup(path, result.len);
+		return result;
 	}
 
 	static struct json_string copy_json_string(struct json_string s)
@@ -327,6 +468,7 @@
 	typedef struct ast_schema * ast;
 	typedef struct act_state * act_state;
 	typedef struct sjp_lexer * lex_state;
+	typedef struct path * path;
 
 @};
 
@@ -354,6 +496,22 @@
 	@};
 
 %actions%
+
+	<path-push-str>: (s :string) -> () = @{
+		path_push_str(path, @s);
+	@};
+
+	<path-push-num-zero> = @{
+		path_push_num_zero(path);
+	@};
+
+	<path-push-num-next> = @{
+		path_push_num_next(path);
+	@};
+
+	<path-pop> = @{
+		path_pop(path);
+	@};
 
 	<kw-lookup>: (s :string) -> (k :kw) = @{
 		if (debug & DEBUG_ACT) {
@@ -453,9 +611,12 @@
 
         <parse-schema>: () -> (sch: ast-schema) = @{
                 static struct ast_schema zero = { 0 };
-                @sch = xmalloc(sizeof *@sch);
-                *@sch = zero;
-                p_schema(lex_state, act_state, @sch);
+		struct ast_schema *sch;
+                sch = xmalloc(sizeof *sch);
+                *sch = zero;
+		sch->path = current_path(path);
+                p_schema(lex_state, act_state, sch, path);
+		@sch = sch;
         @};
 
         <set-schema-true>:          () -> () = @{
@@ -1115,13 +1276,14 @@
 	parse(struct sjp_lexer *lex_state, struct ast_schema *ast)
 	{
 		struct act_state a, *act_state = &a;
+		struct path p = { 0 };
 
 		assert(lex_state != NULL);
 		assert(ast != NULL);
 
 		ADVANCE_LEXER;
 
-		p_file(lex_state, act_state, ast);
+		p_file(lex_state, act_state, ast, &p);
 	}
 
 @}, @{
