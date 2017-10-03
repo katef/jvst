@@ -408,6 +408,12 @@ newschema_p(struct arena_info *A, int types, ...)
 				continue;
 			}
 			*vpp = vset;
+		} else if (strcmp(pname, "multipleOf") == 0) {
+			double divisor;
+
+			divisor = va_arg(args, double);
+			s->multiple_of = divisor;
+			s->kws |= KWS_MULTIPLE_OF;
 		} else {
 			// okay to abort() a test if the test writer forgot to add a
 			// property to the big dumb if-else chain
@@ -852,11 +858,21 @@ newcnode_propnames(struct arena_info *A, struct jvst_cnode *tree)
 struct jvst_cnode *
 newcnode_range(struct arena_info *A, enum jvst_cnode_rangeflags flags, double min, double max)
 {
-	struct jvst_cnode *node, **pp;
+	struct jvst_cnode *node;
 	node = newcnode(A, JVST_CNODE_NUM_RANGE);
 	node->u.num_range.flags = flags;
 	node->u.num_range.min   = min;
 	node->u.num_range.max   = max;
+	return node;
+}
+
+struct jvst_cnode *
+newcnode_multiple_of(struct arena_info *A, double divisor)
+{
+	struct jvst_cnode *node;
+	node = newcnode(A, JVST_CNODE_NUM_MULTIPLE_OF);
+	node->u.multiple_of = divisor;
+
 	return node;
 }
 
@@ -1614,6 +1630,16 @@ newir_isint(struct arena_info *A, struct jvst_ir_expr *arg)
 }
 
 struct jvst_ir_expr *
+newir_multiple_of(struct arena_info *A, struct jvst_ir_expr *arg, double divisor)
+{
+	struct jvst_ir_expr *expr;
+	expr = newir_expr(A,JVST_IR_EXPR_MULTIPLE_OF);
+	expr->u.multiple_of.arg = arg;
+	expr->u.multiple_of.divisor = divisor;
+	return expr;
+}
+
+struct jvst_ir_expr *
 newir_num(struct arena_info *A, double num)
 {
 	struct jvst_ir_expr *expr;
@@ -1827,6 +1853,7 @@ newir_op(struct arena_info *A, enum jvst_ir_expr_type op,
 	case JVST_IR_EXPR_BCOUNT:
 	case JVST_IR_EXPR_ISTOK:
 	case JVST_IR_EXPR_ISINT:
+	case JVST_IR_EXPR_MULTIPLE_OF:
 	case JVST_IR_EXPR_NOT:
 	case JVST_IR_EXPR_SPLIT:
 	case JVST_IR_EXPR_SLOT:

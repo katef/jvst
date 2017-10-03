@@ -586,6 +586,161 @@ void test_ir_minimum(void)
   RUNTESTS(tests);
 }
 
+void test_ir_multiple_of(void)
+{
+  struct arena_info A = {0};
+
+  const struct ir_test tests[] = {
+    {
+      TRANSLATE,
+      newcnode_switch(&A, 1,
+        SJP_NUMBER, newcnode_bool(&A, JVST_CNODE_AND,
+                      newcnode_multiple_of(&A, 3.0),
+                      newcnode_valid(),
+                      NULL),
+        SJP_NONE),
+
+      newir_frame(&A,
+          newir_stmt(&A, JVST_IR_STMT_TOKEN),
+          newir_if(&A, newir_istok(&A, SJP_NUMBER),
+            newir_if(&A, newir_multiple_of(&A, newir_expr(&A, JVST_IR_EXPR_TOK_NUM), 3.0),
+              newir_seq(&A,
+                newir_stmt(&A, JVST_IR_STMT_CONSUME),
+                newir_stmt(&A, JVST_IR_STMT_VALID),
+                NULL
+              ),
+              newir_invalid(&A, JVST_INVALID_NOT_MULTIPLE, "number is not an integer multiple")
+            ),
+            newir_if(&A, newir_istok(&A, SJP_OBJECT_END),
+              newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token"),
+              newir_if(&A, newir_istok(&A, SJP_ARRAY_END),
+                newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token"),
+                newir_seq(&A,
+                  newir_stmt(&A, JVST_IR_STMT_CONSUME),
+                  newir_stmt(&A, JVST_IR_STMT_VALID),
+                  NULL
+                )
+              )
+            )
+          ),
+          NULL
+      )
+    },
+
+    {
+      LINEARIZE,
+      newcnode_switch(&A, 1,
+        SJP_NUMBER, newcnode_bool(&A, JVST_CNODE_AND,
+                      newcnode_multiple_of(&A, 3.0),
+                      newcnode_valid(),
+                      NULL),
+        SJP_NONE),
+
+      newir_frame(&A,
+          newir_stmt(&A, JVST_IR_STMT_TOKEN),
+          newir_if(&A, newir_istok(&A, SJP_NUMBER),
+            newir_if(&A, newir_multiple_of(&A, newir_expr(&A, JVST_IR_EXPR_TOK_NUM), 3.0),
+              newir_seq(&A,
+                newir_stmt(&A, JVST_IR_STMT_CONSUME),
+                newir_stmt(&A, JVST_IR_STMT_VALID),
+                NULL
+              ),
+              newir_invalid(&A, JVST_INVALID_NOT_MULTIPLE, "number is not an integer multiple")
+            ),
+            newir_if(&A, newir_istok(&A, SJP_OBJECT_END),
+              newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token"),
+              newir_if(&A, newir_istok(&A, SJP_ARRAY_END),
+                newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token"),
+                newir_seq(&A,
+                  newir_stmt(&A, JVST_IR_STMT_CONSUME),
+                  newir_stmt(&A, JVST_IR_STMT_VALID),
+                  NULL
+                )
+              )
+            )
+          ),
+          NULL
+      ),
+
+      newir_program(&A,
+        newir_frame(&A, frameindex, 1,
+          newir_block(&A, 0, "entry",
+            newir_stmt(&A, JVST_IR_STMT_TOKEN),
+            newir_cbranch(&A, newir_istok(&A, SJP_NUMBER),
+              2, "true",
+              8, "false"
+            ),
+            NULL
+          ),
+
+          newir_block(&A, 8, "false",
+            newir_cbranch(&A, newir_istok(&A, SJP_OBJECT_END),
+              11, "invalid_1",
+              12, "false"
+            ),
+            NULL
+          ),
+
+          newir_block(&A, 12, "false",
+            newir_cbranch(&A, newir_istok(&A, SJP_ARRAY_END),
+              11, "invalid_1",
+              15, "false"
+            ),
+            NULL
+          ),
+
+          newir_block(&A, 15, "false",
+            newir_stmt(&A, JVST_IR_STMT_CONSUME),
+            newir_branch(&A, 5, "valid"),
+            NULL
+          ),
+
+          newir_block(&A, 5, "valid",
+            newir_stmt(&A, JVST_IR_STMT_VALID),
+            NULL
+          ),
+
+          newir_block(&A, 2, "true",
+            newir_cbranch(&A,
+              newir_multiple_of(&A,
+                newir_expr(&A, JVST_IR_EXPR_TOK_NUM),
+                3.0),
+              4, "true",
+              7, "invalid_17"
+            ),
+            NULL
+          ),
+
+          newir_block(&A, 7, "invalid_17",
+            newir_invalid(&A, JVST_INVALID_NOT_MULTIPLE, "number is not an integer multiple"),
+            NULL
+          ),
+
+          newir_block(&A, 4, "true",
+            newir_stmt(&A, JVST_IR_STMT_CONSUME),
+            newir_branch(&A, 5, "valid"),
+            NULL
+          ),
+
+          newir_block(&A, 11, "invalid_1",
+            newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token"),
+            NULL
+          ),
+
+          NULL
+        ),
+
+        NULL
+      )
+
+    },
+
+    { STOP },
+  };
+
+  RUNTESTS(tests);
+}
+
 void test_ir_properties(void)
 {
   struct arena_info A = {0};
@@ -5942,6 +6097,7 @@ int main(void)
 
   test_ir_type_integer();
   test_ir_minimum();
+  test_ir_multiple_of();
 
   test_ir_properties();
 
