@@ -2244,15 +2244,16 @@ merge_mswitches_with_and(struct jvst_cnode *mswlst)
 
 			assert(opts->carryopaque == merge_mcases);
 
-			dfa2 = fsm_clone_with_opts(n->u.mswitch.dfa, opts);
+			dfa2 = fsm_clone(n->u.mswitch.dfa);
 			if (dfa2 == NULL) {
 				perror("merging mswitch nodes (cloning DFA2)");
 				abort();
 			}
+			fsm_setoptions(dfa2, opts);
 
-			// NB: unlike fsm_intersect, fsm_intersect_bywalk is not destructive to
-			// its arguments
-			both = fsm_intersect_bywalk(dfa1,dfa2);
+			// NB: fsm_intersect using walk2 method is not
+			// destructive to its arguments
+			both = fsm_intersect(dfa1,dfa2);
 			if (!fsm_minimise(both)) {
 				perror("minimizing (dfa1 & dfa2)");
 				abort();
@@ -2261,7 +2262,7 @@ merge_mswitches_with_and(struct jvst_cnode *mswlst)
 			// subtract(dfa1, dfa2) = intersection(dfa1, complement(dfa2))
 			//
 			// 1) form the complement of dfa2; 2) set its opaque values to be the
-			// default case for dfa2; 3) use fsm_intersect_bywalk to merge the
+			// default case for dfa2; 3) use fsm_intersect to merge the
 			// mcases
 			if (!fsm_complement(dfa2)) {
 				perror("merging mswitch nodes (complement of DFA2)");
@@ -2272,21 +2273,22 @@ merge_mswitches_with_and(struct jvst_cnode *mswlst)
 				cnode_deep_copy(n->u.mswitch.default_case));
 
 			fsm_setendopaque(dfa2, mc2);
-			only1 = fsm_intersect_bywalk(dfa1, dfa2);
+			only1 = fsm_intersect(dfa1, dfa2);
 			if (!fsm_minimise(only1)) {
 				perror("minimizing (DFA1 - DFA2)");
 				abort();
 			}
 			fsm_free(dfa2);
 
-			dfa2 = fsm_clone_with_opts(n->u.mswitch.dfa, opts);
 			// subtract(dfa2, dfa1) = intersect(dfa2, complement(dfa1)).
 			// Same as above, but we need to recreate dfa2 because the complement
 			// operation destroyed it.
+			dfa2 = fsm_clone(n->u.mswitch.dfa);
 			if (dfa2 == NULL) {
 				perror("merging mswitch nodes (cloning DFA2)");
 				abort();
 			}
+			fsm_setoptions(dfa2, opts);
 
 			if (!fsm_complement(dfa1)) {
 				perror("merging mswitch nodes (complement of DFA1)");
@@ -2297,7 +2299,7 @@ merge_mswitches_with_and(struct jvst_cnode *mswlst)
 				cnode_deep_copy(msw->u.mswitch.default_case));
 
 			fsm_setendopaque(dfa1, mc1);
-			only2 = fsm_intersect_bywalk(dfa2, dfa1);
+			only2 = fsm_intersect(dfa2, dfa1);
 			if (!fsm_minimise(only2)) {
 				perror("minimizing (DFA2 - DFA1)");
 				abort();
