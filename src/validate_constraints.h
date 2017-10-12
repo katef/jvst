@@ -6,8 +6,6 @@
 #include "sjp_parser.h"
 #include "ast.h"
 
-#define MODULE_NAME VALIDATE_CONSTRAINTS
-
 /* simplified tree of validation constraints
  *
  * This differs from the AST as follows:
@@ -232,7 +230,6 @@ jvst_cnode_print(FILE *f, struct jvst_cnode *node);
 void
 jvst_cnode_debug(struct jvst_cnode *node);
 
-#undef MODULE_NAME
 
 #endif /* VALIDATE_CONSTRAINTS_H */
 
