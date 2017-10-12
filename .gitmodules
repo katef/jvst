@@ -7,3 +7,6 @@
 [submodule "share/git/sjp"]
 	path = share/git/sjp
 	url = https://github.com/sfstewman/sjp.git
+[submodule "share/git/xxHash"]
+	path = share/git/xxHash
+	url = git@github.com:Cyan4973/xxHash.git
