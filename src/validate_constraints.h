@@ -230,6 +230,30 @@ jvst_cnode_print(FILE *f, struct jvst_cnode *node);
 void
 jvst_cnode_debug(struct jvst_cnode *node);
 
+struct jvst_id_table;
+
+struct jvst_id_table *
+jvst_id_table_new(void);
+
+void
+jvst_id_table_delete(struct jvst_id_table *tbl);
+
+struct jvst_cnode *
+jvst_id_table_lookup(struct jvst_id_table *tbl, struct json_string s);
+
+struct jvst_cnode *
+jvst_id_table_lookup_cstr(struct jvst_id_table *tbl, const char *s);
+
+struct jvst_cnode *
+jvst_id_table_lookup_with_len(struct jvst_id_table *tbl, const char *s, size_t n);
+
+struct jvst_cnode_forest {
+	size_t len;
+	size_t cap;
+	struct jvst_cnode **trees;
+	struct jvst_id_table *all_ids;
+	struct jvst_id_table *ref_ids;
+};
 
 #endif /* VALIDATE_CONSTRAINTS_H */
 
