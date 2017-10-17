@@ -2177,6 +2177,70 @@ static void
 merge_mcases(const struct fsm_state **orig, size_t n,
 	struct fsm *dfa, struct fsm_state *comb);
 
+// "non-destructive" intersection
+static struct fsm *
+intersect_nd(const struct fsm *a, const struct fsm *b, const struct fsm_options *opts)
+{
+	struct fsm *dfa1, *dfa2;
+
+	assert(opts != NULL);
+
+	// fsm_intersect frees its arguments, so we make copies to
+	// preserve the originals
+	dfa1 = fsm_clone(a);
+	if (!dfa1) {
+		return NULL;
+	}
+
+	fsm_setoptions(dfa1, opts);
+
+	dfa2 = fsm_clone(b);
+	if (!dfa2) {
+		fsm_free(dfa1);
+		return NULL;
+	}
+
+	fsm_setoptions(dfa2, opts);
+
+	return fsm_intersect(dfa1,dfa2);
+}
+
+// subtract(a, b) = intersect(a, complement(b)).
+// sets the opaque value of end states of complement(b) to opaque_compl
+static struct fsm *
+subtract_nd(const struct fsm *a, const struct fsm *b, void *opaque_compl, const struct fsm_options *opts)
+{
+	struct fsm *dfa1, *dfa2;
+
+	assert(opts != NULL);
+
+	// fsm_intersect frees its arguments, so we make copies to
+	// preserve the originals
+	dfa1 = fsm_clone(a);
+	if (!dfa1) {
+		return NULL;
+	}
+
+	fsm_setoptions(dfa1, opts);
+
+	dfa2 = fsm_clone(b);
+	if (!dfa2) {
+		fsm_free(dfa1);
+		return NULL;
+	}
+
+	fsm_setoptions(dfa2, opts);
+
+	if (!fsm_complement(dfa2)) {
+		fsm_free(dfa1);
+		fsm_free(dfa2);
+		return NULL;
+	}
+	fsm_setendopaque(dfa2, opaque_compl);
+
+	return fsm_intersect(dfa1,dfa2);
+}
+
 static struct jvst_cnode *
 merge_mswitches_with_and(struct jvst_cnode *mswlst)
 {
@@ -2239,75 +2303,53 @@ merge_mswitches_with_and(struct jvst_cnode *mswlst)
 			// In all of these cases, we need the opaque values to be merged
 			// correctly.
 
-			dfa1 = fsm_clone(msw->u.mswitch.dfa);
-			opts = fsm_getoptions(dfa1);
+			dfa1 = msw->u.mswitch.dfa;
+			dfa2 = n->u.mswitch.dfa;
 
+			opts = fsm_getoptions(dfa1);
 			assert(opts->carryopaque == merge_mcases);
 
-			dfa2 = fsm_clone(n->u.mswitch.dfa);
-			if (dfa2 == NULL) {
-				perror("merging mswitch nodes (cloning DFA2)");
+			// both = DFA1 & DFA2
+			both = intersect_nd(dfa1,dfa2,opts);
+			if (!both) {
+				perror("intersecting (dfa1 & dfa2)");
 				abort();
 			}
-			fsm_setoptions(dfa2, opts);
 
-			// NB: fsm_intersect using walk2 method is not
-			// destructive to its arguments
-			both = fsm_intersect(dfa1,dfa2);
 			if (!fsm_minimise(both)) {
 				perror("minimizing (dfa1 & dfa2)");
 				abort();
 			}
 
-			// subtract(dfa1, dfa2) = intersection(dfa1, complement(dfa2))
-			//
-			// 1) form the complement of dfa2; 2) set its opaque values to be the
-			// default case for dfa2; 3) use fsm_intersect to merge the
-			// mcases
-			if (!fsm_complement(dfa2)) {
-				perror("merging mswitch nodes (complement of DFA2)");
+			// only1 = DFA2 - DFA1
+			mc2 = cnode_new_mcase(NULL,
+				cnode_deep_copy(n->u.mswitch.default_case));
+			only1 = subtract_nd(dfa1,dfa2,mc2,opts);
+			if (!only1) {
+				perror("subtracting (DFA1 - DFA2)");
 				abort();
 			}
 
-			mc2 = cnode_new_mcase(NULL,
-				cnode_deep_copy(n->u.mswitch.default_case));
-
-			fsm_setendopaque(dfa2, mc2);
-			only1 = fsm_intersect(dfa1, dfa2);
 			if (!fsm_minimise(only1)) {
 				perror("minimizing (DFA1 - DFA2)");
 				abort();
 			}
-			fsm_free(dfa2);
 
-			// subtract(dfa2, dfa1) = intersect(dfa2, complement(dfa1)).
-			// Same as above, but we need to recreate dfa2 because the complement
-			// operation destroyed it.
-			dfa2 = fsm_clone(n->u.mswitch.dfa);
-			if (dfa2 == NULL) {
-				perror("merging mswitch nodes (cloning DFA2)");
-				abort();
-			}
-			fsm_setoptions(dfa2, opts);
-
-			if (!fsm_complement(dfa1)) {
-				perror("merging mswitch nodes (complement of DFA1)");
-				abort();
-			}
-
+			// only2 = DFA2 - DFA1
 			mc1 = cnode_new_mcase(NULL,
 				cnode_deep_copy(msw->u.mswitch.default_case));
+			only2 = subtract_nd(dfa2,dfa1,mc1,opts);
+			if (!only2) {
+				perror("subtracting (DFA2 - DFA1)");
+				abort();
+			}
 
-			fsm_setendopaque(dfa1, mc1);
-			only2 = fsm_intersect(dfa2, dfa1);
 			if (!fsm_minimise(only2)) {
 				perror("minimizing (DFA2 - DFA1)");
 				abort();
 			}
-			fsm_free(dfa1);
-			fsm_free(dfa2);
 
-			// now union them together
+			// now union both, only1, and only2 together
 			combined = fsm_union(both, only1);
 			if (!combined) {
 				perror("unioning (both OR only1)");
