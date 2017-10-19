@@ -1,12 +1,14 @@
 #include "validate_op.h"
 
-#include <assert.h>
 #include <inttypes.h>
 #include <limits.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stddef.h>
 #include <string.h>
+#include <math.h>
+
+#include <assert.h>
 
 #include <fsm/fsm.h>
 #include <fsm/pred.h>
@@ -253,6 +255,10 @@ op_instr_dump(struct sbuf *buf, struct jvst_op_instr *instr)
 	case JVST_OP_FINT:
 		sbuf_snprintf(buf, "%s ", jvst_op_name(instr->op));
 		op_arg_dump(buf, instr->args[0]);
+		if (instr->args[1].type != JVST_VM_ARG_NONE) {
+			sbuf_snprintf(buf, ", ");
+			op_arg_dump(buf, instr->args[1]);
+		}
 		return;
 
 	case JVST_OP_BR:
@@ -790,11 +796,11 @@ proc_add_split(struct op_assembler *opasm, struct jvst_op_instr *instr, struct j
 
 	if (max > opasm->maxsplit) {
 		opasm->splits = xenlargevec(opasm->splits,
-			&opasm->maxsplit, n, sizeof opasm->splits[0]);
+			&opasm->maxsplit, max, sizeof opasm->splits[0]);
 		prog->splits = opasm->splits;
 	}
 
-	assert(max < opasm->maxsplit);
+	assert(max <= opasm->maxsplit);
 
 	frames = opasm->ir->u.program.frames;
 	for (i=0; i < n; i++) {
@@ -1134,6 +1140,7 @@ ir_expr_type(enum jvst_ir_expr_type type)
 	case JVST_IR_EXPR_BTESTONE:
 	case JVST_IR_EXPR_ISTOK:
 	case JVST_IR_EXPR_ISINT:
+	case JVST_IR_EXPR_MULTIPLE_OF:
 	case JVST_IR_EXPR_NE:
 	case JVST_IR_EXPR_LT:
 	case JVST_IR_EXPR_LE:
@@ -1160,6 +1167,24 @@ static struct jvst_op_arg
 emit_match(struct op_assembler *opasm, struct jvst_ir_expr *expr);
 
 static struct jvst_op_arg
+emit_float_arg(struct op_assembler *opasm, double x)
+{
+	struct jvst_op_instr *instr;
+	int64_t fidx;
+	struct jvst_op_arg freg;
+
+	fidx = proc_add_float(opasm, x);
+	freg = arg_new_slot(opasm);
+
+	instr = op_instr_new(JVST_OP_FLOAD);
+	instr->args[0] = freg;
+	instr->args[1] = arg_const(fidx);
+	emit_instr(opasm, instr);
+
+	return freg;
+}
+
+static struct jvst_op_arg
 emit_op_arg(struct op_assembler *opasm, struct jvst_ir_expr *arg)
 {
 	struct jvst_op_arg a;
@@ -1169,19 +1194,7 @@ emit_op_arg(struct op_assembler *opasm, struct jvst_ir_expr *arg)
 		return arg_none();
 
 	case JVST_IR_EXPR_NUM:
-		{
-			int64_t fidx;
-			struct jvst_op_arg freg;
-			struct jvst_op_instr *instr;
-
-			fidx = proc_add_float(opasm, arg->u.vnum);
-			freg = arg_new_slot(opasm);
-			instr = op_instr_new(JVST_OP_FLOAD);
-			instr->args[0] = freg;
-			instr->args[1] = arg_const(fidx);
-			emit_instr(opasm, instr);
-			return freg;
-		}
+		return emit_float_arg(opasm, arg->u.vnum);
 
 	case JVST_IR_EXPR_TOK_TYPE:
 		return arg_special(JVST_VM_ARG_TT);
@@ -1275,6 +1288,7 @@ emit_op_arg(struct op_assembler *opasm, struct jvst_ir_expr *arg)
 	case JVST_IR_EXPR_BTESTONE:
 	case JVST_IR_EXPR_ISTOK:
 	case JVST_IR_EXPR_ISINT:
+	case JVST_IR_EXPR_MULTIPLE_OF:
 	case JVST_IR_EXPR_NE:
 	case JVST_IR_EXPR_LT:
 	case JVST_IR_EXPR_LE:
@@ -1332,6 +1346,7 @@ cmp_type(enum jvst_ir_expr_type type, enum jvst_vm_op *iopp, enum jvst_vm_op *fo
 	case JVST_IR_EXPR_NONE:
 	case JVST_IR_EXPR_ISTOK:
 	case JVST_IR_EXPR_ISINT:
+	case JVST_IR_EXPR_MULTIPLE_OF:
 	case JVST_IR_EXPR_AND:
 	case JVST_IR_EXPR_OR:
 	case JVST_IR_EXPR_NOT:
@@ -1431,6 +1446,24 @@ op_assemble_cond(struct op_assembler *opasm, struct jvst_ir_expr *cond)
 	case JVST_IR_EXPR_ISINT:
 		emit_cond(opasm, JVST_OP_FINT,
 			arg_special(JVST_VM_ARG_TNUM), arg_none());
+		return;
+
+	case JVST_IR_EXPR_MULTIPLE_OF:
+		{
+			struct jvst_op_arg a,b;
+			int64_t fidx;
+			double div;
+
+			div = cond->u.multiple_of.divisor;
+
+			if (ceil(div) == div && div < MAX_CONST_VALUE) {
+				b = arg_const((int64_t)div);
+			} else {
+				b = emit_float_arg(opasm, div);
+			}
+			a = emit_op_arg(opasm, cond->u.multiple_of.arg);
+			emit_cond(opasm, JVST_OP_FINT, a,b);
+		}
 		return;
 
 	case JVST_IR_EXPR_NE:

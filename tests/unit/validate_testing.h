@@ -23,6 +23,12 @@ struct arena_info {
 	size_t npnames;
 	size_t nset;
 
+	/* json value related, for const/enum tests */
+	size_t njson;
+	size_t njsonelt;  // json array elements
+	size_t njsonprop; // json object properties
+	size_t nvset;
+
 	/* cnode related */
 	size_t ncnode;
 	size_t nmatchsets;
@@ -82,6 +88,27 @@ newpatternprops(struct arena_info *A, ...);
 struct ast_property_names *
 newpropnames(struct arena_info *A, ...);
 
+
+/** JSON values **/
+struct json_value *
+newjson_num(struct arena_info *A, double x);
+
+struct json_value *
+newjson_str(struct arena_info *A, const char *s);
+
+struct json_value *
+newjson_array(struct arena_info *A, ...);
+
+struct json_value *
+newjson_object(struct arena_info *A, ...);
+
+struct json_value *
+newjson_bool(struct arena_info *A, int b);
+
+struct json_value *
+newjson_null(struct arena_info *A);
+
+/** cnodes **/
 struct jvst_cnode *
 newcnode(struct arena_info *A, enum jvst_cnode_type type);
 
@@ -99,10 +126,16 @@ struct jvst_cnode *
 newcnode_prop_default(struct arena_info *A, struct jvst_cnode *dft); 
 
 struct jvst_cnode *
+newcnode_propnames(struct arena_info *A, struct jvst_cnode *tree);
+
+struct jvst_cnode *
 newcnode_bool(struct arena_info *A, enum jvst_cnode_type type, ...);
 
 struct jvst_cnode *
 newcnode_range(struct arena_info *A, enum jvst_cnode_rangeflags flags, double min, double max);
+
+struct jvst_cnode *
+newcnode_multiple_of(struct arena_info *A, double divisor);
 
 struct jvst_cnode *
 newcnode_counts(struct arena_info *A, enum jvst_cnode_type type,
@@ -116,6 +149,9 @@ newcnode_items(struct arena_info *A, ...);
 
 struct jvst_cnode *
 newcnode_additional_items(struct arena_info *A, struct jvst_cnode *top);
+
+struct jvst_cnode *
+newcnode_contains(struct arena_info *A, struct jvst_cnode *top);
 
 struct jvst_cnode *
 newcnode_valid(void);
@@ -132,12 +168,19 @@ newcnode_reqmask(struct arena_info *A, size_t nbits);
 struct jvst_cnode *
 newcnode_reqbit(struct arena_info *A, size_t bit);
 
+extern const struct jvst_cnode *const mswitch_str_constraints;
+
 struct jvst_cnode *
 newcnode_mswitch(struct arena_info *A, struct jvst_cnode *dft, ...);
 
 struct jvst_cnode *
 newcnode_mcase(struct arena_info *A, struct jvst_cnode_matchset *mset,
-	struct jvst_cnode *constraint);
+	struct jvst_cnode *vconstraint);
+
+struct jvst_cnode *
+newcnode_mcase_namecons(struct arena_info *A, struct jvst_cnode_matchset *mset,
+	struct jvst_cnode *nconstraint,
+	struct jvst_cnode *vconstraint);
 
 struct jvst_cnode_matchset *
 newmatchset(struct arena_info *A, ...);
@@ -224,6 +267,9 @@ newir_istok(struct arena_info *A, enum SJP_EVENT tt);
 
 struct jvst_ir_expr *
 newir_isint(struct arena_info *A, struct jvst_ir_expr *arg);
+
+struct jvst_ir_expr *
+newir_multiple_of(struct arena_info *A, struct jvst_ir_expr *arg, double divisor);
 
 struct jvst_ir_expr *
 newir_op(struct arena_info *A, enum jvst_ir_expr_type op,

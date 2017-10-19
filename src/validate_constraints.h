@@ -59,16 +59,19 @@ enum jvst_cnode_type {
 
 	JVST_CNODE_NUM_RANGE,
 	JVST_CNODE_NUM_INTEGER,
+	JVST_CNODE_NUM_MULTIPLE_OF,
 
 	JVST_CNODE_OBJ_PROP_SET,
 	JVST_CNODE_OBJ_PROP_MATCH,
 	JVST_CNODE_OBJ_PROP_DEFAULT,
+	JVST_CNODE_OBJ_PROP_NAMES,
 
 	JVST_CNODE_OBJ_REQUIRED,
 
 	JVST_CNODE_ARR_ITEM,
 	JVST_CNODE_ARR_ADDITIONAL,
 	JVST_CNODE_ARR_UNIQUE,
+	JVST_CNODE_ARR_CONTAINS,
 
 	// The following node types are only present after
 	// canonification.
@@ -122,6 +125,9 @@ struct jvst_cnode {
 			double max;
 		} num_range;
 
+		/* for multipleOf constraints */
+		double multiple_of;
+
 		/* support for required properties */
 		struct ast_string_set *required;
 
@@ -134,21 +140,21 @@ struct jvst_cnode {
 		} prop_match;
 
 		struct jvst_cnode *prop_default;
-
-		// for array item and additional_item constraints
-		struct jvst_cnode *arr_item;
+		struct jvst_cnode *prop_names;
 
 		/* Nodes used for simplifying property matching */
 		struct {
-			struct jvst_cnode *default_case;
+			struct jvst_cnode *dft_case;
 			struct jvst_cnode *cases;
+
 			struct fsm *dfa;
 			struct fsm_options *opts;
 		} mswitch;
 
 		struct {
 			struct jvst_cnode_matchset *matchset;
-			struct jvst_cnode *constraint;
+			struct jvst_cnode *name_constraint;
+			struct jvst_cnode *value_constraint;
 
 			// temp storage used in duplication
 			void *tmp;
@@ -175,7 +181,11 @@ struct jvst_cnode {
 			size_t bit;
 		} reqbit;
 
+		// for array item and additional_item constraints
 		struct jvst_cnode *items;
+
+		// for array contains constraint
+		struct jvst_cnode *contains;
 	} u;
 };
 

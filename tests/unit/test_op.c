@@ -267,7 +267,11 @@ test_op_empty_schema(void)
             newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token"),
             newir_if(&A, newir_istok(&A, SJP_ARRAY_END),
               newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token"),
-              newir_stmt(&A, JVST_IR_STMT_VALID)
+              newir_seq(&A,
+                newir_stmt(&A, JVST_IR_STMT_CONSUME),
+                newir_stmt(&A, JVST_IR_STMT_VALID),
+                NULL
+              )
             )
           ),
           NULL
@@ -283,6 +287,9 @@ test_op_empty_schema(void)
             oplabel, "false_4",
             newop_cmp(&A, JVST_OP_IEQ, oparg_tt(), oparg_tok(SJP_ARRAY_END)),
             newop_br(&A, JVST_OP_CBT, "invalid_1_3"),
+
+            oplabel, "false_7",
+            newop_instr(&A, JVST_OP_CONSUME),
 
             oplabel, "valid_8",
             newop_instr(&A, JVST_OP_VALID),
@@ -307,7 +314,11 @@ test_op_empty_schema(void)
             newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token"),
             newir_if(&A, newir_istok(&A, SJP_ARRAY_END),
               newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token"),
-              newir_stmt(&A, JVST_IR_STMT_VALID)
+              newir_seq(&A,
+                newir_stmt(&A, JVST_IR_STMT_CONSUME),
+                newir_stmt(&A, JVST_IR_STMT_VALID),
+                NULL
+              )
             )
           ),
           NULL
@@ -323,6 +334,9 @@ test_op_empty_schema(void)
             oplabel, "false_4",
             newop_cmp(&A, JVST_OP_IEQ, oparg_tt(), oparg_tok(SJP_ARRAY_END)),
             newop_br(&A, JVST_OP_CBT, "invalid_1_3"),
+
+            oplabel, "false_7",
+            newop_instr(&A, JVST_OP_CONSUME),
 
             oplabel, "valid_8",
             newop_instr(&A, JVST_OP_VALID),
@@ -343,6 +357,7 @@ test_op_empty_schema(void)
           JVST_OP_CBT, "invalid_1_3",
           JVST_OP_IEQ, VMREG(JVST_VM_TT), VMLIT(SJP_ARRAY_END),
           JVST_OP_CBT, "invalid_1_3",
+          JVST_OP_CONSUME, 0, 0,
           JVST_OP_VALID, 0, 0,
           VM_LABEL, "invalid_1_3",
           JVST_OP_INVALID, VMLIT(1), 0,
@@ -367,7 +382,11 @@ static void test_op_type_constraints(void)
       newir_frame(&A,
           newir_stmt(&A, JVST_IR_STMT_TOKEN),
           newir_if(&A, newir_istok(&A, SJP_NUMBER),
-            newir_stmt(&A, JVST_IR_STMT_VALID),
+            newir_seq(&A,
+              newir_stmt(&A, JVST_IR_STMT_CONSUME),
+              newir_stmt(&A, JVST_IR_STMT_VALID),
+              NULL
+            ),
             newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token")
           ),
           NULL
@@ -378,10 +397,13 @@ static void test_op_type_constraints(void)
             oplabel, "entry_0",
             newop_instr(&A, JVST_OP_TOKEN),
             newop_cmp(&A, JVST_OP_IEQ, oparg_tt(), oparg_tok(SJP_NUMBER)),
-            newop_br(&A, JVST_OP_CBT, "valid_3"),
+            newop_br(&A, JVST_OP_CBT, "true_2"),
 
             oplabel, "invalid_1_5",
             newop_invalid(&A, 1),
+
+            oplabel, "true_2",
+            newop_instr(&A, JVST_OP_CONSUME),
 
             oplabel, "valid_3",
             newop_instr(&A, JVST_OP_VALID),
@@ -401,7 +423,11 @@ static void test_op_type_constraints(void)
       newir_frame(&A,
           newir_stmt(&A, JVST_IR_STMT_TOKEN),
           newir_if(&A, newir_istok(&A, SJP_OBJECT_BEG),
-            newir_stmt(&A, JVST_IR_STMT_VALID),
+            newir_seq(&A,
+              newir_stmt(&A, JVST_IR_STMT_CONSUME),
+              newir_stmt(&A, JVST_IR_STMT_VALID),
+              NULL
+            ),
             newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token")
           ),
           NULL
@@ -412,10 +438,13 @@ static void test_op_type_constraints(void)
             oplabel, "entry_0",
             newop_instr(&A, JVST_OP_TOKEN),
             newop_cmp(&A, JVST_OP_IEQ, oparg_tt(), oparg_tok(SJP_OBJECT_BEG)),
-            newop_br(&A, JVST_OP_CBT, "valid_3"),
+            newop_br(&A, JVST_OP_CBT, "true_2"),
 
             oplabel, "invalid_1_5",
             newop_invalid(&A, 1),
+
+            oplabel, "true_2",
+            newop_instr(&A, JVST_OP_CONSUME),
 
             oplabel, "valid_3",
             newop_instr(&A, JVST_OP_VALID),
@@ -438,9 +467,17 @@ static void test_op_type_constraints(void)
       newir_frame(&A,
           newir_stmt(&A, JVST_IR_STMT_TOKEN),
           newir_if(&A, newir_istok(&A, SJP_STRING),
-            newir_stmt(&A, JVST_IR_STMT_VALID),
-            newir_if(&A, newir_istok(&A, SJP_OBJECT_BEG),
+            newir_seq(&A,
+              newir_stmt(&A, JVST_IR_STMT_CONSUME),
               newir_stmt(&A, JVST_IR_STMT_VALID),
+              NULL
+            ),
+            newir_if(&A, newir_istok(&A, SJP_OBJECT_BEG),
+              newir_seq(&A,
+                newir_stmt(&A, JVST_IR_STMT_CONSUME),
+                newir_stmt(&A, JVST_IR_STMT_VALID),
+                NULL
+              ),
               newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token")
             )
           ),
@@ -452,17 +489,24 @@ static void test_op_type_constraints(void)
             oplabel, "entry_0",
             newop_instr(&A, JVST_OP_TOKEN),
             newop_cmp(&A, JVST_OP_IEQ, oparg_tt(), oparg_tok(SJP_STRING)),
-            newop_br(&A, JVST_OP_CBT, "valid_3"),
+            newop_br(&A, JVST_OP_CBT, "true_2"),
 
             oplabel, "false_4",
             newop_cmp(&A, JVST_OP_IEQ, oparg_tt(), oparg_tok(SJP_OBJECT_BEG)),
-            newop_br(&A, JVST_OP_CBT, "valid_3"),
+            newop_br(&A, JVST_OP_CBT, "true_6"),
 
             oplabel, "invalid_1_8",
             newop_invalid(&A, 1),
 
+            oplabel, "true_2",
+            newop_instr(&A, JVST_OP_CONSUME),
+
             oplabel, "valid_3",
             newop_instr(&A, JVST_OP_VALID),
+
+            oplabel, "true_6",
+            newop_instr(&A, JVST_OP_CONSUME),
+            newop_br(&A, JVST_OP_BR, "valid_3"),
 
             NULL
           ),
@@ -497,7 +541,11 @@ static void test_op_type_integer(void)
           newir_stmt(&A, JVST_IR_STMT_TOKEN),
           newir_if(&A, newir_istok(&A, SJP_NUMBER),
             newir_if(&A, newir_isint(&A, newir_expr(&A, JVST_IR_EXPR_TOK_NUM)),
-              newir_stmt(&A, JVST_IR_STMT_VALID),
+              newir_seq(&A,
+                newir_stmt(&A, JVST_IR_STMT_CONSUME),
+                newir_stmt(&A, JVST_IR_STMT_VALID),
+                NULL
+              ),
               newir_invalid(&A, JVST_INVALID_NOT_INTEGER, "number is not an integer")),
             newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token")
           ),
@@ -516,10 +564,13 @@ static void test_op_type_integer(void)
 
             oplabel, "true_2",
             newop_cmp(&A, JVST_OP_FINT, oparg_tnum(), oparg_none()),
-            newop_br(&A, JVST_OP_CBT, "valid_5"),
+            newop_br(&A, JVST_OP_CBT, "true_4"),
 
             oplabel, "invalid_2_7",
             newop_invalid(&A, 2),
+
+            oplabel, "true_4",
+            newop_instr(&A, JVST_OP_CONSUME),
 
             oplabel, "valid_5",
             newop_instr(&A, JVST_OP_VALID),
@@ -567,6 +618,9 @@ static void test_op_type_integer(void)
             oplabel, "invalid_2_7",
             newop_invalid(&A, 2),
 
+            oplabel, "true_4",
+            newop_instr(&A, JVST_OP_CONSUME),
+
             oplabel, "valid_5",
             newop_instr(&A, JVST_OP_VALID),
 
@@ -585,9 +639,12 @@ static void test_op_type_integer(void)
 
           VM_LABEL, "true_2",
           JVST_OP_FINT, VMREG(JVST_VM_TNUM), VMLIT(0),
-          JVST_OP_CBT, "valid_5",
+          JVST_OP_CBT, "true_4",
 
           JVST_OP_INVALID, VMLIT(2), 0,
+
+          VM_LABEL, "true_4",
+          JVST_OP_CONSUME, 0, 0,
 
           VM_LABEL, "valid_5",
           JVST_OP_VALID, 0, 0,
@@ -600,7 +657,7 @@ static void test_op_type_integer(void)
   RUNTESTS(tests);
 }
 
-void test_op_minimum(void)
+static void test_op_minimum(void)
 {
   struct arena_info A = {0};
   struct ast_schema *schema = newschema_p(&A, 0,
@@ -621,7 +678,11 @@ void test_op_minimum(void)
               newir_op(&A, JVST_IR_EXPR_GE, 
                 newir_expr(&A, JVST_IR_EXPR_TOK_NUM),
                 newir_num(&A, 1.1)),
-              newir_stmt(&A, JVST_IR_STMT_VALID),
+              newir_seq(&A,
+                newir_stmt(&A, JVST_IR_STMT_CONSUME),
+                newir_stmt(&A, JVST_IR_STMT_VALID),
+                NULL
+              ),
               newir_invalid(&A, JVST_INVALID_NUMBER, "number not valid")),
             newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token")
           ),
@@ -646,10 +707,13 @@ void test_op_minimum(void)
             newop_load(&A, JVST_OP_MOVE, oparg_slot(1), oparg_tnum()),
             newop_load(&A, JVST_OP_FLOAD, oparg_slot(0), oparg_lit(0)),
             newop_cmp(&A, JVST_OP_FGE, oparg_slot(1), oparg_slot(0)),
-            newop_br(&A, JVST_OP_CBT, "valid_5"),
+            newop_br(&A, JVST_OP_CBT, "true_4"),
 
             oplabel, "invalid_3_7",
             newop_invalid(&A, 3),
+
+            oplabel, "true_4",
+            newop_instr(&A, JVST_OP_CONSUME),
 
             oplabel, "valid_5",
             newop_instr(&A, JVST_OP_VALID),
@@ -668,18 +732,56 @@ void test_op_minimum(void)
           SJP_NUMBER, newcnode_range(&A, JVST_CNODE_RANGE_MIN, 1.1, 0.0),
           SJP_NONE),
 
-      newir_frame(&A,
-          newir_stmt(&A, JVST_IR_STMT_TOKEN),
-          newir_if(&A, newir_istok(&A, SJP_NUMBER),
-            newir_if(&A,
-              newir_op(&A, JVST_IR_EXPR_GE, 
-                newir_expr(&A, JVST_IR_EXPR_TOK_NUM),
-                newir_num(&A, 1.1)),
-              newir_stmt(&A, JVST_IR_STMT_VALID),
-              newir_invalid(&A, JVST_INVALID_NUMBER, "number not valid")),
-            newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token")
+      newir_program(&A,
+        newir_frame(&A, frameindex, 1,
+          newir_block(&A, 0, "entry",
+            newir_stmt(&A, JVST_IR_STMT_TOKEN),
+            newir_cbranch(&A, newir_istok(&A, SJP_NUMBER),
+              2, "true",
+              9, "invalid_1"
+            ),
+            NULL
           ),
+
+          newir_block(&A, 9, "invalid_1",
+            newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token"),
+            NULL
+          ),
+
+          newir_block(&A, 2, "true",
+            newir_move(&A, newir_ftemp(&A, 1), newir_expr(&A, JVST_IR_EXPR_TOK_NUM)),
+            newir_move(&A, newir_ftemp(&A, 0), newir_num(&A, 1.1)),
+            newir_cbranch(&A,
+              newir_op(&A, JVST_IR_EXPR_GE, 
+                newir_ftemp(&A, 1),
+                newir_ftemp(&A, 0)
+              ),
+              4, "true",
+              7, "invalid_3"
+            ),
+            NULL
+          ),
+
+          newir_block(&A, 7, "invalid_3",
+            newir_invalid(&A, JVST_INVALID_NUMBER, "number not valid"),
+            NULL
+          ),
+
+          newir_block(&A, 4, "true",
+            newir_stmt(&A, JVST_IR_STMT_CONSUME),
+            newir_branch(&A, 5, "valid"),
+            NULL
+          ),
+
+          newir_block(&A, 5, "valid",
+            newir_stmt(&A, JVST_IR_STMT_VALID),
+            NULL
+          ),
+
           NULL
+        ),
+
+        NULL
       ),
 
       newop_program(&A,
@@ -700,10 +802,13 @@ void test_op_minimum(void)
             newop_load(&A, JVST_OP_MOVE, oparg_slot(1), oparg_tnum()),
             newop_load(&A, JVST_OP_FLOAD, oparg_slot(0), oparg_lit(0)),
             newop_cmp(&A, JVST_OP_FGE, oparg_slot(1), oparg_slot(0)),
-            newop_br(&A, JVST_OP_CBT, "valid_5"),
+            newop_br(&A, JVST_OP_CBT, "true_4"),
 
             oplabel, "invalid_3_7",
             newop_invalid(&A, 3),
+
+            oplabel, "true_4",
+            newop_instr(&A, JVST_OP_CONSUME),
 
             oplabel, "valid_5",
             newop_instr(&A, JVST_OP_VALID),
@@ -727,9 +832,12 @@ void test_op_minimum(void)
           JVST_OP_MOVE, VMSLOT(1), VMREG(JVST_VM_TNUM),
           JVST_OP_FLOAD, VMSLOT(0), VMLIT(0),
           JVST_OP_FGE, VMSLOT(1), VMSLOT(0),
-          JVST_OP_CBT, "valid_5",
+          JVST_OP_CBT, "true_4",
 
           JVST_OP_INVALID, VMLIT(3), 0,
+
+          VM_LABEL, "true_4",
+          JVST_OP_CONSUME, 0, 0,
 
           VM_LABEL, "valid_5",
           JVST_OP_VALID, 0, 0,
@@ -742,7 +850,399 @@ void test_op_minimum(void)
   RUNTESTS(tests);
 }
 
-void test_op_properties(void)
+static void test_op_multiple_of(void)
+{
+  struct arena_info A = {0};
+
+  const struct op_test tests[] = {
+    {
+      ASSEMBLE,
+      newcnode_switch(&A, 1,
+          SJP_NUMBER, newcnode_multiple_of(&A, 1.5),
+          SJP_NONE),
+
+      newir_frame(&A,
+          newir_stmt(&A, JVST_IR_STMT_TOKEN),
+          newir_if(&A, newir_istok(&A, SJP_NUMBER),
+            newir_if(&A, newir_multiple_of(&A, newir_expr(&A, JVST_IR_EXPR_TOK_NUM), 1.5),
+              newir_seq(&A,
+                newir_stmt(&A, JVST_IR_STMT_CONSUME),
+                newir_stmt(&A, JVST_IR_STMT_VALID),
+                NULL
+              ),
+              newir_invalid(&A, JVST_INVALID_NOT_MULTIPLE, "number is not an integer multiple")
+            ),
+            newir_if(&A, newir_istok(&A, SJP_OBJECT_END),
+              newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token"),
+              newir_if(&A, newir_istok(&A, SJP_ARRAY_END),
+                newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token"),
+                newir_seq(&A,
+                  newir_stmt(&A, JVST_IR_STMT_CONSUME),
+                  newir_stmt(&A, JVST_IR_STMT_VALID),
+                  NULL
+                )
+              )
+            )
+          ),
+          NULL
+      ),
+
+      newop_program(&A,
+          opfloat, 1.5,
+
+          newop_proc(&A,
+            opslots, 1,
+
+            oplabel, "entry_0",
+            newop_instr(&A, JVST_OP_TOKEN),
+            newop_cmp(&A, JVST_OP_IEQ, oparg_tt(), oparg_tok(SJP_NUMBER)),
+            newop_br(&A, JVST_OP_CBT, "true_2"),
+
+            oplabel, "false_8",
+            newop_cmp(&A, JVST_OP_IEQ, oparg_tt(), oparg_tok(SJP_OBJECT_END)),
+            newop_br(&A, JVST_OP_CBT, "invalid_1_11"),
+
+            oplabel, "false_12",
+            newop_cmp(&A, JVST_OP_IEQ, oparg_tt(), oparg_tok(SJP_ARRAY_END)),
+            newop_br(&A, JVST_OP_CBT, "invalid_1_11"),
+
+            oplabel, "false_15",
+            newop_instr(&A, JVST_OP_CONSUME),
+
+            oplabel, "valid_5",
+            newop_instr(&A, JVST_OP_VALID),
+
+            oplabel, "true_2",
+            newop_load(&A, JVST_OP_FLOAD, oparg_slot(0), oparg_lit(0)),
+            newop_cmp(&A, JVST_OP_FINT, oparg_tnum(), oparg_slot(0)),
+            newop_br(&A, JVST_OP_CBT, "true_4"),
+
+            oplabel, "invalid_17_7",
+            newop_invalid(&A, 17),
+
+            oplabel, "true_4",
+            newop_instr(&A, JVST_OP_CONSUME),
+            newop_br(&A, JVST_OP_BR, "valid_5"),
+
+            oplabel, "invalid_1_11",
+            newop_invalid(&A, 1),
+
+            NULL
+          ),
+
+          NULL
+      ),
+
+    },
+
+    {
+      ENCODE,
+      newcnode_switch(&A, 1,
+          SJP_NUMBER, newcnode_multiple_of(&A, 1.5),
+          SJP_NONE),
+
+      newir_frame(&A,
+          newir_stmt(&A, JVST_IR_STMT_TOKEN),
+          newir_if(&A, newir_istok(&A, SJP_NUMBER),
+            newir_if(&A, newir_multiple_of(&A, newir_expr(&A, JVST_IR_EXPR_TOK_NUM), 1.5),
+              newir_seq(&A,
+                newir_stmt(&A, JVST_IR_STMT_CONSUME),
+                newir_stmt(&A, JVST_IR_STMT_VALID),
+                NULL
+              ),
+              newir_invalid(&A, JVST_INVALID_NOT_MULTIPLE, "number is not an integer multiple")
+            ),
+            newir_if(&A, newir_istok(&A, SJP_OBJECT_END),
+              newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token"),
+              newir_if(&A, newir_istok(&A, SJP_ARRAY_END),
+                newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token"),
+                newir_seq(&A,
+                  newir_stmt(&A, JVST_IR_STMT_CONSUME),
+                  newir_stmt(&A, JVST_IR_STMT_VALID),
+                  NULL
+                )
+              )
+            )
+          ),
+          NULL
+      ),
+
+      newop_program(&A,
+          opfloat, 1.5,
+
+          newop_proc(&A,
+            opslots, 1,
+
+            oplabel, "entry_0",
+            newop_instr(&A, JVST_OP_TOKEN),
+            newop_cmp(&A, JVST_OP_IEQ, oparg_tt(), oparg_tok(SJP_NUMBER)),
+            newop_br(&A, JVST_OP_CBT, "true_2"),
+
+            oplabel, "false_8",
+            newop_cmp(&A, JVST_OP_IEQ, oparg_tt(), oparg_tok(SJP_OBJECT_END)),
+            newop_br(&A, JVST_OP_CBT, "invalid_1_11"),
+
+            oplabel, "false_12",
+            newop_cmp(&A, JVST_OP_IEQ, oparg_tt(), oparg_tok(SJP_ARRAY_END)),
+            newop_br(&A, JVST_OP_CBT, "invalid_1_11"),
+
+            oplabel, "false_15",
+            newop_instr(&A, JVST_OP_CONSUME),
+
+            oplabel, "valid_5",
+            newop_instr(&A, JVST_OP_VALID),
+
+            oplabel, "true_2",
+            newop_load(&A, JVST_OP_FLOAD, oparg_slot(0), oparg_lit(0)),
+            newop_cmp(&A, JVST_OP_FINT, oparg_tnum(), oparg_slot(0)),
+            newop_br(&A, JVST_OP_CBT, "true_4"),
+
+            oplabel, "invalid_17_7",
+            newop_invalid(&A, 17),
+
+            oplabel, "true_4",
+            newop_instr(&A, JVST_OP_CONSUME),
+            newop_br(&A, JVST_OP_BR, "valid_5"),
+
+            oplabel, "invalid_1_11",
+            newop_invalid(&A, 1),
+
+            NULL
+          ),
+
+          NULL
+      ),
+
+      newvm_program(&A,
+          VM_FLOATS, 1, 1.5,
+
+          JVST_OP_PROC, VMLIT(1), VMLIT(0),
+          JVST_OP_TOKEN, 0, 0,
+          JVST_OP_IEQ, VMREG(JVST_VM_TT), VMLIT(SJP_NUMBER),
+          JVST_OP_CBT, "true_2",
+
+          VM_LABEL, "false_8",
+          JVST_OP_IEQ, VMREG(JVST_VM_TT), VMLIT(SJP_OBJECT_END),
+          JVST_OP_CBT, "invalid_1_11",
+
+          VM_LABEL, "false_12",
+          JVST_OP_IEQ, VMREG(JVST_VM_TT), VMLIT(SJP_ARRAY_END),
+          JVST_OP_CBT, "invalid_1_11",
+
+          VM_LABEL, "false_15",
+          JVST_OP_CONSUME, 0, 0,
+
+          VM_LABEL, "valid_5",
+          JVST_OP_VALID, 0, 0,
+
+          VM_LABEL, "true_2",
+          JVST_OP_FLOAD, VMSLOT(0), VMLIT(0),
+          JVST_OP_FINT, VMREG(JVST_VM_TNUM), VMSLOT(0),
+          JVST_OP_CBT, "true_4",
+
+          JVST_OP_INVALID, VMLIT(17), 0,
+
+          VM_LABEL, "true_4",
+          JVST_OP_CONSUME, 0, 0,
+          JVST_OP_BR, "valid_5",
+
+          VM_LABEL, "invalid_1_11",
+          JVST_OP_INVALID, VMLIT(1), 0,
+
+          VM_END)
+    },
+
+    {
+      ASSEMBLE,
+      newcnode_switch(&A, 1,
+          SJP_NUMBER, newcnode_multiple_of(&A, 3.0),
+          SJP_NONE),
+
+      newir_frame(&A,
+          newir_stmt(&A, JVST_IR_STMT_TOKEN),
+          newir_if(&A, newir_istok(&A, SJP_NUMBER),
+            newir_if(&A, newir_multiple_of(&A, newir_expr(&A, JVST_IR_EXPR_TOK_NUM), 3.0),
+              newir_seq(&A,
+                newir_stmt(&A, JVST_IR_STMT_CONSUME),
+                newir_stmt(&A, JVST_IR_STMT_VALID),
+                NULL
+              ),
+              newir_invalid(&A, JVST_INVALID_NOT_MULTIPLE, "number is not an integer multiple")
+            ),
+            newir_if(&A, newir_istok(&A, SJP_OBJECT_END),
+              newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token"),
+              newir_if(&A, newir_istok(&A, SJP_ARRAY_END),
+                newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token"),
+                newir_seq(&A,
+                  newir_stmt(&A, JVST_IR_STMT_CONSUME),
+                  newir_stmt(&A, JVST_IR_STMT_VALID),
+                  NULL
+                )
+              )
+            )
+          ),
+          NULL
+      ),
+
+      newop_program(&A,
+          newop_proc(&A,
+            oplabel, "entry_0",
+            newop_instr(&A, JVST_OP_TOKEN),
+            newop_cmp(&A, JVST_OP_IEQ, oparg_tt(), oparg_tok(SJP_NUMBER)),
+            newop_br(&A, JVST_OP_CBT, "true_2"),
+
+            oplabel, "false_8",
+            newop_cmp(&A, JVST_OP_IEQ, oparg_tt(), oparg_tok(SJP_OBJECT_END)),
+            newop_br(&A, JVST_OP_CBT, "invalid_1_11"),
+
+            oplabel, "false_12",
+            newop_cmp(&A, JVST_OP_IEQ, oparg_tt(), oparg_tok(SJP_ARRAY_END)),
+            newop_br(&A, JVST_OP_CBT, "invalid_1_11"),
+
+            oplabel, "false_15",
+            newop_instr(&A, JVST_OP_CONSUME),
+
+            oplabel, "valid_5",
+            newop_instr(&A, JVST_OP_VALID),
+
+            oplabel, "true_2",
+            newop_cmp(&A, JVST_OP_FINT, oparg_tnum(), oparg_lit(3)),
+            newop_br(&A, JVST_OP_CBT, "true_4"),
+
+            oplabel, "invalid_17_7",
+            newop_invalid(&A, 17),
+
+            oplabel, "true_4",
+            newop_instr(&A, JVST_OP_CONSUME),
+            newop_br(&A, JVST_OP_BR, "valid_5"),
+
+            oplabel, "invalid_1_11",
+            newop_invalid(&A, 1),
+
+            NULL
+          ),
+
+          NULL
+      ),
+
+    },
+
+    {
+      ENCODE,
+      newcnode_switch(&A, 1,
+          SJP_NUMBER, newcnode_multiple_of(&A, 3.0),
+          SJP_NONE),
+
+      newir_frame(&A,
+          newir_stmt(&A, JVST_IR_STMT_TOKEN),
+          newir_if(&A, newir_istok(&A, SJP_NUMBER),
+            newir_if(&A, newir_multiple_of(&A, newir_expr(&A, JVST_IR_EXPR_TOK_NUM), 3.0),
+              newir_seq(&A,
+                newir_stmt(&A, JVST_IR_STMT_CONSUME),
+                newir_stmt(&A, JVST_IR_STMT_VALID),
+                NULL
+              ),
+              newir_invalid(&A, JVST_INVALID_NOT_MULTIPLE, "number is not an integer multiple")
+            ),
+            newir_if(&A, newir_istok(&A, SJP_OBJECT_END),
+              newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token"),
+              newir_if(&A, newir_istok(&A, SJP_ARRAY_END),
+                newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token"),
+                newir_seq(&A,
+                  newir_stmt(&A, JVST_IR_STMT_CONSUME),
+                  newir_stmt(&A, JVST_IR_STMT_VALID),
+                  NULL
+                )
+              )
+            )
+          ),
+          NULL
+      ),
+
+      newop_program(&A,
+          newop_proc(&A,
+            oplabel, "entry_0",
+            newop_instr(&A, JVST_OP_TOKEN),
+            newop_cmp(&A, JVST_OP_IEQ, oparg_tt(), oparg_tok(SJP_NUMBER)),
+            newop_br(&A, JVST_OP_CBT, "true_2"),
+
+            oplabel, "false_8",
+            newop_cmp(&A, JVST_OP_IEQ, oparg_tt(), oparg_tok(SJP_OBJECT_END)),
+            newop_br(&A, JVST_OP_CBT, "invalid_1_11"),
+
+            oplabel, "false_12",
+            newop_cmp(&A, JVST_OP_IEQ, oparg_tt(), oparg_tok(SJP_ARRAY_END)),
+            newop_br(&A, JVST_OP_CBT, "invalid_1_11"),
+
+            oplabel, "false_15",
+            newop_instr(&A, JVST_OP_CONSUME),
+
+            oplabel, "valid_5",
+            newop_instr(&A, JVST_OP_VALID),
+
+            oplabel, "true_2",
+            newop_load(&A, JVST_OP_FLOAD, oparg_slot(0), oparg_lit(0)),
+            newop_cmp(&A, JVST_OP_FINT, oparg_tnum(), oparg_slot(0)),
+            newop_br(&A, JVST_OP_CBT, "true_4"),
+
+            oplabel, "invalid_17_7",
+            newop_invalid(&A, 17),
+
+            oplabel, "true_4",
+            newop_instr(&A, JVST_OP_CONSUME),
+            newop_br(&A, JVST_OP_BR, "valid_5"),
+
+            oplabel, "invalid_1_11",
+            newop_invalid(&A, 1),
+
+            NULL
+          ),
+
+          NULL
+      ),
+
+      newvm_program(&A,
+          JVST_OP_PROC, VMLIT(0), VMLIT(0),
+          JVST_OP_TOKEN, 0, 0,
+          JVST_OP_IEQ, VMREG(JVST_VM_TT), VMLIT(SJP_NUMBER),
+          JVST_OP_CBT, "true_2",
+
+          VM_LABEL, "false_8",
+          JVST_OP_IEQ, VMREG(JVST_VM_TT), VMLIT(SJP_OBJECT_END),
+          JVST_OP_CBT, "invalid_1_11",
+
+          VM_LABEL, "false_12",
+          JVST_OP_IEQ, VMREG(JVST_VM_TT), VMLIT(SJP_ARRAY_END),
+          JVST_OP_CBT, "invalid_1_11",
+
+          VM_LABEL, "false_15",
+          JVST_OP_CONSUME, 0, 0,
+
+          VM_LABEL, "valid_5",
+          JVST_OP_VALID, 0, 0,
+
+          VM_LABEL, "true_2",
+          JVST_OP_FINT, VMREG(JVST_VM_TNUM), VMLIT(3),
+          JVST_OP_CBT, "true_4",
+
+          JVST_OP_INVALID, VMLIT(17), 0,
+
+          VM_LABEL, "true_4",
+          JVST_OP_CONSUME, 0, 0,
+          JVST_OP_BR, "valid_5",
+
+          VM_LABEL, "invalid_1_11",
+          JVST_OP_INVALID, VMLIT(1), 0,
+
+          VM_END)
+    },
+    { STOP },
+  };
+
+  RUNTESTS(tests);
+}
+
+static void test_op_properties(void)
 {
   struct arena_info A = {0};
 
@@ -783,7 +1283,11 @@ void test_op_properties(void)
                         newir_frame(&A,
                           newir_stmt(&A, JVST_IR_STMT_TOKEN),
                           newir_if(&A, newir_istok(&A, SJP_STRING),
-                            newir_stmt(&A, JVST_IR_STMT_VALID),
+                            newir_seq(&A,
+                              newir_stmt(&A, JVST_IR_STMT_CONSUME),
+                              newir_stmt(&A, JVST_IR_STMT_VALID),
+                              NULL
+                            ),
                             newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token")
                           ),
                           NULL
@@ -796,7 +1300,11 @@ void test_op_properties(void)
                         newir_frame(&A,
                           newir_stmt(&A, JVST_IR_STMT_TOKEN),
                           newir_if(&A, newir_istok(&A, SJP_NUMBER),
-                            newir_stmt(&A, JVST_IR_STMT_VALID),
+                            newir_seq(&A,
+                              newir_stmt(&A, JVST_IR_STMT_CONSUME),
+                              newir_stmt(&A, JVST_IR_STMT_VALID),
+                              NULL
+                            ),
                             newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token")
                           ),
                           NULL
@@ -818,7 +1326,11 @@ void test_op_properties(void)
               newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token"),
               newir_if(&A, newir_istok(&A, SJP_ARRAY_END),
                 newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token"),
-                newir_stmt(&A, JVST_IR_STMT_VALID)
+                newir_seq(&A,
+                  newir_stmt(&A, JVST_IR_STMT_CONSUME),
+                  newir_stmt(&A, JVST_IR_STMT_VALID),
+                  NULL
+                )
               )
             )
           ),
@@ -843,6 +1355,9 @@ void test_op_properties(void)
             oplabel, "false_20",
             newop_cmp(&A, JVST_OP_IEQ, oparg_tt(), oparg_tok(SJP_ARRAY_END)),
             newop_br(&A, JVST_OP_CBT, "invalid_1_19"),
+
+            oplabel, "false_23",
+            newop_instr(&A, JVST_OP_CONSUME),
 
             oplabel, "valid_15",
             newop_instr(&A, JVST_OP_VALID),
@@ -891,10 +1406,13 @@ void test_op_properties(void)
             oplabel, "entry_0",
             newop_instr(&A, JVST_OP_TOKEN),
             newop_cmp(&A, JVST_OP_IEQ, oparg_tt(), oparg_tok(SJP_STRING)),
-            newop_br(&A, JVST_OP_CBT, "valid_3"),
+            newop_br(&A, JVST_OP_CBT, "true_2"),
 
             oplabel, "invalid_1_5",
             newop_invalid(&A, 1),
+
+            oplabel, "true_2",
+            newop_instr(&A, JVST_OP_CONSUME),
 
             oplabel, "valid_3",
             newop_instr(&A, JVST_OP_VALID),
@@ -906,10 +1424,13 @@ void test_op_properties(void)
             oplabel, "entry_0",
             newop_instr(&A, JVST_OP_TOKEN),
             newop_cmp(&A, JVST_OP_IEQ, oparg_tt(), oparg_tok(SJP_NUMBER)),
-            newop_br(&A, JVST_OP_CBT, "valid_3"),
+            newop_br(&A, JVST_OP_CBT, "true_2"),
 
             oplabel, "invalid_1_5",
             newop_invalid(&A, 1),
+
+            oplabel, "true_2",
+            newop_instr(&A, JVST_OP_CONSUME),
 
             oplabel, "valid_3",
             newop_instr(&A, JVST_OP_VALID),
@@ -956,7 +1477,11 @@ void test_op_properties(void)
                         newir_frame(&A,
                           newir_stmt(&A, JVST_IR_STMT_TOKEN),
                           newir_if(&A, newir_istok(&A, SJP_STRING),
-                            newir_stmt(&A, JVST_IR_STMT_VALID),
+                            newir_seq(&A,
+                              newir_stmt(&A, JVST_IR_STMT_CONSUME),
+                              newir_stmt(&A, JVST_IR_STMT_VALID),
+                              NULL
+                            ),
                             newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token")
                           ),
                           NULL
@@ -969,7 +1494,11 @@ void test_op_properties(void)
                         newir_frame(&A,
                           newir_stmt(&A, JVST_IR_STMT_TOKEN),
                           newir_if(&A, newir_istok(&A, SJP_NUMBER),
-                            newir_stmt(&A, JVST_IR_STMT_VALID),
+                            newir_seq(&A,
+                              newir_stmt(&A, JVST_IR_STMT_CONSUME),
+                              newir_stmt(&A, JVST_IR_STMT_VALID),
+                              NULL
+                            ),
                             newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token")
                           ),
                           NULL
@@ -991,7 +1520,11 @@ void test_op_properties(void)
               newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token"),
               newir_if(&A, newir_istok(&A, SJP_ARRAY_END),
                 newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token"),
-                newir_stmt(&A, JVST_IR_STMT_VALID)
+                newir_seq(&A,
+                  newir_stmt(&A, JVST_IR_STMT_CONSUME),
+                  newir_stmt(&A, JVST_IR_STMT_VALID),
+                  NULL
+                )
               )
             )
           ),
@@ -1016,6 +1549,9 @@ void test_op_properties(void)
             oplabel, "false_20",
             newop_cmp(&A, JVST_OP_IEQ, oparg_tt(), oparg_tok(SJP_ARRAY_END)),
             newop_br(&A, JVST_OP_CBT, "invalid_1_19"),
+
+            oplabel, "false_23",
+            newop_instr(&A, JVST_OP_CONSUME),
 
             oplabel, "valid_15",
             newop_instr(&A, JVST_OP_VALID),
@@ -1064,10 +1600,13 @@ void test_op_properties(void)
             oplabel, "entry_0",
             newop_instr(&A, JVST_OP_TOKEN),
             newop_cmp(&A, JVST_OP_IEQ, oparg_tt(), oparg_tok(SJP_STRING)),
-            newop_br(&A, JVST_OP_CBT, "valid_3"),
+            newop_br(&A, JVST_OP_CBT, "true_2"),
 
             oplabel, "invalid_1_5",
             newop_invalid(&A, 1),
+
+            oplabel, "true_2",
+            newop_instr(&A, JVST_OP_CONSUME),
 
             oplabel, "valid_3",
             newop_instr(&A, JVST_OP_VALID),
@@ -1079,10 +1618,13 @@ void test_op_properties(void)
             oplabel, "entry_0",
             newop_instr(&A, JVST_OP_TOKEN),
             newop_cmp(&A, JVST_OP_IEQ, oparg_tt(), oparg_tok(SJP_NUMBER)),
-            newop_br(&A, JVST_OP_CBT, "valid_3"),
+            newop_br(&A, JVST_OP_CBT, "true_2"),
 
             oplabel, "invalid_1_5",
             newop_invalid(&A, 1),
+
+            oplabel, "true_2",
+            newop_instr(&A, JVST_OP_CONSUME),
 
             oplabel, "valid_3",
             newop_instr(&A, JVST_OP_VALID),
@@ -1106,6 +1648,9 @@ void test_op_properties(void)
 
           JVST_OP_IEQ, VMREG(JVST_VM_TT), VMLIT(SJP_ARRAY_END),
           JVST_OP_CBT, "invalid_1_19",
+
+          VM_LABEL, "false_23",
+          JVST_OP_CONSUME, 0, 0,
 
           VM_LABEL, "valid_15",
           JVST_OP_VALID, 0, 0,
@@ -1147,9 +1692,12 @@ void test_op_properties(void)
 
           JVST_OP_TOKEN, 0, 0,
           JVST_OP_IEQ, VMREG(JVST_VM_TT), VMLIT(SJP_STRING),
-          JVST_OP_CBT, "valid_3a",
+          JVST_OP_CBT, "true_2a",
 
           JVST_OP_INVALID, VMLIT(1), 0,
+
+          VM_LABEL, "true_2a",
+          JVST_OP_CONSUME, 0, 0,
 
           VM_LABEL, "valid_3a",
           JVST_OP_VALID, 0, 0,
@@ -1158,9 +1706,12 @@ void test_op_properties(void)
 
           JVST_OP_TOKEN, 0, 0,
           JVST_OP_IEQ, VMREG(JVST_VM_TT), VMLIT(SJP_NUMBER),
-          JVST_OP_CBT, "valid_3b",
+          JVST_OP_CBT, "true_2b",
 
           JVST_OP_INVALID, VMLIT(1), 0,
+
+          VM_LABEL, "true_2b",
+          JVST_OP_CONSUME, 0, 0,
 
           VM_LABEL, "valid_3b",
           JVST_OP_VALID, 0, 0,
@@ -1259,6 +1810,9 @@ void test_op_properties(void)
             newop_cmp(&A, JVST_OP_IEQ, oparg_tt(), oparg_tok(SJP_ARRAY_END)),
             newop_br(&A, JVST_OP_CBT, "invalid_1_19"),
 
+            oplabel, "false_23",
+            newop_instr(&A, JVST_OP_CONSUME),
+
             oplabel, "valid_15",
             newop_instr(&A, JVST_OP_VALID),
 
@@ -1316,10 +1870,13 @@ void test_op_properties(void)
             oplabel, "entry_0",
             newop_instr(&A, JVST_OP_TOKEN),
             newop_cmp(&A, JVST_OP_IEQ, oparg_tt(), oparg_tok(SJP_NUMBER)),
-            newop_br(&A, JVST_OP_CBT, "valid_3"),
+            newop_br(&A, JVST_OP_CBT, "true_2"),
 
             oplabel, "invalid_1_5",
             newop_invalid(&A, 1),
+
+            oplabel, "true_2",
+            newop_instr(&A, JVST_OP_CONSUME),
 
             oplabel, "valid_3",
             newop_instr(&A, JVST_OP_VALID),
@@ -1365,20 +1922,8 @@ void test_op_minmax_properties_1(void)
                 newir_if(&A, newir_istok(&A, SJP_OBJECT_END),
                   newir_break(&A, "L_OBJ", 0),
                   newir_seq(&A,                                 // unnecessary SEQ should be removed in the future
-                    // XXX The match could be eliminated here.  We'd
-                    //     have to consume the string and the value.
-                    //     This would be a good reason to add a CONSUME
-                    //     statement instead of creating a frame and
-                    //     using VALID to consume the entire token.
-                    newir_match(&A, 0,
-                      // no match
-                      newir_case(&A, 0, 
-                        NULL,
-                        newir_stmt(&A, JVST_IR_STMT_CONSUME)
-                      ),
-
-                      NULL
-                    ),
+                    newir_stmt(&A, JVST_IR_STMT_CONSUME),
+                    newir_stmt(&A, JVST_IR_STMT_CONSUME),
                     newir_incr(&A, 0, "num_props"),
                     // XXX as mentioned above, we could short-circuit
                     //     the loop if num_props >= 1.  This would
@@ -1421,7 +1966,11 @@ void test_op_minmax_properties_1(void)
               newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token"),
               newir_if(&A, newir_istok(&A, SJP_ARRAY_END),
                 newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token"),
-                newir_stmt(&A, JVST_IR_STMT_VALID)
+                newir_seq(&A,
+                  newir_stmt(&A, JVST_IR_STMT_CONSUME),
+                  newir_stmt(&A, JVST_IR_STMT_VALID),
+                  NULL
+                )
               )
             )
           ),
@@ -1444,6 +1993,9 @@ void test_op_minmax_properties_1(void)
             oplabel, "false_17",
             newop_cmp(&A, JVST_OP_IEQ, oparg_tt(), oparg_tok(SJP_ARRAY_END)),
             newop_br(&A, JVST_OP_CBT, "invalid_1_16"),
+
+            oplabel, "false_20",
+            newop_instr(&A, JVST_OP_CONSUME),
 
             oplabel, "valid_10",
             newop_instr(&A, JVST_OP_VALID),
@@ -1497,20 +2049,8 @@ void test_op_minmax_properties_1(void)
                 newir_if(&A, newir_istok(&A, SJP_OBJECT_END),
                   newir_break(&A, "L_OBJ", 0),
                   newir_seq(&A,                                 // unnecessary SEQ should be removed in the future
-                    // XXX The match could be eliminated here.  We'd
-                    //     have to consume the string and the value.
-                    //     This would be a good reason to add a CONSUME
-                    //     statement instead of creating a frame and
-                    //     using VALID to consume the entire token.
-                    newir_match(&A, 0,
-                      // no match
-                      newir_case(&A, 0, 
-                        NULL,
-                        newir_stmt(&A, JVST_IR_STMT_CONSUME)
-                      ),
-
-                      NULL
-                    ),
+                    newir_stmt(&A, JVST_IR_STMT_CONSUME),
+                    newir_stmt(&A, JVST_IR_STMT_CONSUME),
                     newir_incr(&A, 0, "num_props"),
                     // XXX as mentioned above, we could short-circuit
                     //     the loop if num_props >= 2.
@@ -1541,7 +2081,11 @@ void test_op_minmax_properties_1(void)
               newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token"),
               newir_if(&A, newir_istok(&A, SJP_ARRAY_END),
                 newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token"),
-                newir_stmt(&A, JVST_IR_STMT_VALID)
+                newir_seq(&A,
+                  newir_stmt(&A, JVST_IR_STMT_CONSUME),
+                  newir_stmt(&A, JVST_IR_STMT_VALID),
+                  NULL
+                )
               )
             )
           ),
@@ -1564,6 +2108,9 @@ void test_op_minmax_properties_1(void)
             oplabel, "false_17",
             newop_cmp(&A, JVST_OP_IEQ, oparg_tt(), oparg_tok(SJP_ARRAY_END)),
             newop_br(&A, JVST_OP_CBT, "invalid_1_16"),
+
+            oplabel, "false_20",
+            newop_instr(&A, JVST_OP_CONSUME),
 
             oplabel, "valid_10",
             newop_instr(&A, JVST_OP_VALID),
@@ -1617,20 +2164,8 @@ void test_op_minmax_properties_1(void)
                 newir_if(&A, newir_istok(&A, SJP_OBJECT_END),
                   newir_break(&A, "L_OBJ", 0),
                   newir_seq(&A,                                 // unnecessary SEQ should be removed in the future
-                    // XXX The match could be eliminated here.  We'd
-                    //     have to consume the string and the value.
-                    //     This would be a good reason to add a CONSUME
-                    //     statement instead of creating a frame and
-                    //     using VALID to consume the entire token.
-                    newir_match(&A, 0,
-                      // no match
-                      newir_case(&A, 0, 
-                        NULL,
-                        newir_stmt(&A, JVST_IR_STMT_CONSUME)
-                      ),
-
-                      NULL
-                    ),
+                    newir_stmt(&A, JVST_IR_STMT_CONSUME),
+                    newir_stmt(&A, JVST_IR_STMT_CONSUME),
                     newir_incr(&A, 0, "num_props"),
                     NULL
                   )
@@ -1661,7 +2196,11 @@ void test_op_minmax_properties_1(void)
               newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token"),
               newir_if(&A, newir_istok(&A, SJP_ARRAY_END),
                 newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token"),
-                newir_stmt(&A, JVST_IR_STMT_VALID)
+                newir_seq(&A,
+                  newir_stmt(&A, JVST_IR_STMT_CONSUME),
+                  newir_stmt(&A, JVST_IR_STMT_VALID),
+                  NULL
+                )
               )
             )
           ),
@@ -1684,6 +2223,9 @@ void test_op_minmax_properties_1(void)
             oplabel, "false_21",
             newop_cmp(&A, JVST_OP_IEQ, oparg_tt(), oparg_tok(SJP_ARRAY_END)),
             newop_br(&A, JVST_OP_CBT, "invalid_1_20"),
+
+            oplabel, "false_24",
+            newop_instr(&A, JVST_OP_CONSUME),
 
             oplabel, "valid_12",
             newop_instr(&A, JVST_OP_VALID),
@@ -1747,20 +2289,8 @@ void test_op_minmax_properties_1(void)
                 newir_if(&A, newir_istok(&A, SJP_OBJECT_END),
                   newir_break(&A, "L_OBJ", 0),
                   newir_seq(&A,                                 // unnecessary SEQ should be removed in the future
-                    // XXX The match could be eliminated here.  We'd
-                    //     have to consume the string and the value.
-                    //     This would be a good reason to add a CONSUME
-                    //     statement instead of creating a frame and
-                    //     using VALID to consume the entire token.
-                    newir_match(&A, 0,
-                      // no match
-                      newir_case(&A, 0, 
-                        NULL,
-                        newir_stmt(&A, JVST_IR_STMT_CONSUME)
-                      ),
-
-                      NULL
-                    ),
+                    newir_stmt(&A, JVST_IR_STMT_CONSUME),
+                    newir_stmt(&A, JVST_IR_STMT_CONSUME),
                     newir_incr(&A, 0, "num_props"),
                     NULL
                   )
@@ -1791,7 +2321,11 @@ void test_op_minmax_properties_1(void)
               newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token"),
               newir_if(&A, newir_istok(&A, SJP_ARRAY_END),
                 newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token"),
-                newir_stmt(&A, JVST_IR_STMT_VALID)
+                newir_seq(&A,
+                  newir_stmt(&A, JVST_IR_STMT_CONSUME),
+                  newir_stmt(&A, JVST_IR_STMT_VALID),
+                  NULL
+                )
               )
             )
           ),
@@ -1814,6 +2348,9 @@ void test_op_minmax_properties_1(void)
             oplabel, "false_21",
             newop_cmp(&A, JVST_OP_IEQ, oparg_tt(), oparg_tok(SJP_ARRAY_END)),
             newop_br(&A, JVST_OP_CBT, "invalid_1_20"),
+
+            oplabel, "false_24",
+            newop_instr(&A, JVST_OP_CONSUME),
 
             oplabel, "valid_12",
             newop_instr(&A, JVST_OP_VALID),
@@ -1869,6 +2406,9 @@ void test_op_minmax_properties_1(void)
 
           JVST_OP_IEQ, VMREG(JVST_VM_TT), VMLIT(SJP_ARRAY_END),
           JVST_OP_CBT, "invalid_1_20",
+
+          VM_LABEL, "false_24",
+          JVST_OP_CONSUME, 0, 0,
 
           VM_LABEL, "valid_12",
           JVST_OP_VALID, 0, 0,
@@ -1952,26 +2492,34 @@ void test_op_minproperties_2(void)
                         newir_stmt(&A, JVST_IR_STMT_CONSUME)
                       ),
 
-                      // match "foo"
+                      // match "bar"
                       newir_case(&A, 1,
-                        newmatchset(&A, RE_LITERAL,  "foo", -1),
+                        newmatchset(&A, RE_LITERAL,  "bar", -1),
                         newir_frame(&A,
                           newir_stmt(&A, JVST_IR_STMT_TOKEN),
-                          newir_if(&A, newir_istok(&A, SJP_NUMBER),
-                            newir_stmt(&A, JVST_IR_STMT_VALID),
+                          newir_if(&A, newir_istok(&A, SJP_STRING),
+                            newir_seq(&A,
+                              newir_stmt(&A, JVST_IR_STMT_CONSUME),
+                              newir_stmt(&A, JVST_IR_STMT_VALID),
+                              NULL
+                            ),
                             newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token")
                           ),
                           NULL
                         )
                       ),
 
-                      // match "bar"
+                      // match "foo"
                       newir_case(&A, 2,
-                        newmatchset(&A, RE_LITERAL,  "bar", -1),
+                        newmatchset(&A, RE_LITERAL,  "foo", -1),
                         newir_frame(&A,
                           newir_stmt(&A, JVST_IR_STMT_TOKEN),
-                          newir_if(&A, newir_istok(&A, SJP_STRING),
-                            newir_stmt(&A, JVST_IR_STMT_VALID),
+                          newir_if(&A, newir_istok(&A, SJP_NUMBER),
+                            newir_seq(&A,
+                              newir_stmt(&A, JVST_IR_STMT_CONSUME),
+                              newir_stmt(&A, JVST_IR_STMT_VALID),
+                              NULL
+                            ),
                             newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token")
                           ),
                           NULL
@@ -2003,7 +2551,11 @@ void test_op_minproperties_2(void)
               newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token"),
               newir_if(&A, newir_istok(&A, SJP_ARRAY_END),
                 newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token"),
-                newir_stmt(&A, JVST_IR_STMT_VALID)
+                newir_seq(&A,
+                  newir_stmt(&A, JVST_IR_STMT_CONSUME),
+                  newir_stmt(&A, JVST_IR_STMT_VALID),
+                  NULL
+                )
               )
             )
           ),
@@ -2028,6 +2580,9 @@ void test_op_minproperties_2(void)
             oplabel, "false_24",
             newop_cmp(&A, JVST_OP_IEQ, oparg_tt(), oparg_tok(SJP_ARRAY_END)),
             newop_br(&A, JVST_OP_CBT, "invalid_1_23"),
+
+            oplabel, "false_27",
+            newop_instr(&A, JVST_OP_CONSUME),
 
             oplabel, "valid_17",
             newop_instr(&A, JVST_OP_VALID),
@@ -2089,10 +2644,13 @@ void test_op_minproperties_2(void)
             oplabel, "entry_0",
             newop_instr(&A, JVST_OP_TOKEN),
             newop_cmp(&A, JVST_OP_IEQ, oparg_tt(), oparg_tok(SJP_STRING)),
-            newop_br(&A, JVST_OP_CBT, "valid_3"),
+            newop_br(&A, JVST_OP_CBT, "true_2"),
 
             oplabel, "invalid_1_5",
             newop_invalid(&A, 1),
+
+            oplabel, "true_2",
+            newop_instr(&A, JVST_OP_CONSUME),
 
             oplabel, "valid_3",
             newop_instr(&A, JVST_OP_VALID),
@@ -2104,10 +2662,13 @@ void test_op_minproperties_2(void)
             oplabel, "entry_0",
             newop_instr(&A, JVST_OP_TOKEN),
             newop_cmp(&A, JVST_OP_IEQ, oparg_tt(), oparg_tok(SJP_NUMBER)),
-            newop_br(&A, JVST_OP_CBT, "valid_3"),
+            newop_br(&A, JVST_OP_CBT, "true_2"),
 
             oplabel, "invalid_1_5",
             newop_invalid(&A, 1),
+
+            oplabel, "true_2",
+            newop_instr(&A, JVST_OP_CONSUME),
 
             oplabel, "valid_3",
             newop_instr(&A, JVST_OP_VALID),
@@ -2183,7 +2744,11 @@ void test_op_required(void)
                         newir_frame(&A,
                           newir_stmt(&A, JVST_IR_STMT_TOKEN),
                           newir_if(&A, newir_istok(&A, SJP_STRING),
-                            newir_stmt(&A, JVST_IR_STMT_VALID),
+                            newir_seq(&A,
+                              newir_stmt(&A, JVST_IR_STMT_CONSUME),
+                              newir_stmt(&A, JVST_IR_STMT_VALID),
+                              NULL
+                            ),
                             newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token")
                           ),
                           NULL
@@ -2192,12 +2757,16 @@ void test_op_required(void)
 
                       // match "foo"
                       newir_case(&A, 2,
-                        newmatchset(&A, RE_LITERAL,  "foo", RE_LITERAL, "foo", -1),
+                        newmatchset(&A, RE_LITERAL, "foo", -1),
                         newir_seq(&A,
                           newir_frame(&A,
                             newir_stmt(&A, JVST_IR_STMT_TOKEN),
                             newir_if(&A, newir_istok(&A, SJP_NUMBER),
-                              newir_stmt(&A, JVST_IR_STMT_VALID),
+                              newir_seq(&A,
+                                newir_stmt(&A, JVST_IR_STMT_CONSUME),
+                                newir_stmt(&A, JVST_IR_STMT_VALID),
+                                NULL
+                              ),
                               newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token")
                             ),
                             NULL
@@ -2215,7 +2784,7 @@ void test_op_required(void)
                 NULL
               ),
               newir_if(&A,
-                  newir_btestall(&A, 1, "reqmask", 0,-1),
+                  newir_btestall(&A, 1, "reqmask", 0,0),
                   newir_stmt(&A, JVST_IR_STMT_VALID),
                   newir_invalid(&A, JVST_INVALID_MISSING_REQUIRED_PROPERTIES,
                     "missing required properties")
@@ -2227,7 +2796,11 @@ void test_op_required(void)
               newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token"),
               newir_if(&A, newir_istok(&A, SJP_ARRAY_END),
                 newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token"),
-                newir_stmt(&A, JVST_IR_STMT_VALID)
+                newir_seq(&A,
+                  newir_stmt(&A, JVST_IR_STMT_CONSUME),
+                  newir_stmt(&A, JVST_IR_STMT_VALID),
+                  NULL
+                )
               )
             )
           ),
@@ -2252,6 +2825,9 @@ void test_op_required(void)
             oplabel, "false_24",
             newop_cmp(&A, JVST_OP_IEQ, oparg_tt(), oparg_tok(SJP_ARRAY_END)),
             newop_br(&A, JVST_OP_CBT, "invalid_1_23"),
+
+            oplabel, "false_27",
+            newop_instr(&A, JVST_OP_CONSUME),
 
             oplabel, "valid_17",
             newop_instr(&A, JVST_OP_VALID),
@@ -2310,10 +2886,13 @@ void test_op_required(void)
             oplabel, "entry_0",
             newop_instr(&A, JVST_OP_TOKEN),
             newop_cmp(&A, JVST_OP_IEQ, oparg_tt(), oparg_tok(SJP_STRING)),
-            newop_br(&A, JVST_OP_CBT, "valid_3"),
+            newop_br(&A, JVST_OP_CBT, "true_2"),
 
             oplabel, "invalid_1_5",
             newop_invalid(&A, 1),
+
+            oplabel, "true_2",
+            newop_instr(&A, JVST_OP_CONSUME),
 
             oplabel, "valid_3",
             newop_instr(&A, JVST_OP_VALID),
@@ -2325,10 +2904,13 @@ void test_op_required(void)
             oplabel, "entry_0",
             newop_instr(&A, JVST_OP_TOKEN),
             newop_cmp(&A, JVST_OP_IEQ, oparg_tt(), oparg_tok(SJP_NUMBER)),
-            newop_br(&A, JVST_OP_CBT, "valid_3"),
+            newop_br(&A, JVST_OP_CBT, "true_2"),
 
             oplabel, "invalid_1_5",
             newop_invalid(&A, 1),
+
+            oplabel, "true_2",
+            newop_instr(&A, JVST_OP_CONSUME),
 
             oplabel, "valid_3",
             newop_instr(&A, JVST_OP_VALID),
@@ -2461,6 +3043,9 @@ void test_op_required(void)
             newop_cmp(&A, JVST_OP_IEQ, oparg_tt(), oparg_tok(SJP_ARRAY_END)),
             newop_br(&A, JVST_OP_CBT, "invalid_1_23"),
 
+            oplabel, "false_27",
+            newop_instr(&A, JVST_OP_CONSUME),
+
             oplabel, "valid_17",
             newop_instr(&A, JVST_OP_VALID),
 
@@ -2518,10 +3103,13 @@ void test_op_required(void)
             oplabel, "entry_0",
             newop_instr(&A, JVST_OP_TOKEN),
             newop_cmp(&A, JVST_OP_IEQ, oparg_tt(), oparg_tok(SJP_STRING)),
-            newop_br(&A, JVST_OP_CBT, "valid_3"),
+            newop_br(&A, JVST_OP_CBT, "true_2"),
 
             oplabel, "invalid_1_5",
             newop_invalid(&A, 1),
+
+            oplabel, "true_2",
+            newop_instr(&A, JVST_OP_CONSUME),
 
             oplabel, "valid_3",
             newop_instr(&A, JVST_OP_VALID),
@@ -2533,10 +3121,13 @@ void test_op_required(void)
             oplabel, "entry_0",
             newop_instr(&A, JVST_OP_TOKEN),
             newop_cmp(&A, JVST_OP_IEQ, oparg_tt(), oparg_tok(SJP_NUMBER)),
-            newop_br(&A, JVST_OP_CBT, "valid_3"),
+            newop_br(&A, JVST_OP_CBT, "true_2"),
 
             oplabel, "invalid_1_5",
             newop_invalid(&A, 1),
+
+            oplabel, "true_2",
+            newop_instr(&A, JVST_OP_CONSUME),
 
             oplabel, "valid_3",
             newop_instr(&A, JVST_OP_VALID),
@@ -2560,6 +3151,9 @@ void test_op_required(void)
 
           JVST_OP_IEQ, VMREG(JVST_VM_TT), VMLIT(SJP_ARRAY_END),
           JVST_OP_CBT, "invalid_1_23",
+
+          VM_LABEL, "false_27",
+          JVST_OP_CONSUME, 0, 0,
 
           VM_LABEL, "valid_17",
           JVST_OP_VALID, 0, 0,
@@ -2610,9 +3204,12 @@ void test_op_required(void)
 
           JVST_OP_TOKEN, 0, 0,
           JVST_OP_IEQ, VMREG(JVST_VM_TT), VMLIT(SJP_STRING),
-          JVST_OP_CBT, "valid_3a",
+          JVST_OP_CBT, "true_2a",
 
           JVST_OP_INVALID, VMLIT(1), 0,
+
+          VM_LABEL, "true_2a",
+          JVST_OP_CONSUME, 0, 0,
 
           VM_LABEL, "valid_3a",
           JVST_OP_VALID, 0, 0,
@@ -2621,9 +3218,12 @@ void test_op_required(void)
 
           JVST_OP_TOKEN, 0, 0,
           JVST_OP_IEQ, VMREG(JVST_VM_TT), VMLIT(SJP_NUMBER),
-          JVST_OP_CBT, "valid_3b",
+          JVST_OP_CBT, "true_2b",
 
           JVST_OP_INVALID, VMLIT(1), 0,
+
+          VM_LABEL, "true_2b",
+          JVST_OP_CONSUME, 0, 0,
 
           VM_LABEL, "valid_3b",
           JVST_OP_VALID, 0, 0,
@@ -2712,21 +3312,21 @@ void test_op_dependencies(void)
                                   newir_stmt(&A, JVST_IR_STMT_CONSUME)
                                 ),
 
-                                // match "foo"
+                                // match "bar"
                                 newir_case(&A, 1,
-                                  newmatchset(&A, RE_LITERAL,  "foo", -1),
+                                  newmatchset(&A, RE_LITERAL,  "bar", -1),
                                   newir_seq(&A,
-                                    newir_bitop(&A, JVST_IR_STMT_BSET, 0, "reqmask", 1),
+                                    newir_bitop(&A, JVST_IR_STMT_BSET, 0, "reqmask", 0),
                                     newir_stmt(&A, JVST_IR_STMT_CONSUME),
                                     NULL
                                   )
                                 ),
 
-                                // match "bar"
+                                // match "foo"
                                 newir_case(&A, 2,
-                                  newmatchset(&A, RE_LITERAL,  "bar", -1),
+                                  newmatchset(&A, RE_LITERAL,  "foo", -1),
                                   newir_seq(&A,
-                                    newir_bitop(&A, JVST_IR_STMT_BSET, 0, "reqmask", 0),
+                                    newir_bitop(&A, JVST_IR_STMT_BSET, 0, "reqmask", 1),
                                     newir_stmt(&A, JVST_IR_STMT_CONSUME),
                                     NULL
                                   )
@@ -2740,7 +3340,7 @@ void test_op_dependencies(void)
                           NULL
                         ),
                         newir_if(&A,
-                            newir_btestall(&A, 0, "reqmask", 0, -1),
+                            newir_btestall(&A, 0, "reqmask", 0, 1),
                             newir_stmt(&A, JVST_IR_STMT_VALID),
                             newir_invalid(&A, JVST_INVALID_MISSING_REQUIRED_PROPERTIES,
                               "missing required properties")
@@ -2761,7 +3361,11 @@ void test_op_dependencies(void)
                 newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token"),
                 newir_if(&A, newir_istok(&A, SJP_ARRAY_END),
                   newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token"),
-                  newir_stmt(&A, JVST_IR_STMT_VALID)
+                  newir_seq(&A,
+                    newir_stmt(&A, JVST_IR_STMT_CONSUME),
+                    newir_stmt(&A, JVST_IR_STMT_VALID),
+                    NULL
+                  )
                 )
               )
           ),
@@ -2787,6 +3391,9 @@ void test_op_dependencies(void)
             oplabel, "false_12",
             newop_cmp(&A, JVST_OP_IEQ, oparg_tt(), oparg_tok(SJP_ARRAY_END)),
             newop_br(&A, JVST_OP_CBT, "invalid_1_11"),
+
+            oplabel, "false_15",
+            newop_instr(&A, JVST_OP_CONSUME),
 
             oplabel, "valid_5",
             newop_instr(&A, JVST_OP_VALID),
@@ -3170,6 +3777,9 @@ void test_op_dependencies(void)
           JVST_OP_IEQ, VMREG(JVST_VM_TT), VMLIT(SJP_ARRAY_END),
           JVST_OP_CBT, "invalid_1_11",
 
+          VM_LABEL, "false_15",
+          JVST_OP_CONSUME, 0, 0,
+
           VM_LABEL, "valid_5",
           JVST_OP_VALID, 0, 0,
 
@@ -3373,7 +3983,7 @@ void test_op_dependencies(void)
                           NULL
                         ),
                         newir_if(&A,
-                            newir_btestall(&A, 0, "reqmask", 0, -1),
+                            newir_btestall(&A, 0, "reqmask", 0, 2),
                             newir_stmt(&A, JVST_IR_STMT_VALID),
                             newir_invalid(&A, JVST_INVALID_MISSING_REQUIRED_PROPERTIES,
                               "missing required properties")
@@ -3394,7 +4004,11 @@ void test_op_dependencies(void)
                 newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token"),
                 newir_if(&A, newir_istok(&A, SJP_ARRAY_END),
                   newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token"),
-                  newir_stmt(&A, JVST_IR_STMT_VALID)
+                  newir_seq(&A,
+                    newir_stmt(&A, JVST_IR_STMT_CONSUME),
+                    newir_stmt(&A, JVST_IR_STMT_VALID),
+                    NULL
+                  )
                 )
               )
           ),
@@ -3420,6 +4034,9 @@ void test_op_dependencies(void)
             oplabel, "false_12",
             newop_cmp(&A, JVST_OP_IEQ, oparg_tt(), oparg_tok(SJP_ARRAY_END)),
             newop_br(&A, JVST_OP_CBT, "invalid_1_11"),
+
+            oplabel, "false_15",
+            newop_instr(&A, JVST_OP_CONSUME),
 
             oplabel, "valid_5",
             newop_instr(&A, JVST_OP_VALID),
@@ -3657,7 +4274,7 @@ void test_op_dependencies(void)
                         NULL
                       ),
                       newir_if(&A,
-                          newir_btestall(&A, 0, "reqmask", 0, -1),
+                          newir_btestall(&A, 0, "reqmask", 0, 2),
                           newir_stmt(&A, JVST_IR_STMT_VALID),
                           newir_invalid(&A, JVST_INVALID_MISSING_REQUIRED_PROPERTIES,
                             "missing required properties")
@@ -3745,7 +4362,7 @@ void test_op_dependencies(void)
                         NULL
                       ),
                       newir_if(&A,
-                          newir_btestall(&A, 0, "reqmask", 0, -1),
+                          newir_btestall(&A, 0, "reqmask", 0, 1),
                           newir_stmt(&A, JVST_IR_STMT_VALID),
                           newir_invalid(&A, JVST_INVALID_MISSING_REQUIRED_PROPERTIES,
                             "missing required properties")
@@ -3778,7 +4395,11 @@ void test_op_dependencies(void)
                 newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token"),
                 newir_if(&A, newir_istok(&A, SJP_ARRAY_END),
                   newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token"),
-                  newir_stmt(&A, JVST_IR_STMT_VALID)
+                  newir_seq(&A,
+                    newir_stmt(&A, JVST_IR_STMT_CONSUME),
+                    newir_stmt(&A, JVST_IR_STMT_VALID),
+                    NULL
+                  )
                 )
               )
           ),
@@ -3804,6 +4425,9 @@ void test_op_dependencies(void)
             oplabel, "false_15",
             newop_cmp(&A, JVST_OP_IEQ, oparg_tt(), oparg_tok(SJP_ARRAY_END)),
             newop_br(&A, JVST_OP_CBT, "invalid_1_14"),
+
+            oplabel, "false_18",
+            newop_instr(&A, JVST_OP_CONSUME),
 
             oplabel, "valid_5",
             newop_instr(&A, JVST_OP_VALID),
@@ -4108,6 +4732,7 @@ int main(void)
 
   test_op_type_integer();
   test_op_minimum();
+  test_op_multiple_of();
 
   test_op_properties();
 
