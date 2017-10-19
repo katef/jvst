@@ -27,6 +27,8 @@
         re-dialect -> re_dialect_t;
         regexp     -> ast_regexp_t;
 
+	ast-string-set -> ast_string_set_t;
+
         ast-prop-schema -> ast_prop_schema_t;
         ast-schema -> ast_schema_t;
 
@@ -58,8 +60,14 @@
 	typedef enum kw kw;
 	typedef enum json_valuetype type;
 
-        typedef enum re_dialect re_dialect_t;
-        typedef struct ast_regexp ast_regexp_t;
+	typedef enum re_dialect re_dialect_t;
+	typedef struct ast_regexp ast_regexp_t;
+
+	struct string_set {
+		struct ast_string_set *head;
+		struct ast_string_set **tail;
+	};
+	typedef struct string_set *ast_string_set_t;
 
         typedef struct ast_schema *ast_schema_t;
         typedef struct ast_property_schema *ast_prop_schema_t;
@@ -67,6 +75,7 @@
         typedef struct {
                 struct ast_schema_set *head;
                 struct ast_schema_set **tail;
+                unsigned count;
         } *ast_schema_list_t;
 
 	#define CURRENT_TERMINAL act_state->t.type
@@ -206,6 +215,20 @@
 			}
 		}
 	}
+
+        static void
+        set_schema_list(struct ast_schema_set **varp, ast_schema_list_t list, const char *name)
+        {
+                
+                assert(list->head != NULL);
+
+                *varp = list->head;
+
+		if (debug & DEBUG_ACT) {
+			fprintf(stderr, "<%s>:\n", name);
+                        // FIXME: print out list of items
+                }
+        }
 
 @}, @{
 
@@ -385,6 +408,10 @@
                 ast->additional_properties = @sch;
         @};
 
+        <set-property-names>:       (sch :ast-schema) -> () = @{
+                ast->property_names = @sch;
+        @};
+
         <new-schema-list>: () -> (lst :ast-schema-list) = @{
                 ast_schema_list_t l;
                 l = xmalloc(sizeof *l);
@@ -417,6 +444,7 @@
                 
                 *l->tail = sset;
                 l->tail = &sset->next;
+                l->count++;
         @};
 
         <set-items-single>: (sch :ast-schema) -> () = @{
@@ -451,20 +479,24 @@
                 }
         @};
 
+        <set-contains>: (sch :ast-schema) -> () = @{
+                struct ast_schema *s = @sch;
+                assert(s != NULL);
+
+                ast->contains = s;
+
+		if (debug & DEBUG_ACT) {
+			fprintf(stderr, "<set-contains>:\n");
+                        // FIXME: print out schema
+                }
+        @};
+
         <set-items-list>: (lst :ast-schema-list) -> () = @{
                 ast_schema_list_t items;
 
                 items = @lst;
-                assert(items->head != NULL);
-
-                ast->items = items->head;
-
                 ast->kws &= ~KWS_SINGLETON_ITEMS;
-
-		if (debug & DEBUG_ACT) {
-			fprintf(stderr, "<set-items-list>:\n");
-                        // FIXME: print out list of items
-                }
+                set_schema_list(&ast->items, items, "set-items-list");
         @};
 
 	<set-min-items>: (n :number) -> () = @{
@@ -500,6 +532,33 @@
 		ast->kws |= KWS_MAX_ITEMS;
 		ast->max_items = c;
 	@};
+
+        <set-all-of>:   (lst :ast-schema-list) -> () = @{
+                ast_schema_list_t items;
+
+                items = @lst;
+                set_schema_list(&ast->some_of.set, items, "set-all-of");
+                ast->some_of.min = items->count;
+                ast->some_of.max = items->count;
+        @};
+
+        <set-any-of>:   (lst :ast-schema-list) -> () = @{
+                ast_schema_list_t items;
+
+                items = @lst;
+                set_schema_list(&ast->some_of.set, items, "set-any-of");
+                ast->some_of.min = 1;
+                ast->some_of.max = items->count;
+        @};
+
+        <set-one-of>:  (lst :ast-schema-list) -> () = @{
+                ast_schema_list_t items;
+
+                items = @lst;
+                set_schema_list(&ast->some_of.set, items, "set-any-of");
+                ast->some_of.min = 1;
+                ast->some_of.max = 1;
+        @};
 
 	<set-schema>: (s :string) -> () = @{
 		assert(@s.s != NULL);
@@ -700,6 +759,55 @@
 		}
 
 		ast->description = @s;
+	@};
+
+	<new-string-set>: () -> (ss :ast-string-set) = @{
+		struct string_set *ss;
+		ss = malloc(sizeof *ss);
+		ss->head = NULL;
+		ss->tail = &ss->head;
+		@ss = ss;
+	@};
+
+	<append-string-set>: (ss :ast-string-set, s :string) -> () = @{
+		struct string_set *ss = @ss;
+		struct ast_string_set *item;
+
+		item = malloc(sizeof *item);
+		item->str = @s;
+		item->next = NULL;
+		*ss->tail = item;
+		ss->tail = &item->next;
+	@};
+
+	<add-string-dependency>:    (n :string,ss :ast-string-set) -> () = @{
+		struct ast_property_names *pn;
+		struct string_set *ss;
+
+		ss = @ss;
+
+		pn = malloc(sizeof *pn);
+		pn->pattern.dialect = RE_LITERAL;
+		pn->pattern.str = @n;
+		pn->set = ss->head;
+
+		pn->next = ast->dependencies_strings.set;
+		ast->dependencies_strings.set = pn;
+	@};
+
+	<add-schema-dependency>:    (n :string, sch :ast-schema) -> () = @{
+		struct ast_property_schema *ps;
+		struct ast_schema *sch;
+
+		sch = @sch;
+
+		ps = malloc(sizeof *ps);
+		ps->pattern.dialect = RE_LITERAL;
+		ps->pattern.str = @n;
+		ps->schema = sch;
+
+		ps->next = ast->dependencies_schema.set;
+		ast->dependencies_schema.set = ps;
 	@};
 
 	<err-unimplemented> = @{

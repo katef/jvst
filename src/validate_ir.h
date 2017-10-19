@@ -27,6 +27,18 @@ enum jvst_ir_stmt_type {
 	JVST_IR_STMT_TOKEN,		// requests the next token
 	JVST_IR_STMT_CONSUME,		// consumes the next value, including whole objects and arrays
 
+	/*
+	JVST_IR_STMT_CONSUME_VALUE,	// consumes the value at the current token.
+					// if the current token is '{', consumes the whole object
+					// if the current token is '[', consumes the whole array
+	JVST_IR_STMT_CONSUME_REST_OBJ,	// consumes the rest of the current object, stopping after
+					// the closing '}' is encountered.  This correctly consumes
+					// any objects or arrays inside the current object.
+	JVST_IR_STMT_CONSUME_REST_ARR,	// consumes the rest of the current array, stopping after
+					// the closing ']' is encountered.  This correctly consumes
+					// any objects or arrays inside the current array.
+	*/
+
 	JVST_IR_STMT_FRAME,		// sets up a new frame
 
 	JVST_IR_STMT_COUNTER,		// allocates a named counter in the current frame
@@ -128,6 +140,7 @@ enum jvst_invalid_code {
 	JVST_INVALID_ARRAY            = 0x000D,
 	JVST_INVALID_TOO_FEW_ITEMS    = 0x000E,
 	JVST_INVALID_TOO_MANY_ITEMS   = 0x000F,
+	JVST_INVALID_UNSATISFIED_CONTAINS = 0x0010,
 
 	JVST_INVALID_JSON             = 0x0020,
 

@@ -2,6 +2,7 @@
 
 #include <assert.h>
 #include <stdarg.h>
+#include <stddef.h>
 #include <stdlib.h>
 #include <string.h>
 #include <limits.h>
@@ -20,26 +21,39 @@
 #include "sjp_testing.h"
 #include "validate_sbuf.h"
 
-#define SHOULD_NOT_REACH()							\
-	do {									\
-		fprintf(stderr, "SHOULD NOT REACH %s, line %d (function %s)\n",	\
-			__FILE__, __LINE__, __func__);				\
+#define WHEREFMT "%s:%d (%s) "
+#define WHEREARGS __FILE__, __LINE__, __func__
+
+#define SHOULD_NOT_REACH()					\
+	do {							\
+		fprintf(stderr, WHEREFMT "SHOULD NOT REACH\n",	\
+			WHEREARGS);				\
+		abort();					\
+	} while (0)
+
+#define NOT_YET_IMPLEMENTED(cnode, oper) do {					\
+		fprintf(stderr, WHEREFMT "%s not yet implemented for node %s\n",\
+			WHEREARGS, (oper), jvst_cnode_type_name((cnode)->type));\
 		abort();							\
 	} while (0)
 
-#define NOT_YET_IMPLEMENTED(cnode, oper)					\
-	do {									\
-		fprintf(stderr, "%s:%d (%s) %s not yet implemented for node %s\n",		\
-			__FILE__, __LINE__, __func__, 				\
-			(oper), jvst_cnode_type_name((cnode)->type));		\
-		abort();							\
-	} while (0)
+#define UNKNOWN_NODE_TYPE(cnode) do { 				\
+	fprintf(stderr, WHEREFMT "unknown node type %s\n",	\
+		WHEREARGS, jvst_cnode_type_name((cnode)->type));\
+	abort(); } while(0)
 
-#define INVALID_OPERATION(cnode, oper)						\
-	do {	fprintf(stderr, "%s:%d (%s) invalid operation %s on %s node \n", \
-			__FILE__, __LINE__, __func__,				\
-			jvst_cnode_type_name((cnode)->type), (oper));		\
+#define INVALID_OPERATION(cnode, oper) do {				\
+	fprintf(stderr, WHEREFMT "invalid operation %s on %s node \n",  \
+			WHEREARGS, jvst_cnode_type_name((cnode)->type), (oper)); \
 		abort(); } while (0)
+
+#define DIE(mesg) do {					\
+	fprintf(stderr, WHEREFMT mesg, WHEREARGS);	\
+	abort(); } while(0)
+
+#define DIEF(mesg,...) do {					\
+	fprintf(stderr, WHEREFMT mesg, WHEREARGS, __VA_ARGS__);	\
+	abort(); } while(0)
 
 enum {
 	JVST_CNODE_CHUNKSIZE = 1024,
@@ -265,7 +279,7 @@ cnode_new_mcase(struct jvst_cnode_matchset *ms, struct jvst_cnode *constraint)
 
 	node = jvst_cnode_alloc(JVST_CNODE_MATCH_CASE);
 	node->u.mcase.matchset = ms;
-	node->u.mcase.constraint = constraint;
+	node->u.mcase.value_constraint = constraint;
 
 	return node;
 }
@@ -335,8 +349,8 @@ jvst_cnode_free_tree(struct jvst_cnode *root)
 
 		case JVST_CNODE_ARR_ITEM:
 		case JVST_CNODE_ARR_ADDITIONAL:
-			if (node->u.arr_item != NULL) {
-				jvst_cnode_free_tree(node->u.arr_item);
+			if (node->u.items != NULL) {
+				jvst_cnode_free_tree(node->u.items);
 			}
 			break;
 
@@ -385,12 +399,16 @@ jvst_cnode_type_name(enum jvst_cnode_type type)
 		return "OBJ_PROP_MATCH";
 	case JVST_CNODE_OBJ_PROP_DEFAULT:
 		return "OBJ_PROP_DEFAULT";
+	case JVST_CNODE_OBJ_PROP_NAMES:
+		return "OBJ_PROP_NAMES";
 	case JVST_CNODE_OBJ_REQUIRED:
 		return "OBJ_REQUIRED";
 	case JVST_CNODE_ARR_ITEM:
 		return "ARR_ITEM";
 	case JVST_CNODE_ARR_ADDITIONAL:
 		return "ARR_ADDITIONAL";
+	case JVST_CNODE_ARR_CONTAINS:
+		return "ARR_CONTAINS";
 	case JVST_CNODE_ARR_UNIQUE:
 		return "ARR_UNIQUE";
 	case JVST_CNODE_OBJ_REQMASK:
@@ -547,6 +565,12 @@ jvst_cnode_dump_inner(struct jvst_cnode *node, struct sbuf *buf, int indent)
 		sbuf_snprintf(buf, ")");
 		break;
 
+	case JVST_CNODE_NOT:
+		op = "NOT";
+		assert(node->u.ctrl != NULL);
+		assert(node->u.ctrl->next == NULL);  // NOT should have exactly one child
+		goto and_or_xor; // FIXME: rename this (also, maybe factor to a function?)
+
 	case JVST_CNODE_AND:
 		op = "AND";
 		goto and_or_xor;
@@ -620,6 +644,15 @@ and_or_xor:
 		sbuf_snprintf(buf, ")");
 		break;
 
+	case JVST_CNODE_OBJ_PROP_NAMES:
+		sbuf_snprintf(buf, "PROP_NAMES(\n");
+		sbuf_indent(buf, indent + 2);
+		jvst_cnode_dump_inner(node->u.prop_names, buf, indent+2);
+		sbuf_snprintf(buf, "\n");
+		sbuf_indent(buf, indent);
+		sbuf_snprintf(buf, ")");
+		break;
+
 	case JVST_CNODE_LENGTH_RANGE:
 	case JVST_CNODE_PROP_RANGE:
 	case JVST_CNODE_ITEM_RANGE:
@@ -631,7 +664,7 @@ and_or_xor:
 		sbuf_snprintf(buf, "x");
 
 		if (node->u.counts.upper > 0) {
-			sbuf_snprintf(buf, "<= %zu", node->u.counts.max);
+			sbuf_snprintf(buf, " <= %zu", node->u.counts.max);
 		}
 
 		sbuf_snprintf(buf, ")");
@@ -675,12 +708,18 @@ and_or_xor:
 			struct jvst_cnode *c;
 
 			sbuf_snprintf(buf, "MATCH_SWITCH(\n");
-			if (node->u.mswitch.default_case != NULL) {
+
+			if (node->u.mswitch.dft_case != NULL) {
+				struct jvst_cnode *dft;
+
+				dft = node->u.mswitch.dft_case;
+				assert(dft->type == JVST_CNODE_MATCH_CASE);
+
 				sbuf_indent(buf, indent+2);
 				sbuf_snprintf(buf, "DEFAULT[\n");
 
 				sbuf_indent(buf, indent+4);
-				jvst_cnode_dump_inner(node->u.mswitch.default_case, buf, indent + 4);
+				jvst_cnode_dump_inner(dft, buf, indent + 4);
 				sbuf_snprintf(buf, "\n");
 
 				sbuf_indent(buf, indent+2);
@@ -689,6 +728,9 @@ and_or_xor:
 				} else {
 					sbuf_snprintf(buf, "]\n");
 				}
+			} else {
+				sbuf_indent(buf, indent+2);
+				sbuf_snprintf(buf, "DEFAULT[ << WARNING: NO DEFAULT >> ],\n");
 			}
 
 			for (c = node->u.mswitch.cases; c != NULL; c = c->next) {
@@ -711,17 +753,27 @@ and_or_xor:
 			struct jvst_cnode_matchset *ms;
 
 			sbuf_snprintf(buf, "MATCH_CASE(\n");
-			assert(node->u.mcase.matchset != NULL);
+			// assert(node->u.mcase.matchset != NULL);
 
 			for (ms = node->u.mcase.matchset; ms != NULL; ms = ms->next) {
 				jvst_cnode_matchset_dump(ms, buf, indent+2);
 				sbuf_snprintf(buf, ",\n");
 			}
 
-			sbuf_indent(buf, indent+2);
-			jvst_cnode_dump_inner(node->u.mcase.constraint, buf, indent+2);
-			sbuf_snprintf(buf, "\n");
+			if (node->u.mcase.name_constraint != NULL) {
+				sbuf_indent(buf, indent+2);
+				sbuf_snprintf(buf, "NAME_CONSTRAINT[\n");
 
+				sbuf_indent(buf, indent+4);
+				jvst_cnode_dump_inner(node->u.mcase.name_constraint, buf, indent+4);
+				sbuf_snprintf(buf, "\n");
+				sbuf_indent(buf, indent+2);
+				sbuf_snprintf(buf, "],\n");
+			}
+
+			sbuf_indent(buf, indent+2);
+			jvst_cnode_dump_inner(node->u.mcase.value_constraint, buf, indent+2);
+			sbuf_snprintf(buf, "\n");
 			sbuf_indent(buf, indent);
 			sbuf_snprintf(buf, ")");
 		}
@@ -774,10 +826,27 @@ and_or_xor:
 		}
 		break;
 
-	case JVST_CNODE_NOT:
+	case JVST_CNODE_ARR_CONTAINS:
+		{
+			struct jvst_cnode *it;
+
+			sbuf_snprintf(buf, "CONTAINS(\n");
+
+			it = node->u.contains;
+			assert(it->next == NULL);
+
+			sbuf_indent(buf, indent+2);
+			jvst_cnode_dump_inner(it, buf, indent+2);
+			sbuf_snprintf(buf, "\n");
+
+			sbuf_indent(buf, indent);
+			sbuf_snprintf(buf, ")");
+		}
+		break;
+
 	case JVST_CNODE_ARR_UNIQUE:
-		fprintf(stderr, "%s:%d (%s) **not implemented**\n",
-			__FILE__, __LINE__, __func__);
+		fprintf(stderr, WHEREFMT "**not implemented**\n",
+			WHEREARGS);
 		abort();
 	}
 }
@@ -999,6 +1068,16 @@ jvst_cnode_translate_ast(const struct ast_schema *ast)
 		add_ast_constraint(node, SJP_ARRAY_BEG, additional);
 	}
 
+	if (ast->contains != NULL) {
+		struct jvst_cnode *constraint, *contains;
+
+		constraint = jvst_cnode_translate_ast(ast->contains);
+		contains = jvst_cnode_alloc(JVST_CNODE_ARR_CONTAINS);
+		contains->u.contains = constraint;
+
+		add_ast_constraint(node, SJP_ARRAY_BEG, contains);
+	}
+
 	if (ast->kws & (KWS_MIN_ITEMS | KWS_MAX_ITEMS)) {
 		struct jvst_cnode *range, *jxn;
 
@@ -1037,8 +1116,7 @@ jvst_cnode_translate_ast(const struct ast_schema *ast)
 	}
 
 	if (ast->additional_properties != NULL) {
-		struct jvst_cnode *constraint, **cpp, *pdft;
-		struct ast_schema_set *sset;
+		struct jvst_cnode *constraint, *pdft;
 
 		constraint = jvst_cnode_translate_ast(ast->additional_properties);
 		assert(constraint != NULL);
@@ -1048,6 +1126,18 @@ jvst_cnode_translate_ast(const struct ast_schema *ast)
 		pdft->u.prop_default = constraint;
 
 		add_ast_constraint(node, SJP_OBJECT_BEG, pdft);
+	}
+
+	if (ast->property_names != NULL) {
+		struct jvst_cnode *constraint;
+		struct jvst_cnode *pnames;
+
+		constraint = jvst_cnode_translate_ast(ast->property_names);
+
+		pnames = jvst_cnode_alloc(JVST_CNODE_OBJ_PROP_NAMES);
+		pnames->u.prop_names = constraint;
+
+		add_ast_constraint(node, SJP_OBJECT_BEG, pnames);
 	}
 
 	if (ast->kws & (KWS_MIN_PROPERTIES | KWS_MAX_PROPERTIES)) {
@@ -1193,37 +1283,6 @@ static struct jvst_cnode *
 cnode_deep_copy(struct jvst_cnode *node);
 
 static int
-mcase_copier(const struct fsm *dfa, const struct fsm_state *st, void *opaque)
-{
-	struct jvst_cnode *node, *ndup;
-
-	(void)opaque;
-
-	if (!fsm_isend(dfa, st)) {
-		return 1;
-	}
-
-	node = fsm_getopaque((struct fsm *)dfa, st);
-	assert(node->type == JVST_CNODE_MATCH_CASE);
-
-	if (node->u.mcase.copied) {
-		assert(node->u.mcase.tmp != NULL);
-		return 1;
-	}
-
-	assert(node->u.mcase.tmp == NULL);
-
-	ndup = cnode_deep_copy(node);
-	assert(ndup != NULL);
-	node->u.mcase.tmp = ndup;
-	node->u.mcase.copied = 1;
-
-	fsm_setopaque((struct fsm *)dfa, (struct fsm_state *)st, ndup);
-
-	return 1;
-}
-
-static int
 mcase_update_opaque(const struct fsm *dfa, const struct fsm_state *st, void *opaque)
 {
 	struct jvst_cnode *node, *ndup;
@@ -1337,8 +1396,15 @@ cnode_mswitch_copy(struct jvst_cnode *node)
 	}
 
 	// all mswitch nodes need a default case!
-	assert(node->u.mswitch.default_case != NULL);
-	tree->u.mswitch.default_case = cnode_deep_copy(node->u.mswitch.default_case);
+	assert(node->u.mswitch.dft_case != NULL);
+	assert(node->u.mswitch.dft_case->type == JVST_CNODE_MATCH_CASE);
+	tree->u.mswitch.dft_case = cnode_deep_copy(node->u.mswitch.dft_case);
+
+	/*
+	if (node->u.mswitch.constraints != NULL) {
+		tree->u.mswitch.constraints = cnode_deep_copy(node->u.mswitch.constraints);
+	}
+	*/
 
 	return tree;
 }
@@ -1391,7 +1457,7 @@ cnode_deep_copy(struct jvst_cnode *node)
 	case JVST_CNODE_LENGTH_RANGE:
 	case JVST_CNODE_PROP_RANGE:
 	case JVST_CNODE_ITEM_RANGE:
-		tree	   = jvst_cnode_alloc(node->type);
+		tree = jvst_cnode_alloc(node->type);
 		tree->u.counts = node->u.counts;
 		return tree;
 
@@ -1423,6 +1489,11 @@ cnode_deep_copy(struct jvst_cnode *node)
 		tree->u.prop_default = cnode_deep_copy(node->u.prop_default);
 		return tree;
 
+	case JVST_CNODE_OBJ_PROP_NAMES:
+		tree = jvst_cnode_alloc(node->type);
+		tree->u.prop_names = node->u.prop_names;
+		return tree;
+
 	case JVST_CNODE_OBJ_REQUIRED:
 		tree = jvst_cnode_alloc(node->type);
 		tree->u.required = node->u.required;
@@ -1432,8 +1503,8 @@ cnode_deep_copy(struct jvst_cnode *node)
 		{
 			struct jvst_cnode *item, **ip;
 			tree = jvst_cnode_alloc(node->type);
-			ip = &tree->u.arr_item;
-			for (item = node->u.arr_item; item != NULL; item = item->next) {
+			ip = &tree->u.items;
+			for (item = node->u.items; item != NULL; item = item->next) {
 				*ip = cnode_deep_copy(item);
 				ip  = &(*ip)->next;
 			}
@@ -1442,7 +1513,12 @@ cnode_deep_copy(struct jvst_cnode *node)
 
 	case JVST_CNODE_ARR_ADDITIONAL:
 		tree = jvst_cnode_alloc(node->type);
-		tree->u.arr_item = cnode_deep_copy(node->u.arr_item);
+		tree->u.items = cnode_deep_copy(node->u.items);
+		return tree;
+
+	case JVST_CNODE_ARR_CONTAINS:
+		tree = jvst_cnode_alloc(node->type);
+		tree->u.contains = cnode_deep_copy(node->u.contains);
 		return tree;
 
 	case JVST_CNODE_OBJ_REQMASK:
@@ -1468,7 +1544,12 @@ cnode_deep_copy(struct jvst_cnode *node)
 				*mspp = cnode_matchset_new(mset->match, NULL);
 				mspp = &(*mspp)->next;
 			}
-			tree->u.mcase.constraint = cnode_deep_copy(node->u.mcase.constraint);
+
+			if (node->u.mcase.name_constraint) {
+				tree->u.mcase.name_constraint = cnode_deep_copy(node->u.mcase.name_constraint);
+			}
+
+			tree->u.mcase.value_constraint = cnode_deep_copy(node->u.mcase.value_constraint);
 			return tree;
 		}
 	}
@@ -1561,6 +1642,43 @@ cnode_simplify_andor_switches(struct jvst_cnode *top)
 	return sw;
 }
 
+static struct jvst_cnode *
+cnode_simplify_xor_switches(struct jvst_cnode *top)
+{
+	// check if all nodes are SWITCH nodes.  If they are, combine
+	// the switch clauses and simplify
+
+	struct jvst_cnode *node, **pp, *sw;
+	size_t i, n;
+
+	for (node = top->u.ctrl; node != NULL; node = node->next) {
+		if (node->type != JVST_CNODE_SWITCH) {
+			return top;
+		}
+	}
+
+	// all nodes are switch nodes...
+	sw = jvst_cnode_alloc(JVST_CNODE_SWITCH);
+	for (i = 0, n = ARRAYLEN(sw->u.sw); i < n; i++) {
+		struct jvst_cnode *jxn, **cpp;
+
+		jxn = jvst_cnode_alloc(top->type);
+		cpp = &jxn->u.ctrl;
+
+		for (node = top->u.ctrl; node != NULL; node = node->next) {
+			assert(node->type == JVST_CNODE_SWITCH);
+
+			*cpp = node->u.sw[i];
+			assert((*cpp)->next == NULL);
+			cpp = &(*cpp)->next;
+		}
+
+		sw->u.sw[i] = jvst_cnode_simplify(jxn);
+	}
+
+	return sw;
+}
+
 // merges any children that are PROPSET nodes into a single
 // PROPSET that contains all of the PROP_MATCHes.
 //
@@ -1571,13 +1689,14 @@ cnode_simplify_andor_switches(struct jvst_cnode *top)
 static struct jvst_cnode *
 cnode_simplify_and_propsets(struct jvst_cnode *top)
 {
-	struct jvst_cnode *comb, *psets, *pdfts, **npp, **dftpp;
-	size_t npsets, npdfts;
+	struct jvst_cnode *comb, *psets, *pdfts, **dftpp, *pnames, **pnpp, **npp;
+	size_t npsets, npdfts, npnames;
 
 	// check how many PROPSET children we have... if less than two,
 	// no simplification is necessary
-	npsets = 0;
-	npdfts = 0;
+	npsets  = 0;
+	npdfts  = 0;
+	npnames = 0;
 	{
 		struct jvst_cnode *node;
 		for (node = top->u.ctrl; node != NULL; node= node->next) {
@@ -1590,6 +1709,10 @@ cnode_simplify_and_propsets(struct jvst_cnode *top)
 				npdfts++;
 				break;
 
+			case JVST_CNODE_OBJ_PROP_NAMES:
+				npnames++;
+				break;
+
 			default:
 				break;
 			}
@@ -1597,7 +1720,7 @@ cnode_simplify_and_propsets(struct jvst_cnode *top)
 	}
 
 	// If only less than two PROPSETs and no PROP_DEFAULT, return
-	if (npsets < 2 && npdfts == 0) {
+	if (npsets < 2 && npdfts == 0 && npnames == 0) {
 		return top;
 	}
 
@@ -1605,12 +1728,12 @@ cnode_simplify_and_propsets(struct jvst_cnode *top)
 	// from the parent's list of nodes.  We keep them in different
 	// lists of nodes
 	psets = NULL;
-	pdfts = NULL;
+	pdfts = NULL;  dftpp = &pdfts;
+	pnames = NULL; pnpp  = &pnames;
 	{
 		struct jvst_cnode **setpp;
 
 		setpp = &psets;
-		dftpp = &pdfts;
 		for (npp = &top->u.ctrl; *npp != NULL; ) {
 			switch ((*npp)->type) {
 			case JVST_CNODE_OBJ_PROP_SET:
@@ -1627,6 +1750,14 @@ cnode_simplify_and_propsets(struct jvst_cnode *top)
 
 				dftpp = &(*dftpp)->next;
 				*dftpp = NULL;
+				break;
+
+			case JVST_CNODE_OBJ_PROP_NAMES:
+				*pnpp = *npp;
+				*npp = (*npp)->next;
+
+				pnpp = &(*pnpp)->next;
+				*pnpp = NULL;
 				break;
 
 			default:
@@ -1652,19 +1783,36 @@ cnode_simplify_and_propsets(struct jvst_cnode *top)
 			assert(node->u.prop_set != NULL);
 			assert(node->type == JVST_CNODE_OBJ_PROP_SET);
 			assert(node->u.prop_set->type == JVST_CNODE_OBJ_PROP_MATCH ||
+				node->u.prop_set->type == JVST_CNODE_OBJ_PROP_NAMES ||
 				node->u.prop_set->type == JVST_CNODE_OBJ_PROP_DEFAULT);
 
 			*pmpp = node->u.prop_set;
 			while (*pmpp != NULL) {
-				if ((*pmpp)->type == JVST_CNODE_OBJ_PROP_DEFAULT) {
+				switch ((*pmpp)->type) {
+				case JVST_CNODE_OBJ_PROP_DEFAULT:
 					// add node to dftpp list and
 					// remove from pmpp list
 					*dftpp = *pmpp;
 					*pmpp = (*pmpp)->next;
 					dftpp = &(*dftpp)->next;
 					*dftpp = NULL;
-				} else {
+					break;
+
+				case JVST_CNODE_OBJ_PROP_NAMES:
+					// add node to pnpp list and
+					// remove from pmpp list
+					*pnpp = *pmpp;
+					*pmpp = (*pmpp)->next;
+					pnpp = &(*pnpp)->next;
+					*pnpp = NULL;
+					break;
+
+				case JVST_CNODE_OBJ_PROP_MATCH:
 					pmpp = &(*pmpp)->next;
+					break;
+					
+				default:
+					UNKNOWN_NODE_TYPE(*pmpp);
 				}
 			}
 		}
@@ -1705,6 +1853,17 @@ cnode_simplify_and_propsets(struct jvst_cnode *top)
 		assert(comb_dft->next == NULL);
 		comb_dft->next = comb->u.prop_set;
 		comb->u.prop_set = comb_dft;
+	}
+
+	// Add PROP_NAMES node to the PROPSET.  There should be at most
+	// one PROP_NAMES node.
+	if (pnames != NULL) {
+		if (pnames->next != NULL) {
+			DIE("multiple PROP_NAMES nodes not supported\n");
+		}
+
+		pnames->next = comb->u.prop_set;
+		comb->u.prop_set = pnames;
 	}
 
 	// all children are PROPSETs... return the combined PROPSET
@@ -1797,521 +1956,249 @@ cnode_simplify_ctrl_children(struct jvst_cnode *top)
 void
 cnode_simplify_ctrl_combine_like(struct jvst_cnode *top)
 {
-	struct jvst_cnode *node, *next, **pp;
+	struct jvst_cnode *node, *next, *newlist, **pp;
+
+	assert(top != NULL);
+	assert(top->type == JVST_CNODE_AND || top->type == JVST_CNODE_OR);
+	assert(top->u.ctrl != NULL);
 
 	// combine subnodes of the same type (ie: AND will combine with
 	// AND and OR will combine with OR)
-	for (pp = &top->u.ctrl; *pp != NULL; pp = &(*pp)->next) {
-		if ((*pp)->type != top->type) {
+	newlist = NULL;
+	pp = &newlist;
+	for (node = top->u.ctrl; node != NULL; node = next) {
+		next = node->next;
+
+		if (node->type != top->type) {
+			*pp = node;
+			pp = &node->next;
 			continue;
 		}
 
-		// save next link
-		next = (*pp)->next;
-		*pp  = (*pp)->u.ctrl;
+		assert(node->u.ctrl != NULL);
 
-		// fast path...
-		if (next == NULL) {
-			continue;
-		}
-
+		*pp = node->u.ctrl;
 		while (*pp != NULL) {
 			pp = &(*pp)->next;
 		}
-
-		*pp = next;
 	}
+
+	top->u.ctrl = newlist;
 }
 
 static struct jvst_cnode *
-cnode_simplify_and_mswitch(struct jvst_cnode *top)
+cnode_or_constraints(struct jvst_cnode *c1, struct jvst_cnode *c2)
 {
-	struct jvst_cnode *msw, *conds;
-	struct jvst_cnode **mswpp, **npp, **cpp;
+	struct jvst_cnode *jxn;
 
-	assert(top->type == JVST_CNODE_AND);
+	assert(c1 != NULL);
+	assert(c2 != NULL);
 
-	// collect all MATCH_SWITCH children and nodes we want to push
-	// into MATCH_SWITCH cases
-	msw = NULL;
-	mswpp = &msw;
+	assert(c1->next == NULL);
+	assert(c2->next == NULL);
 
-	conds = NULL;
-	cpp = &conds;
-
-	for (npp = &top->u.ctrl; *npp != NULL; ) {
-		switch ((*npp)->type) {
-		case JVST_CNODE_MATCH_SWITCH:
-			*mswpp = *npp;
-			*npp = (*npp)->next;
-
-			mswpp = &(*mswpp)->next;
-			*mswpp = NULL;
-			break;
-
-		case JVST_CNODE_LENGTH_RANGE:
-			*cpp = *npp;
-			*npp = (*npp)->next;
-
-			cpp = &(*cpp)->next;
-			*cpp = NULL;
-			break;
-
-		default:
-			npp = &(*npp)->next;
-			continue;
-		}
+	if (c1->type == JVST_CNODE_VALID) {
+		return c1;
 	}
 
-	// no match_switch nodes, so nothing to simplify here
-	if (msw == NULL) {
-		*npp = conds;
-		return top;
+	if (c1->type == JVST_CNODE_INVALID) {
+		return c2;
 	}
 
-	// two or more
-	if (msw->next != NULL) {
-		// XXX - should combine match_switch nodes!
-		//
-		// it's an AND operation... this requires a bit of care
-		// because of the default case.
-		//
-		// Let's merge two match_switch nodes.  Let DFA1 be the
-		// first and DFA2 be the second.  Let DC1 and DC2 be the
-		// default cases for the first and second, respectively.
-		//
-		// 1. We want things that match both DFA1 and DFA2 to
-		//    have neither default case.
-		// 2. Things that match DFA1 and not DFA2 should have
-		//    their matching cases ANDed with DC2.
-		// 3. Things that match DFA2 and not DFA2 should have
-		//    their matching cases ANDed with DC1.
-		// 4. Things that match neither DFA1 nor DFA2 should
-		//    have AND(DC1,DC2)
-		//
-		// #1 is equivalent to intersection(DFA1,DFA2)
-		// #2 is DFA1 - DFA2, or DFA1 - intersection(DFA1,DFA2)
-		// #3 is DFA2 - DFA1, or DFA2 - intersection(DFA1,DFA2)
-		// #4 is the new default case
-
-		// XXX - to do this, we have to replace the carryopaque
-		//       function in the fsm opts.  But... there's no
-		//       easy way to access this at the moment.
+	if (c2->type == JVST_CNODE_VALID) {
+		return c2;
 	}
 
-	// push string conditionals into MATCH
-	// XXX - this is currently the first match_switch node, but
-	//       should work fine when we combine multiple match_switch
-	//       nodes
-	if (conds != NULL) {
-		struct jvst_cnode *jxn, *mc, *dft;
-
-		jxn = jvst_cnode_alloc(JVST_CNODE_AND);
-		jxn->u.ctrl = conds;
-
-		for (mc = msw->u.mswitch.cases; mc != NULL; mc = mc->next) {
-			struct jvst_cnode *case_jxn, *cons;
-
-			assert(mc->type == JVST_CNODE_MATCH_CASE);
-
-			cons = mc->u.mcase.constraint;
-			assert(cons != NULL);
-			assert(cons->next == NULL);
-
-			case_jxn = cnode_deep_copy(jxn);
-			cons->next = case_jxn->u.ctrl;
-			case_jxn->u.ctrl = cons;
-			
-			mc->u.mcase.constraint = case_jxn;
-		}
-
-		dft = msw->u.mswitch.default_case;
-		assert(dft != NULL);
-		assert(dft->next == NULL);
-
-		dft->next = jxn->u.ctrl;
-		jxn->u.ctrl = dft;
-		msw->u.mswitch.default_case = jxn;
+	if (c2->type == JVST_CNODE_INVALID) {
+		return c1;
 	}
 
-	*npp = msw;
+	jxn = jvst_cnode_alloc(JVST_CNODE_OR);
+	c1->next = c2;
+	jxn->u.ctrl = c1;
 
-	return top;
+	return jvst_cnode_simplify(jxn);
 }
 
 static struct jvst_cnode *
-cnode_simplify_andor_strmatch(struct jvst_cnode *top)
+cnode_xor_constraints(struct jvst_cnode *c1, struct jvst_cnode *c2)
 {
-	/* TODO: strmatch cases (like propsets) can be combined more
-	 * easily than match_switches, so we should try to combine them if they're
-	 * AND'd or OR'd:
-	 */
+	struct jvst_cnode *jxn;
 
-	return top;
+	assert(c1 != NULL);
+	assert(c2 != NULL);
+
+	assert(c1->next == NULL);
+	assert(c2->next == NULL);
+
+	if (c1->type == JVST_CNODE_INVALID) {
+		return c2;
+	}
+
+	if (c2->type == JVST_CNODE_INVALID) {
+		return c1;
+	}
+
+	if (c1->type == JVST_CNODE_VALID && c2->type == JVST_CNODE_VALID) {
+		return jvst_cnode_alloc(JVST_CNODE_INVALID);
+	}
+
+	jxn = jvst_cnode_alloc(JVST_CNODE_XOR);
+	c1->next = c2;
+	jxn->u.ctrl = c1;
+
+	return jvst_cnode_simplify(jxn);
 }
 
 static struct jvst_cnode *
-cnode_simplify_andor(struct jvst_cnode *top)
+cnode_and_constraints(struct jvst_cnode *c1, struct jvst_cnode *c2)
 {
-	struct jvst_cnode *node, *next, **pp;
-	enum jvst_cnode_type snt; // short circuit node type
-	enum jvst_cnode_type rnt; // remove node type
+	struct jvst_cnode *jxn;
 
-	cnode_simplify_ctrl_children(top);
+	assert(c1 != NULL);
+	assert(c2 != NULL);
 
-	// pass 1: remove VALID/INVALID nodes
-	switch (top->type) {
+	assert(c1->next == NULL);
+	assert(c2->next == NULL);
+
+	if (c1->type == JVST_CNODE_VALID) {
+		return c2;
+	}
+
+	if (c1->type == JVST_CNODE_INVALID) {
+		return c1;
+	}
+
+	if (c2->type == JVST_CNODE_VALID) {
+		return c1;
+	}
+
+	if (c2->type == JVST_CNODE_INVALID) {
+		return c2;
+	}
+
+	jxn = jvst_cnode_alloc(JVST_CNODE_AND);
+	c1->next = c2;
+	jxn->u.ctrl = c1;
+
+	return jvst_cnode_simplify(jxn);
+}
+
+static struct jvst_cnode *cnode_jxn_constraints(struct jvst_cnode *c1, struct jvst_cnode *c2, enum jvst_cnode_type jxntype)
+{
+	switch (jxntype) {
 	case JVST_CNODE_AND:
-		snt = JVST_CNODE_INVALID;
-		rnt = JVST_CNODE_VALID;
-		break;
+		return cnode_and_constraints(c1,c2);
 
 	case JVST_CNODE_OR:
-		snt = JVST_CNODE_VALID;
-		rnt = JVST_CNODE_INVALID;
-		break;
-
-	default:
-		SHOULD_NOT_REACH();
-	}
-
-	for (pp = &top->u.ctrl; *pp != NULL;) {
-		enum jvst_cnode_type nt = (*pp)->type;
-
-		if (nt == snt) {
-			(*pp)->next = NULL;
-			return *pp;
-		}
-
-		if (nt == rnt) {
-			*pp = (*pp)->next;
-			continue;
-		}
-
-		pp = &(*pp)->next;
-	}
-
-	// all nodes were valid
-	if (top->u.ctrl == NULL) {
-		return jvst_cnode_alloc(rnt);
-	}
-
-	assert(top->u.ctrl != NULL);
-	if (top->u.ctrl->next == NULL) {
-		// only one child
-		return top->u.ctrl;
-	}
-
-	cnode_simplify_ctrl_combine_like(top);
-
-	if (top->type == JVST_CNODE_AND) {
-		top = cnode_simplify_and_propsets(top);
-	}
-
-	if (top->type == JVST_CNODE_AND || top->type == JVST_CNODE_OR) {
-		top = cnode_simplify_andor_strmatch(top);
-	}
-
-	if (top->type == JVST_CNODE_AND) {
-		top = cnode_simplify_and_required(top);
-	}
-
-	if ((top->type == JVST_CNODE_AND) || (top->type == JVST_CNODE_OR)) {
-		top = cnode_simplify_andor_switches(top);
-	}
-
-	/* combine AND'd match_switch nodes, moves any AND'd COUNT_RANGE nodes */
-	if (top->type == JVST_CNODE_AND) {
-		top = cnode_simplify_and_mswitch(top);
-	}
-
-	/* XXX - can also combine OR'd match_switch nodes */
-
-	if (top->type == JVST_CNODE_AND || top->type == JVST_CNODE_OR) {
-		if (top->u.ctrl->next == NULL) {
-			// only one child
-			return top->u.ctrl;
-		}
-	}
-
-	return top;
-}
-
-static struct jvst_cnode *
-cnode_simplify_propset(struct jvst_cnode *tree)
-{
-	struct jvst_cnode *pm;
-
-	// step 1: iterate over PROP_MATCH nodes and simplify each
-	// constraint individually
-	for (pm = tree->u.prop_set; pm != NULL; pm=pm->next) {
-		assert(pm != NULL);
-
-		switch (pm->type) {
-		case JVST_CNODE_OBJ_PROP_MATCH:
-			pm->u.prop_match.constraint = jvst_cnode_simplify(pm->u.prop_match.constraint);
-			break;
-
-		case JVST_CNODE_OBJ_PROP_DEFAULT:
-			pm->u.prop_default = jvst_cnode_simplify(pm->u.prop_default);
-			break;
-
-		default:
-			fprintf(stderr, "%s:%d (%s) %s should not have %s as a child node\n",
-					__FILE__, __LINE__, __func__,
-					jvst_cnode_type_name(tree->type), jvst_cnode_type_name(pm->type));
-			abort();
-		}
-
-	}
-
-	return tree;
-}
-
-struct jvst_cnode *
-jvst_cnode_simplify(struct jvst_cnode *tree)
-{
-	struct jvst_cnode *node;
-
-	// make a copy
-	tree = cnode_deep_copy(tree);
-
-	switch (tree->type) {
-	case JVST_CNODE_INVALID:
-	case JVST_CNODE_VALID:
-	case JVST_CNODE_NUM_INTEGER:
-	case JVST_CNODE_ARR_UNIQUE:
-		return tree;
-
-	case JVST_CNODE_AND:
-	case JVST_CNODE_OR:
-		return cnode_simplify_andor(tree);
+		return cnode_or_constraints(c1,c2);
 
 	case JVST_CNODE_XOR:
-		// TODO: basic optimization for XOR
-		return tree;
+		return cnode_xor_constraints(c1,c2);
 
-	case JVST_CNODE_NOT:
-		// TODO: basic optimizations for NOT
-		return tree;
-
-	case JVST_CNODE_SWITCH:
-		{
-			size_t i, n;
-			for (i = 0, n = ARRAYLEN(tree->u.sw); i < n; i++) {
-				tree->u.sw[i] = jvst_cnode_simplify(tree->u.sw[i]);
-			}
-		}
-		return tree;
-
-	case JVST_CNODE_OBJ_PROP_SET:
-		return cnode_simplify_propset(tree);
-
-	case JVST_CNODE_OBJ_PROP_DEFAULT:
-		{
-			struct jvst_cnode *pset;
-
-			// simplify constraint
-			tree->u.prop_default = jvst_cnode_simplify(tree->u.prop_default);
-
-			// wrap any bare PROP_DEFAULT nodes in a PROP_SET
-			pset = jvst_cnode_alloc(JVST_CNODE_OBJ_PROP_SET);
-			pset->u.prop_set = tree;
-			return pset;
-		}
-
-	case JVST_CNODE_ARR_ITEM:
-	case JVST_CNODE_ARR_ADDITIONAL:
-		{
-			struct jvst_cnode *it, *next, *simplified_items, **spp;
-
-			simplified_items = NULL;
-			spp = &simplified_items;
-			for (it = tree->u.items; it != NULL; it = next) {
-				struct jvst_cnode *simplified;
-
-				next = it->next;
-
-				simplified = jvst_cnode_simplify(it);
-				*spp = simplified;
-				spp = &(*spp)->next;
-				*spp = NULL;
-			}
-
-			tree->u.items = simplified_items;
-			return tree;
-		}
-
-	case JVST_CNODE_MATCH_SWITCH:
-		{
-			struct jvst_cnode *mc, *next;
-
-			tree->u.mswitch.default_case = jvst_cnode_simplify(tree->u.mswitch.default_case);
-
-			for (mc=tree->u.mswitch.cases; mc != NULL; mc = next) {
-				assert(mc->type == JVST_CNODE_MATCH_CASE);
-				next = mc->next;
-				mc->u.mcase.constraint = jvst_cnode_simplify(mc->u.mcase.constraint);
-			}
-
-
-			return tree;
-		}
-
-	case JVST_CNODE_MATCH_CASE:
-		return tree;
-
-	case JVST_CNODE_NUM_RANGE:
-	case JVST_CNODE_LENGTH_RANGE:
-	case JVST_CNODE_PROP_RANGE:
-	case JVST_CNODE_ITEM_RANGE:
-	case JVST_CNODE_STR_MATCH:
-	case JVST_CNODE_OBJ_PROP_MATCH:
-	case JVST_CNODE_OBJ_REQUIRED:
-	case JVST_CNODE_OBJ_REQMASK:
-	case JVST_CNODE_OBJ_REQBIT:
-		// TODO: basic optimization for these nodes
-		return tree;
+	default:
+		DIEF("combining constraints with %s not yet implemented\n",
+			jvst_cnode_type_name(jxntype));
 	}
-
-	// avoid default case in switch so the compiler can complain if
-	// we add new cnode types
-	SHOULD_NOT_REACH();
-}
-
-struct json_str_iter {
-	struct json_string str;
-	size_t off;
-};
-
-static int
-json_str_getc(void *p)
-{
-	struct json_str_iter *iter = p;
-	unsigned char ch;
-
-	if (iter->off >= iter->str.len) {
-		return EOF;
-	}
-
-	ch = iter->str.s[iter->off++];
-	return ch;
 }
 
 static void
-merge_mcases(const struct fsm_state **orig, size_t n,
-	struct fsm *dfa, struct fsm_state *comb)
+collect_mcases(struct fsm *dfa, struct jvst_cnode **mcpp);
+
+static struct jvst_cnode *
+mcase_list_jxn_with_default(struct jvst_cnode *mcases, struct jvst_cnode *dft, struct fsm *dfa, enum jvst_cnode_type jxntype)
 {
-	struct jvst_cnode *mcase, *jxn, **jpp;
-	struct jvst_cnode_matchset **mspp;
-	size_t nstates;
-	size_t i;
+	struct jvst_cnode *vcons, *ncons, *c, *new_cases, **ncpp;
 
-	// first count states to make sure that we need to merge...
-	mcase = NULL;
-	nstates = 0;
+	assert(dft->type == JVST_CNODE_MATCH_CASE);
 
-	for (i = 0; i < n; i++) {
-		struct jvst_cnode *c;
+	ncons = dft->u.mcase.name_constraint;
+	vcons = dft->u.mcase.value_constraint;
 
-		if (!fsm_isend(dfa, orig[i])) {
-			continue;
-		}
-
-		c = fsm_getopaque(dfa, orig[i]);
-		assert(c != NULL);
-
-		// allow a fast path if nstates==1
-		if (mcase == NULL) {
-			mcase = c;
-		}
-
-		nstates++;
+	// safe to ignore VALID name constraint
+	if (ncons != NULL && ncons->type == JVST_CNODE_VALID) {
+		ncons = NULL;
 	}
 
-	if (nstates == 0) {
-		return;
-	}
-
-	if (nstates == 1) {
-		assert(mcase != NULL);
-		assert(mcase->next == NULL);
-		fsm_setopaque(dfa, comb, mcase);
-		return;
-	}
-
-	// okay... need to combine things...
-	jxn = jvst_cnode_alloc(JVST_CNODE_AND);
-	jpp = &jxn->u.ctrl;
-	mcase = cnode_new_mcase(NULL, jxn);
-	mspp = &mcase->u.mcase.matchset;
-
-	for (i = 0; i < n; i++) {
-		struct jvst_cnode *c;
-		struct jvst_cnode_matchset *mset;
-
-		if (!fsm_isend(dfa, orig[i])) {
-			continue;
+	// fast exit for AND and OR jxn types: default cases that won't change anything
+	// (no or always VALID name constraints and always VALID default constriants)
+	if (jxntype == JVST_CNODE_AND || jxntype == JVST_CNODE_OR) {
+		if (ncons == NULL && vcons->type == JVST_CNODE_VALID) {
+			return mcases;
 		}
+	}
 
-		c = fsm_getopaque(dfa, orig[i]);
-		assert(c != NULL);
-
+	new_cases = NULL;
+	ncpp = &new_cases;
+	for (c = mcases; c != NULL; c = c->next) {
+		struct jvst_cnode *nc, *vdft;
 		assert(c->type == JVST_CNODE_MATCH_CASE);
-		assert(c->u.mcase.matchset != NULL);
 
-		// XXX - currently don't check for duplicates.
-		// Do we need to?
-		for (mset = c->u.mcase.matchset; mset != NULL; mset = mset->next) {
-			*mspp = cnode_matchset_new(mset->match, NULL);
-			mspp = &(*mspp)->next;
+		nc = cnode_deep_copy(c);
+
+		if (ncons != NULL) {
+			struct jvst_cnode *nnc;
+			nnc = cnode_deep_copy(ncons);
+			assert(nnc->type != JVST_CNODE_MATCH_CASE);
+
+		       if (nc->u.mcase.name_constraint == NULL) {
+			       nc->u.mcase.name_constraint = nnc;
+		       } else {
+			       assert(nc->u.mcase.name_constraint->type != JVST_CNODE_MATCH_CASE);
+
+			       nc->u.mcase.name_constraint = 
+				       cnode_jxn_constraints(nc->u.mcase.name_constraint, nnc, jxntype);
+		       }
 		}
 
-		*jpp = cnode_deep_copy(c->u.mcase.constraint);
-		jpp = &(*jpp)->next;
+		vdft = cnode_deep_copy(vcons);
+		nc->u.mcase.value_constraint = cnode_jxn_constraints(nc->u.mcase.value_constraint, vdft, jxntype);
+
+		// so the dfa can be updated with the revised MATCH_CASE
+		// nodes
+		c->u.mcase.tmp = nc;
+
+		*ncpp = nc;
+		ncpp = &nc->next;
 	}
 
-	assert(mcase->next == NULL);
-	fsm_setopaque(dfa, comb, mcase);
+	// update states in the dfa
+	fsm_walk_states(dfa, NULL, mcase_update_opaque);
+
+	// reset the tmp fields
+	for (c = mcases; c != NULL; c = c->next) {
+		assert(c->type == JVST_CNODE_MATCH_CASE);
+		assert(c->u.mcase.tmp != NULL);
+		c->u.mcase.tmp = NULL;
+	}
+
+	return new_cases;
 }
 
-struct mcase_collector {
-	struct jvst_cnode **mcpp;
-};
-// static struct jvst_cnode **mcase_collector_head;
+static struct jvst_cnode *
+dfa_jxn_cases_with_default(struct fsm *dfa, struct jvst_cnode *dft, enum jvst_cnode_type jxntype)
+{
+	struct jvst_cnode *cases;
+
+	cases = NULL;
+	collect_mcases(dfa, &cases);
+
+	return mcase_list_jxn_with_default(cases, dft, dfa, jxntype);
+}
+
+static struct jvst_cnode *
+mswitch_jxn_cases_with_default(struct jvst_cnode *msw, struct jvst_cnode *dft, enum jvst_cnode_type jxntype)
+{
+	struct jvst_cnode *vcons, *ncons, *c, *new_cases, **ncpp;
+
+	new_cases = mcase_list_jxn_with_default(msw->u.mswitch.cases, dft, msw->u.mswitch.dfa, jxntype);
+	msw->u.mswitch.cases = new_cases;
+
+	return msw;
+}
 
 static int
-mcase_collector(const struct fsm *dfa, const struct fsm_state *st, void *opaque)
-{
-	struct jvst_cnode *node;
-	struct mcase_collector *collector;
-
-	collector = opaque;
-	assert(collector->mcpp != NULL);
-	assert(*collector->mcpp == NULL);
-
-	if (!fsm_isend(dfa, st)) {
-		return 1;
-	}
-
-	node = fsm_getopaque((struct fsm *)dfa, st);
-	assert(node->type == JVST_CNODE_MATCH_CASE);
-
-	if (node->u.mcase.collected) {
-		return 1;
-	}
-
-	assert(node->next == NULL);
-	assert(collector->mcpp != &node->next);
-
-	*collector->mcpp = node;
-	collector->mcpp = &node->next;
-	node->u.mcase.collected = 1;
-
-	return 1;
-}
-
-static int matchset_cmp(const void *p0, const void *p1)
+matchset_cmp(const void *p0, const void *p1)
 {
 	const struct jvst_cnode_matchset *const *ms0, *const *ms1;
 	int diff;
@@ -2456,6 +2343,1985 @@ sort_mcases(struct jvst_cnode **mcpp)
 	}
 }
 
+struct mcase_collector {
+	struct jvst_cnode **mcpp;
+};
+
+static int
+mcase_collector(const struct fsm *dfa, const struct fsm_state *st, void *opaque)
+{
+	struct jvst_cnode *node;
+	struct mcase_collector *collector;
+
+	collector = opaque;
+	assert(collector->mcpp != NULL);
+	assert(*collector->mcpp == NULL);
+
+	if (!fsm_isend(dfa, st)) {
+		return 1;
+	}
+
+	node = fsm_getopaque((struct fsm *)dfa, st);
+	assert(node->type == JVST_CNODE_MATCH_CASE);
+
+	if (node->u.mcase.collected) {
+		return 1;
+	}
+
+	assert(collector->mcpp != &node->next);
+
+	*collector->mcpp = node;
+	collector->mcpp = &node->next;
+	*collector->mcpp = NULL;
+
+	node->u.mcase.collected = 1;
+
+	return 1;
+}
+
+static void
+collect_mcases(struct fsm *dfa, struct jvst_cnode **mcpp)
+{
+	struct mcase_collector collector;
+	struct jvst_cnode *n, **it;
+
+	assert(mcpp != NULL);
+
+	collector.mcpp = mcpp;
+	*collector.mcpp = NULL;
+
+	fsm_walk_states(dfa, &collector, mcase_collector);
+
+	for (it=mcpp; *it != NULL; it = &(*it)->next) {
+		assert((*it)->type == JVST_CNODE_MATCH_CASE);
+
+		(*it)->u.mcase.collected = 0;
+	}
+
+	sort_mcases(mcpp);
+}
+
+static void
+merge_mcases_with_and(const struct fsm_state **orig, size_t n,
+	struct fsm *dfa, struct fsm_state *comb);
+
+// "non-destructive" intersection
+static struct fsm *
+intersect_nd(const struct fsm *a, const struct fsm *b, const struct fsm_options *opts)
+{
+	struct fsm *dfa1, *dfa2;
+
+	assert(opts != NULL);
+
+	// fsm_intersect frees its arguments, so we make copies to
+	// preserve the originals
+	dfa1 = fsm_clone(a);
+	if (!dfa1) {
+		return NULL;
+	}
+
+	fsm_setoptions(dfa1, opts);
+
+	dfa2 = fsm_clone(b);
+	if (!dfa2) {
+		fsm_free(dfa1);
+		return NULL;
+	}
+
+	fsm_setoptions(dfa2, opts);
+
+	return fsm_intersect(dfa1,dfa2);
+}
+
+// subtract(a, b) = intersect(a, complement(b)).
+// sets the opaque value of end states of complement(b) to opaque_compl
+static struct fsm *
+subtract_nd(const struct fsm *a, const struct fsm *b, const struct fsm_options *opts)
+{
+	struct fsm *dfa1, *dfa2;
+
+	assert(opts != NULL);
+
+	// fsm_intersect frees its arguments, so we make copies to
+	// preserve the originals
+	dfa1 = fsm_clone(a);
+	if (!dfa1) {
+		return NULL;
+	}
+
+	fsm_setoptions(dfa1, opts);
+
+	dfa2 = fsm_clone(b);
+	if (!dfa2) {
+		fsm_free(dfa1);
+		return NULL;
+	}
+
+	fsm_setoptions(dfa2, opts);
+
+	return fsm_subtract(dfa1,dfa2);
+}
+
+static void
+merge_mcases_with_or(const struct fsm_state **orig, size_t n,
+	struct fsm *dfa, struct fsm_state *comb);
+
+static void
+merge_mcases_with_xor(const struct fsm_state **orig, size_t n,
+	struct fsm *dfa, struct fsm_state *comb);
+
+static void
+mcase_add_name_constraint(struct jvst_cnode *c, struct jvst_cnode *name_cons)
+{
+	struct jvst_cnode *top_jxn, *jxn;
+
+	// sanity assertions
+	assert(c != NULL);
+	assert(c->type == JVST_CNODE_MATCH_CASE);
+	assert(c->u.mcase.value_constraint != NULL);
+	assert(c->u.mcase.value_constraint->next == NULL);
+
+	assert(name_cons != NULL);
+	assert(name_cons->type != JVST_CNODE_MATCH_CASE);
+
+	// ASSUMPTION: name_cons is simplified!
+	jxn = cnode_deep_copy(name_cons);
+
+	if (c->u.mcase.name_constraint == NULL) {
+		// NB: cjxn (and thus jxn) are already simplified
+		c->u.mcase.name_constraint = jxn;
+	} else {
+		struct jvst_cnode *top_jxn;
+
+		// We can do a better job of not overallocating nodes
+		// here!
+		top_jxn = jvst_cnode_alloc(JVST_CNODE_AND);
+		top_jxn->u.ctrl = jxn;
+		jxn->next = c->u.mcase.name_constraint;
+
+		c->u.mcase.name_constraint = jvst_cnode_simplify(top_jxn);
+		assert(c->u.mcase.name_constraint->type != JVST_CNODE_MATCH_CASE);
+	}
+}
+
+static struct jvst_cnode *
+merge_mswitches(struct jvst_cnode *mswlst, enum jvst_cnode_type jxntype)
+{
+	struct jvst_cnode *n, *msw;
+	void (*mergefunc)(const struct fsm_state **, size_t, struct fsm *, struct fsm_state *);
+
+	static const int dbg = 0;
+
+	assert(mswlst != NULL);
+	assert(mswlst->type == JVST_CNODE_MATCH_SWITCH);
+
+	switch (jxntype) {
+	case JVST_CNODE_AND:
+		mergefunc = merge_mcases_with_and;
+		break;
+
+	case JVST_CNODE_OR:
+		mergefunc = merge_mcases_with_or;
+		break;
+
+	case JVST_CNODE_XOR:
+		mergefunc = merge_mcases_with_xor;
+		break;
+
+	default:
+		DIEF("merging mswitches combined with %s not yet implemented\n",
+			jvst_cnode_type_name(jxntype));
+	}
+
+	if (mswlst->next == NULL) {
+		return mswlst;
+	}
+
+	msw = cnode_deep_copy(mswlst);
+	for (n = mswlst->next; n != NULL; n = n->next) {
+		assert(n->type == JVST_CNODE_MATCH_SWITCH);
+
+		if (msw->u.mswitch.cases != NULL && n->u.mswitch.cases != NULL) {
+			struct fsm *dfa1, *dfa2, *both, *only1, *only2, *combined;
+			const struct fsm_options *orig_opts;
+			struct fsm_options opts;
+			struct jvst_cnode *mc1, *mc2;
+
+			// Combining match_switch nodes with OR
+			//
+			// Let the non-default cases for DFA1 be:
+			//   A_1, A_2, ... A_M, and the default case be A_0.
+			//
+			// Similarly, let the non-default cases for DFA2 be:
+			//   B_1, B_2, ... B_N, and the default case be B_0.
+			//
+			// First focus on something that matches case A_1.  There are two possibilities:
+			//
+			//   1. It also matches some non-default case in DFA2: say B_k
+			//   2. It matches the default case in DFA2: B_0
+			//
+			// If it matches B_k, then the combined constraint is:
+			//   OR(A_1, B_k).
+			//
+			// If it matches the default case, the combine constraint is:
+			//   OR(A_1, B_0).
+			//
+			// We have four general situations:
+			//
+			//   1. Matches non-default in DFA1 and non-default in DFA2
+			//
+			//      The combined states are given by intersect(DFA1,DFA2)
+			//
+			//   2. Matches non-default in DFA1 and default in DFA2
+			//
+			//      The combined states are given by subtract(DFA1,DFA2)
+			//   
+			//   3. Matches default in DFA1 and non-default in DFA2
+			//
+			//      The combined states are given by subtract(DFA2,DFA1)
+			//   
+			//   4. Matches default in DFA1 and default in DFA2
+			//
+			//      Indicates that nothing above has been matched.
+			//
+			// Thus we need:
+			//   both  = intersect(DFA1,DFA2)
+			//   only1 = subtract(DFA1,DFA2)
+			//   only2 = subtract(DFA2,DFA1)
+			//
+			//   combined = union(both, only1, only2)
+			//
+			// In all of these cases, we need the opaque values to be merged
+			// correctly.
+
+			dfa1 = msw->u.mswitch.dfa;
+			dfa2 = n->u.mswitch.dfa;
+
+			orig_opts = fsm_getoptions(dfa1);
+			opts = *orig_opts;
+			opts.carryopaque = mergefunc;
+			opts.tidy = false;
+
+			// both = DFA1 & DFA2
+			both = intersect_nd(dfa1,dfa2,&opts);
+			if (!both) {
+				perror("intersecting (dfa1 & dfa2)");
+				abort();
+			}
+
+			if (dbg) {
+				fprintf(stderr, "\n---> both <---\n");
+				fsm_print(both, stderr, FSM_OUT_FSM);
+			}
+
+			// only1 = DFA2 - DFA1
+			only1 = subtract_nd(dfa1,dfa2,&opts);
+			if (!only1) {
+				perror("subtracting (DFA1 - DFA2)");
+				abort();
+			}
+
+			mc2 = cnode_deep_copy(n->u.mswitch.dft_case);
+			dfa_jxn_cases_with_default(only1, mc2, jxntype);
+
+			if (dbg) {
+				fprintf(stderr, "\n---> only1 <---\n");
+				fsm_print(only1, stderr, FSM_OUT_FSM);
+			}
+
+			// only2 = DFA2 - DFA1
+			only2 = subtract_nd(dfa2,dfa1,&opts);
+			if (!only2) {
+				perror("subtracting (DFA2 - DFA1)");
+				abort();
+			}
+
+			/*
+			if (!fsm_minimise(only2)) {
+				perror("minimizing (DFA2 - DFA1)");
+				abort();
+			}
+			*/
+
+			mc1 = cnode_deep_copy(msw->u.mswitch.dft_case);
+			dfa_jxn_cases_with_default(only2, mc1, jxntype);
+
+			if (dbg) {
+				fprintf(stderr, "\n---> only2 <---\n");
+				fsm_print(only2, stderr, FSM_OUT_FSM);
+			}
+
+			// now union DFA1&DFA2, DFA1-DFA2, and DFA2-DFA1 together
+			combined = fsm_union(both, only1);
+			if (!combined) {
+				perror("unioning (both OR only1)");
+				abort();
+			}
+
+			combined = fsm_union(combined, only2);
+			if (!combined) {
+				perror("unioning (combined OR only2)");
+				abort();
+			}
+
+			if (!fsm_determinise(combined)) {
+				perror("determinising union");
+				abort();
+			}
+
+			if (dbg) {
+				fprintf(stderr, "\n---> combined <---\n");
+				fsm_print(combined, stderr, FSM_OUT_FSM);
+			}
+
+			fsm_setoptions(combined, orig_opts);
+
+			// Finally, gather mcases
+			msw->u.mswitch.dfa = combined;
+			collect_mcases(combined, &msw->u.mswitch.cases);
+		} else if (n->u.mswitch.cases != NULL) {
+			assert(msw->u.mswitch.cases == NULL);
+
+			msw->u.mswitch.dfa = fsm_clone(n->u.mswitch.dfa);
+			msw->u.mswitch.cases = n->u.mswitch.cases;
+			mswitch_jxn_cases_with_default(msw, msw->u.mswitch.dft_case, jxntype);
+		} else if (msw->u.mswitch.cases != NULL) {
+			// need to AND together msw's default case and
+			// each of n's cases
+			mswitch_jxn_cases_with_default(msw, n->u.mswitch.dft_case, jxntype);
+		}
+
+		assert(msw->u.mswitch.dft_case != NULL);
+		assert(msw->u.mswitch.dft_case->type == JVST_CNODE_MATCH_CASE);
+
+		assert(n->u.mswitch.dft_case != NULL);
+		assert(n->u.mswitch.dft_case->type == JVST_CNODE_MATCH_CASE);
+
+		if (msw->u.mswitch.dft_case->u.mcase.name_constraint && n->u.mswitch.dft_case->u.mcase.name_constraint) {
+			msw->u.mswitch.dft_case->u.mcase.name_constraint = cnode_jxn_constraints(
+					msw->u.mswitch.dft_case->u.mcase.name_constraint,
+					n->u.mswitch.dft_case->u.mcase.name_constraint,
+					jxntype);
+		} else if (n->u.mswitch.dft_case->u.mcase.name_constraint) {
+			msw->u.mswitch.dft_case->u.mcase.name_constraint = cnode_deep_copy(
+				n->u.mswitch.dft_case->u.mcase.name_constraint);
+		}
+
+		msw->u.mswitch.dft_case->u.mcase.value_constraint = cnode_jxn_constraints(
+				msw->u.mswitch.dft_case->u.mcase.value_constraint,
+				n->u.mswitch.dft_case->u.mcase.value_constraint,
+				jxntype);
+	}
+
+	msw = jvst_cnode_simplify(msw);
+	return msw;
+}
+
+static struct jvst_cnode *
+cnode_simplify_and_mswitch(struct jvst_cnode *top)
+{
+	struct jvst_cnode *msw, *conds;
+	struct jvst_cnode **mswpp, **npp, **cpp;
+
+	assert(top->type == JVST_CNODE_AND);
+
+	// collect all MATCH_SWITCH children and cnodes we want to push
+	// into MATCH_SWITCH cases
+	msw = NULL;
+	mswpp = &msw;
+
+	// conditions that apply to all cases of the match switch.
+	// currently this is only string length constraints, and
+	// specifically LENGTH_RANGE nodes (other string constraints are
+	// rolled into MATCH_SWITCH/MATCH_CASE).
+	conds = NULL;
+	cpp = &conds;
+
+	for (npp = &top->u.ctrl; *npp != NULL; ) {
+		switch ((*npp)->type) {
+		case JVST_CNODE_MATCH_SWITCH:
+			*mswpp = *npp;
+			*npp = (*npp)->next;
+
+			mswpp = &(*mswpp)->next;
+			*mswpp = NULL;
+			break;
+
+		case JVST_CNODE_LENGTH_RANGE:
+			*cpp = *npp;
+			*npp = (*npp)->next;
+
+			cpp = &(*cpp)->next;
+			*cpp = NULL;
+			break;
+
+		default:
+			npp = &(*npp)->next;
+			continue;
+		}
+	}
+
+	// no match_switch node, add contraints back to the AND top node
+	// and return
+	//
+	// XXX - revisit this.  should we handle all string constraints
+	// through a MATCH_SWITCH, even if it only involves the default
+	// case.
+	if (msw == NULL) {
+		*npp = conds;
+		return top;
+	}
+
+	// msw = merge_mswitches_with_and(msw);
+	msw = merge_mswitches(msw, JVST_CNODE_AND);
+
+	*npp = msw;
+
+	if (conds == NULL) {
+		return top;
+	}
+
+	// push string conditionals into the constraints field of the
+	// MATCH_SWITCH
+	//
+	// after merging mswitches above, there should be only one
+	// mswitch node
+	{
+		struct jvst_cnode *c, *cjxn;
+		cjxn = jvst_cnode_alloc(JVST_CNODE_AND);
+		cjxn->u.ctrl = conds;
+		cjxn = jvst_cnode_simplify(cjxn);
+
+		assert(cjxn->u.ctrl != NULL);
+
+		for (c = msw->u.mswitch.cases; c != NULL; c = c->next) {
+			mcase_add_name_constraint(c, cjxn);
+		}
+
+		{ 
+			struct jvst_cnode *dft, *top_jxn;
+			dft = msw->u.mswitch.dft_case;
+
+			// sanity checks
+			assert(dft != NULL);
+			assert(dft->type == JVST_CNODE_MATCH_CASE);
+			assert(dft->next == NULL);
+			assert(cjxn->next == NULL);
+
+			mcase_add_name_constraint(dft, cjxn);
+		}
+	}
+
+	return top;
+}
+
+static struct jvst_cnode *
+cnode_simplify_or_xor_mswitch(struct jvst_cnode *top)
+{
+	struct jvst_cnode *msw, **mswpp, **npp;
+
+	assert(top->type == JVST_CNODE_OR || top->type == JVST_CNODE_XOR);
+
+	// collect all MATCH_SWITCH children and nodes we want to push
+	// into MATCH_SWITCH cases
+	msw = NULL;
+	mswpp = &msw;
+
+	for (npp = &top->u.ctrl; *npp != NULL; ) {
+		switch ((*npp)->type) {
+		case JVST_CNODE_MATCH_SWITCH:
+			*mswpp = *npp;
+			*npp = (*npp)->next;
+
+			mswpp = &(*mswpp)->next;
+			*mswpp = NULL;
+			break;
+
+		default:
+			npp = &(*npp)->next;
+			continue;
+		}
+	}
+
+	if (msw != NULL) {
+		switch (top->type) {
+		case JVST_CNODE_OR:
+			msw = merge_mswitches(msw, JVST_CNODE_OR);
+			break;
+
+		case JVST_CNODE_XOR:
+			msw = merge_mswitches(msw, JVST_CNODE_XOR);
+			break;
+
+		default:
+			SHOULD_NOT_REACH();
+		}
+
+		*npp = msw;
+	}
+
+	return top;
+}
+
+static struct jvst_cnode *
+cnode_simplify_andor_strmatch(struct jvst_cnode *top)
+{
+	/* TODO: strmatch cases (like propsets) can be combined more
+	 * easily than match_switches, so we should try to combine them if they're
+	 * AND'd or OR'd:
+	 */
+
+	return top;
+}
+
+static int
+cmp_range_cnodes(const void *pa, const void *pb)
+{
+	static const size_t no_upper = (size_t)-1;
+	struct jvst_cnode *a, *b;
+	size_t max_a, max_b;
+
+	a = *((struct jvst_cnode **)pa);
+	b = *((struct jvst_cnode **)pb);
+
+	assert(a->type == JVST_CNODE_LENGTH_RANGE ||
+		a->type == JVST_CNODE_PROP_RANGE  ||
+		a->type == JVST_CNODE_ITEM_RANGE);
+
+	assert(b->type == JVST_CNODE_LENGTH_RANGE ||
+		b->type == JVST_CNODE_PROP_RANGE  ||
+		b->type == JVST_CNODE_ITEM_RANGE);
+
+	if (a->u.counts.min < b->u.counts.min) {
+		return -1;
+	}
+	
+	if (a->u.counts.min > b->u.counts.min) {
+		return 1;
+	}
+
+	max_a = a->u.counts.upper ? a->u.counts.max : no_upper;
+	max_b = b->u.counts.upper ? b->u.counts.max : no_upper;
+
+	if (max_a < max_b) {
+		return -1;
+	}
+
+	if (max_a > max_b) {
+		return 1;
+	}
+
+	return 0;
+}
+
+static struct jvst_cnode *
+cnode_simplify_ored_count_range(struct jvst_cnode *rlist)
+{
+	enum jvst_cnode_type type;
+	struct jvst_cnode *rn, *ret, *jxn, *ccn, **ccnpp;
+	struct jvst_cnode *node_buf[4], **node_arr;
+	size_t i,n;
+
+	/* ORing is somewhat harder than AND-ing them... ORed expressions
+	 * can encompass N disjoint regions.  We want to combine them in an
+	 * efficient way.
+	 *
+	 * To do this, we first collect and sort the nodes by their range.
+	 */
+
+	if (rlist == NULL) {
+		return NULL;
+	}
+
+	type = rlist->type;
+
+	// ensure that the first node is count range
+	assert(type == JVST_CNODE_LENGTH_RANGE ||
+		type == JVST_CNODE_PROP_RANGE  ||
+		type == JVST_CNODE_ITEM_RANGE);
+
+	n=0;
+	for (rn=rlist; rn != NULL; rn = rn->next) {
+		assert(rn->type == type);
+		n++;
+	}
+
+	assert(n > 0); // sanity check
+
+	if (n == 1) {
+		return rlist;
+	}
+
+	if (n <= ARRAYLEN(node_buf)) {
+		node_arr = &node_buf[0];
+	} else {
+		node_arr = malloc(n * sizeof node_arr[0]);
+	}
+
+	for (i=0, rn=rlist; rn != NULL; i++, rn = rn->next) {
+		assert(i < n);
+		assert(rn->type == type);
+		node_arr[i] = rn;
+	}
+
+	qsort(node_arr, n, sizeof *node_arr, cmp_range_cnodes);
+
+	// Now that the nodes are sorted by range, we traverse the list in
+	// the sorted order and combine adjacent nodes if possible.
+	//
+	// Set the current combined node (CCN) to a copy of node 0.
+	// Set i=1.
+	//
+	// Loop:
+	//   If node i overlaps or is adjacent to the CCN, then extend the
+	//   range of the CCN to hold both nodes.
+	//
+	//   Otherwise, copy node i, add the copy to the CCN list, and let
+	//   the copy be the CCN.
+	//
+	//   Set i = i+1.
+	//   If i < n, repeat the loop.
+	//
+	// After the CCN list is built, if it holds one item, return that
+	// item.  Otherwise place all items under an OR node and return the
+	// OR node.
+
+	ccn = cnode_deep_copy(node_arr[0]);
+	ccnpp = &ccn;
+
+	for (i=1; i < n; i++) {
+		// special case... if ccn has no upper bounds, it eats the rest of
+		// the nodes and we can drop out of the loop
+		if (!(*ccnpp)->u.counts.upper) {
+			break;
+		}
+
+		// if node[i] overlaps or is adjacent to the CCN, extend the
+		// max of the ccn to include the max of node[i]
+		if (node_arr[i]->u.counts.min <= (*ccnpp)->u.counts.max+1) {
+			if (!node_arr[i]->u.counts.upper) {
+				(*ccnpp)->u.counts.max = 0;
+				(*ccnpp)->u.counts.upper = false;
+			} else if (node_arr[i]->u.counts.max > (*ccnpp)->u.counts.max) {
+				(*ccnpp)->u.counts.max = node_arr[i]->u.counts.max;
+			}
+
+			continue;
+		}
+
+		// no overlap, add a copy of node[i] at the end of the
+		// CCN list.
+		ccnpp = &(*ccnpp)->next;
+		*ccnpp = cnode_deep_copy(node_arr[i]);
+	}
+
+	assert(ccn != NULL);
+
+	// clean up temporary list if we had to malloc it
+	if (&node_arr[0] != &node_buf[0]) {
+		free(node_arr);
+	}
+
+	if (ccn->next == NULL) {
+		// single item, return it
+		return ccn;
+	}
+
+	jxn = jvst_cnode_alloc(JVST_CNODE_OR);
+	jxn->u.ctrl = ccn;
+	return jxn;
+}
+
+static void
+and_range_pair(struct jvst_cnode *lhs, const struct jvst_cnode *rhs)
+{
+	enum jvst_cnode_type type;
+
+	assert(lhs != NULL);
+	assert(rhs != NULL);
+
+	type = lhs->type;
+
+	assert(type == JVST_CNODE_LENGTH_RANGE ||
+		type == JVST_CNODE_PROP_RANGE  ||
+		type == JVST_CNODE_ITEM_RANGE);
+
+	assert(type == rhs->type);
+
+	if (rhs->u.counts.min > lhs->u.counts.min) {
+		lhs->u.counts.min = rhs->u.counts.min;
+	}
+
+	if (!rhs->u.counts.upper) {
+		return;
+	}
+
+	if (!lhs->u.counts.upper) {
+		lhs->u.counts.upper = true;
+		lhs->u.counts.max = rhs->u.counts.max;
+	} else if (rhs->u.counts.max < lhs->u.counts.max) {
+		lhs->u.counts.max = rhs->u.counts.max;
+	}
+}
+
+static struct jvst_cnode *
+cnode_simplify_anded_count_range(struct jvst_cnode *rlist)
+{
+	enum jvst_cnode_type type;
+	struct jvst_cnode *rn, *ret;
+
+	if (rlist == NULL) {
+		return NULL;
+	}
+
+	type = rlist->type;
+
+	// ensure that the first node is count range
+	assert(type == JVST_CNODE_LENGTH_RANGE ||
+		type == JVST_CNODE_PROP_RANGE  ||
+		type == JVST_CNODE_ITEM_RANGE);
+
+	if (rlist->next == NULL) {
+		return rlist;
+	}
+
+	ret = jvst_cnode_alloc(rlist->type);
+	ret->u.counts = rlist->u.counts;
+
+	for (rn=rlist->next; rn != NULL; rn = rn->next) {
+		assert(rn->type == type);  // all nodes should be the same type
+		and_range_pair(ret, rn);
+	}
+
+	if (ret->u.counts.upper && ret->u.counts.max < ret->u.counts.min) {
+		ret->type = JVST_CNODE_INVALID;
+	}
+
+	return ret;
+}
+
+static struct jvst_cnode *
+cnode_simplify_count_range(enum jvst_cnode_type type, struct jvst_cnode *rlist)
+{
+	switch (type) {
+	case JVST_CNODE_AND:
+		return cnode_simplify_anded_count_range(rlist);
+
+	case JVST_CNODE_OR:
+		return cnode_simplify_ored_count_range(rlist);
+
+	default:
+		DIEF("cannot simplify count ranges combined with %s node",
+			jvst_cnode_type_name(type));
+	}
+
+	return rlist;
+}
+
+static int
+all_children_of_type(struct jvst_cnode *top, enum jvst_cnode_type type)
+{
+	struct jvst_cnode *n;
+
+	switch (top->type) {
+	case JVST_CNODE_AND:
+	case JVST_CNODE_OR:
+	case JVST_CNODE_XOR:
+	case JVST_CNODE_NOT:
+		for (n = top->u.ctrl; n != NULL; n = n->next) {
+			if (n->type != type) {
+				return 0;
+			}
+		}
+
+		return 1;
+
+	default:
+		SHOULD_NOT_REACH();
+	}
+}
+
+static struct jvst_cnode *
+cnode_simplify_and_ored_ranges(enum jvst_cnode_type rtype, struct jvst_cnode *and)
+{
+	struct jvst_cnode **npp, *nl, **wlpp, *n, *wl;
+	size_t nsingle;
+
+	// Try to simplify ANDed ORed ranges...
+	//
+	// 1. AND(R1, OR(R2,R3))        --> OR(AND(R1,R2), AND(R1,R3))
+	// 2. AND(OR(R1,R2), OR(R3,R4)) --> OR(AND(R1,R3), AND(R1,R4), AND(R2,R3), AND(R2,R4))
+	// 3. same as (2) with more nodes per OR.
+	//
+	// First, remove a) any bare node of type rtype
+	//               b) any ORed nodes that have only rtype children
+	//
+	// All removed nodes should be kept on a list.  The non-removed nodes should be
+	// kept on a different list.
+	//
+	// Note that this should be done after AND simplification, so there should be only
+	// one bare node of type rtype.
+	//
+	// Let N_0 = the first item in the list.  Let A_j be each item in the list.
+	//
+	// Walk the list of removed nodes, attempting to simplify as follows:
+	// N_i = AND(N_i-1, A_j), where any ORs are expected:
+	//
+	//    AND(OR(a_0, a_1, ..., a_m), OR(b_0, b1_, ..., b_n)) -->
+	//      OR(AND(a_0,b_0), AND(a_0,b_1), ..., AND(a_0,b_n),
+	//         AND(a_1,b_0), AND(a_1,b_1), ..., AND(a_1,b_n),
+	//         ...
+	//         AND(a_m,b_0), AND(a_m,b_1), ..., AND(a_m,b_n))
+	//
+	// If either N_i-1 or A_j are single nodes, we treat them as ORs with a single
+	// term.
+	//
+
+	// TODO: There's a change that this expansion results in a lot more terms than the
+	// original.  So we need to keep track of the number of operations in the original
+	// and the new versions and choose the one that has the least terms.
+	//
+	// TODO: Can we be smarter about this if we structure this as a dynamic
+	// programming problem?
+
+	// Sanity checks
+	assert(and != NULL);
+	assert(and->type == JVST_CNODE_AND);
+	assert(rtype == JVST_CNODE_LENGTH_RANGE ||
+		rtype == JVST_CNODE_PROP_RANGE  ||
+		rtype == JVST_CNODE_ITEM_RANGE);
+
+	// Step 1: Build working list by factoring out bare nodes of type rtype and OR
+	//         nodes whose children are all type rtype
+	wl = NULL;
+	wlpp = &wl;
+
+	nsingle = 0;
+	for (npp = &and->u.ctrl; *npp != NULL;) {
+		if ((*npp)->type == rtype) {
+			*wlpp = *npp;
+			wlpp = &(*wlpp)->next;
+			*npp = (*npp)->next;
+			*wlpp = NULL;
+			continue;
+		}
+
+		if ((*npp)->type == JVST_CNODE_OR && all_children_of_type(*npp, rtype)) {
+			*wlpp = *npp;
+			wlpp = &(*wlpp)->next;
+			*npp = (*npp)->next;
+			*wlpp = NULL;
+			continue;
+		}
+
+		npp = &(*npp)->next;
+	}
+
+	// fast exit: no nodes to simplify
+	if (wl == NULL) {
+		return and;
+	}
+
+	// fast exit: only one node, cannot combine
+	if (wl->next == NULL) {
+		*npp = wl;
+		return and;
+	}
+
+	// Step 2: Build transformed list by iterating through the working list and
+	//         combining terms
+	nl = wl;
+
+	for (n = wl->next; n != NULL; n = n->next) {
+		struct jvst_cnode *terms1, *terms2, *t1, *t2, *terms3, **t3pp;
+		if (nl->type == JVST_CNODE_OR) {
+			terms1 = nl->u.ctrl;
+		} else if (nl->type == rtype) {
+			terms1 = nl;
+		} else {
+			SHOULD_NOT_REACH();
+		}
+
+		if (n->type == JVST_CNODE_OR) {
+			terms2 = n->u.ctrl;
+		} else if (n->type == rtype) {
+			terms2 = n;
+		} else {
+			SHOULD_NOT_REACH();
+		}
+
+		terms3 = NULL;
+		t3pp = &terms3;
+		for (t1 = terms1; t1 != NULL; t1 = t1->next) {
+			struct jvst_cnode **partial;
+
+			assert(t1->type == JVST_CNODE_LENGTH_RANGE ||
+				t1->type == JVST_CNODE_PROP_RANGE  ||
+				t1->type == JVST_CNODE_ITEM_RANGE);
+
+			for (t2 = terms2; t2 != NULL; t2 = t2->next) {
+				struct jvst_cnode *t3;
+
+				assert(t2->type == JVST_CNODE_LENGTH_RANGE ||
+					t2->type == JVST_CNODE_PROP_RANGE  ||
+					t2->type == JVST_CNODE_ITEM_RANGE);
+
+				assert(t1->type == t2->type);
+
+				t3 = jvst_cnode_alloc(t1->type);
+				t3->u.counts = t1->u.counts;
+				and_range_pair(t3, t2);
+
+				if (t3->u.counts.upper && t3->u.counts.min > t3->u.counts.max) {
+					continue;
+				}
+
+				*t3pp = t3;
+				t3pp = &t3->next;
+			}
+		}
+
+		// simplify terms3 list
+		if (terms3 != NULL) {
+			terms3 = cnode_simplify_ored_count_range(terms3);
+		}
+
+		if (terms3 == NULL) {
+			nl = NULL;
+		} else if (terms3->next == NULL) {
+			nl = terms3;
+		} else {
+			nl = jvst_cnode_alloc(JVST_CNODE_OR);
+			nl->u.ctrl = terms3;
+		}
+	}
+
+	// no term survives, so all are invalid, making the entire AND invalid
+	if (nl == NULL) {
+		return jvst_cnode_alloc(JVST_CNODE_INVALID);
+	}
+
+	*npp = nl;
+	return and;
+}
+
+static struct jvst_cnode *
+cnode_simplify_bool_ranges(struct jvst_cnode *top)
+{
+	struct jvst_cnode *len_range, **lrpp, *prop_range, **prpp, *item_range, **irpp, **npp;
+	enum jvst_cnode_type type;
+
+	assert(top != NULL);
+
+	type = top->type;
+	assert(type == JVST_CNODE_AND || type == JVST_CNODE_OR);
+
+	assert(top->u.ctrl != NULL);
+
+	len_range = NULL; lrpp = &len_range;
+	prop_range = NULL; prpp = &prop_range;
+	item_range = NULL; irpp = &item_range;
+
+	for (npp = &top->u.ctrl; *npp != NULL;) {
+		switch ((*npp)->type) {
+		case JVST_CNODE_LENGTH_RANGE:
+			*lrpp = *npp;
+			*npp = (*npp)->next;
+			lrpp = &(*lrpp)->next;
+			*lrpp = NULL;
+			break;
+
+		case JVST_CNODE_PROP_RANGE:
+			*prpp = *npp;
+			*npp = (*npp)->next;
+			prpp = &(*prpp)->next;
+			*prpp = NULL;
+			break;
+
+		case JVST_CNODE_ITEM_RANGE:
+			*irpp = *npp;
+			*npp = (*npp)->next;
+			irpp = &(*irpp)->next;
+			*irpp = NULL;
+			break;
+
+		default:
+			npp = &(*npp)->next;
+			break;
+		}
+	}
+
+	assert(*npp == NULL);
+
+	if (len_range != NULL) {
+		len_range = cnode_simplify_count_range(type,len_range);
+		*npp = len_range;
+		for(; *npp != NULL; npp = &(*npp)->next) {
+			continue;
+		}
+	}
+
+	if (prop_range != NULL) {
+		prop_range = cnode_simplify_count_range(type,prop_range);
+		*npp = prop_range;
+		for(; *npp != NULL; npp = &(*npp)->next) {
+			continue;
+		}
+	}
+
+	if (item_range != NULL) {
+		item_range = cnode_simplify_count_range(type,item_range);
+		*npp = item_range;
+		for(; *npp != NULL; npp = &(*npp)->next) {
+			continue;
+		}
+	}
+
+	assert(top->u.ctrl != NULL);
+	if (top->u.ctrl->next == NULL) {
+		// only one item
+		return top->u.ctrl;
+	}
+
+	if (type == JVST_CNODE_AND) {
+		// Now that we've built the simplified AND, try to distribute ANDs over any ORs
+		top = cnode_simplify_and_ored_ranges(JVST_CNODE_LENGTH_RANGE, top);
+		top = cnode_simplify_and_ored_ranges(JVST_CNODE_PROP_RANGE, top);
+		top = cnode_simplify_and_ored_ranges(JVST_CNODE_ITEM_RANGE, top);
+	}
+
+	return top;
+}
+
+static struct jvst_cnode *
+cnode_simplify_andor(struct jvst_cnode *top)
+{
+	struct jvst_cnode *node, *next, **pp;
+	enum jvst_cnode_type snt; // short circuit node type
+	enum jvst_cnode_type rnt; // remove node type
+
+	cnode_simplify_ctrl_children(top);
+
+	// pass 1: remove VALID/INVALID nodes
+	switch (top->type) {
+	case JVST_CNODE_AND:
+		snt = JVST_CNODE_INVALID;
+		rnt = JVST_CNODE_VALID;
+		break;
+
+	case JVST_CNODE_OR:
+		snt = JVST_CNODE_VALID;
+		rnt = JVST_CNODE_INVALID;
+		break;
+
+	default:
+		SHOULD_NOT_REACH();
+	}
+
+	for (pp = &top->u.ctrl; *pp != NULL;) {
+		enum jvst_cnode_type nt = (*pp)->type;
+
+		if (nt == snt) {
+			(*pp)->next = NULL;
+			return *pp;
+		}
+
+		if (nt == rnt) {
+			*pp = (*pp)->next;
+			continue;
+		}
+
+		pp = &(*pp)->next;
+	}
+
+	// all nodes were valid
+	if (top->u.ctrl == NULL) {
+		return jvst_cnode_alloc(rnt);
+	}
+
+	assert(top->u.ctrl != NULL);
+	if (top->u.ctrl->next == NULL) {
+		// only one child
+		return top->u.ctrl;
+	}
+
+	cnode_simplify_ctrl_combine_like(top);
+
+	if (top->type == JVST_CNODE_AND) {
+		top = cnode_simplify_and_propsets(top);
+	}
+
+	if (top->type == JVST_CNODE_AND || top->type == JVST_CNODE_OR) {
+		top = cnode_simplify_andor_strmatch(top);
+	}
+
+	if (top->type == JVST_CNODE_AND) {
+		top = cnode_simplify_and_required(top);
+	}
+
+	if (top->type == JVST_CNODE_AND || top->type == JVST_CNODE_OR) {
+		top = cnode_simplify_bool_ranges(top);
+	}
+
+	if ((top->type == JVST_CNODE_AND) || (top->type == JVST_CNODE_OR)) {
+		top = cnode_simplify_andor_switches(top);
+	}
+
+	/* combine AND'd match_switch nodes, moves any AND'd COUNT_RANGE nodes */
+	if (top->type == JVST_CNODE_AND) {
+		top = cnode_simplify_and_mswitch(top);
+	} else if (top->type == JVST_CNODE_OR) {
+		// need to limit when we do this.  otherwise it causes
+		// problems...
+		//
+		// top = cnode_simplify_or_xor_mswitch(top);
+	}
+
+	/* XXX - can also combine OR'd match_switch nodes */
+
+	if (top->type == JVST_CNODE_AND || top->type == JVST_CNODE_OR) {
+		if (top->u.ctrl->next == NULL) {
+			// only one child
+			return top->u.ctrl;
+		}
+	}
+
+	return top;
+}
+
+static struct jvst_cnode *
+cnode_negate_range(struct jvst_cnode *range)
+{
+	struct jvst_cnode *ret;
+
+	switch (range->type) {
+	case JVST_CNODE_LENGTH_RANGE:
+	case JVST_CNODE_PROP_RANGE:
+	case JVST_CNODE_ITEM_RANGE:
+		// okay
+		break;
+
+	default:
+		SHOULD_NOT_REACH();
+	}
+
+	ret = NULL;
+	if (range->u.counts.min > 0) {
+		struct jvst_cnode *lower;
+
+		lower = jvst_cnode_alloc(range->type);
+		lower->u.counts.min = 0;
+		lower->u.counts.max = range->u.counts.min-1;
+		lower->u.counts.upper = true;
+
+		ret = lower;
+	}
+
+	if (range->u.counts.upper) {
+		struct jvst_cnode *upper;
+
+		upper = jvst_cnode_alloc(range->type);
+		upper->u.counts.min = range->u.counts.max+1;
+		upper->u.counts.max = 0;
+		upper->u.counts.upper = false;
+
+		if (ret == NULL) {
+			ret = upper;
+		} else {
+			struct jvst_cnode *jxn;
+			jxn = jvst_cnode_alloc(JVST_CNODE_OR);
+			ret->next = upper;
+			jxn->u.ctrl = ret;
+			ret = jxn;
+		}
+	}
+
+	return ret;
+}
+
+static int
+cnode_is_range(struct jvst_cnode *n)
+{
+	if (n->type == JVST_CNODE_LENGTH_RANGE) {
+		return 1;
+	}
+
+	if (n->type == JVST_CNODE_PROP_RANGE) {
+		return 1;
+	}
+
+	if (n->type == JVST_CNODE_ITEM_RANGE) {
+		return 1;
+	}
+
+	return 0;
+}
+
+static struct jvst_cnode *
+cnode_simplify_xor_ranges(struct jvst_cnode *top)
+{
+	struct jvst_cnode *lhs, *rhs, *and, *not, *or, *dup, *newlhs;
+
+	// FIXME: we can probably do more efficiently (allocating fewer temporary nodes)
+	// FIXME: also, support more than two children!
+	// FIXME: also, support control nodes
+
+	assert(top->type == JVST_CNODE_XOR);
+	assert(top->u.ctrl != NULL);
+
+	lhs = top->u.ctrl;
+	rhs = top->u.ctrl->next;
+	if (rhs == NULL) {
+		return lhs;
+	}
+
+	if (rhs->next != NULL) {
+		// XXX - current limitation is two child nodes
+		return top;
+	}
+
+	if (!cnode_is_range(lhs) || !cnode_is_range(rhs)) {
+		return top;
+	}
+
+	// construct OR(AND(lhs,NOT(rhs)), AND(NOT(lhs),rhs)) and simplify
+	dup = cnode_deep_copy(lhs);
+	not = cnode_negate_range(rhs);
+	and = jvst_cnode_alloc(JVST_CNODE_AND);
+	dup->next = not;
+	and->u.ctrl = dup;
+	newlhs = jvst_cnode_simplify(and);
+
+	dup = cnode_deep_copy(rhs);
+	not = cnode_negate_range(lhs);
+	and = jvst_cnode_alloc(JVST_CNODE_AND);
+	dup->next = not;
+	and->u.ctrl = dup;
+	rhs = jvst_cnode_simplify(and);
+
+	or = jvst_cnode_alloc(JVST_CNODE_OR);
+	newlhs->next = rhs;
+	or->u.ctrl = newlhs;
+
+	return jvst_cnode_simplify(or);
+}
+
+static struct jvst_cnode *
+cnode_simplify_xor(struct jvst_cnode *top)
+{
+	struct jvst_cnode *node, *next, **pp;
+	size_t num_valid;
+
+	cnode_simplify_ctrl_children(top);
+
+	// pass 1: remove VALID/INVALID nodes
+	//
+	// We have to handle this differently for XOR than for AND/OR.
+	//
+	// INVALID nodes are removed.  VALID nodes are removed and counted.
+	//
+	//   If we have no VALID nodes, then proceed normally.
+	// 
+	//   If we have one VALID node and any other nodes, then the VALID
+	//   node is removed and all the other nodes are placed under and
+	//   NOT(OR(...)).
+	//
+	//   If we have two or more VALID nodes, then the entire XOR becomes
+	//   INVALID.
+	num_valid = 0;
+	for (pp = &top->u.ctrl; *pp != NULL;) {
+		switch ((*pp)->type) {
+		case JVST_CNODE_INVALID:
+			// remove
+			*pp = (*pp)->next;
+			break;
+
+		case JVST_CNODE_VALID:
+			num_valid++;
+			// remove
+			*pp = (*pp)->next;
+			break;
+
+		default:
+			pp = &(*pp)->next;
+			break;
+		}
+	}
+
+	switch (num_valid) {
+	case 0:
+		// normal
+		break;
+
+	case 1:
+		if (top->u.ctrl == NULL) {
+			// no remaining nodes... so VALID
+			return jvst_cnode_alloc(JVST_CNODE_VALID);
+		} else {
+			struct jvst_cnode *not, *or;
+
+			// remaining nodes.  For the XOR to be VALID, none of these
+			// nodes may be valid, so replace this construct
+			// with a NOT(OR(...))
+			//
+			// special case: if there's only one remaining node, then the OR
+			// isn't necessary
+
+			not = jvst_cnode_alloc(JVST_CNODE_NOT);
+			if (top->u.ctrl->next == NULL) {
+				not->u.ctrl = top->u.ctrl;
+			} else {
+				or = jvst_cnode_alloc(JVST_CNODE_OR);
+				or->u.ctrl = top->u.ctrl;
+
+				not->u.ctrl = or;
+			}
+
+			return jvst_cnode_simplify(not);
+		}
+
+	default:
+		// more than one... entire XOR is invalid
+		return jvst_cnode_alloc(JVST_CNODE_INVALID);
+	}
+
+	// all nodes were invalid
+	if (top->u.ctrl == NULL) {
+		return jvst_cnode_alloc(JVST_CNODE_INVALID);
+	}
+
+	assert(top->u.ctrl != NULL);
+	if (top->u.ctrl->next == NULL) {
+		// only one child
+		return top->u.ctrl;
+	}
+
+	// XOR semantics are kind of complicated compared to AND and OR.
+	// For now we only do a few simplifications.
+	if (top->type == JVST_CNODE_XOR) {
+		top = cnode_simplify_xor_switches(top);
+	}
+
+	if (top->type == JVST_CNODE_XOR) {
+		top = cnode_simplify_xor_ranges(top);
+	}
+
+	if (top->type == JVST_CNODE_XOR) {
+		// need to limit when we do this.  otherwise it causes
+		// problems...
+		//
+		// top = cnode_simplify_or_xor_mswitch(top);
+	}
+
+	if (top->type == JVST_CNODE_XOR && top->u.ctrl->next == NULL) {
+		// only one child
+		return top->u.ctrl;
+	}
+
+	return top;
+}
+
+static struct jvst_cnode *
+cnode_simplify_not_range(struct jvst_cnode *top)
+{
+	struct jvst_cnode *range;
+
+	assert(top->type == JVST_CNODE_NOT);
+	assert(top->u.ctrl != NULL);
+
+	range = top->u.ctrl;
+	switch (range->type) {
+	case JVST_CNODE_LENGTH_RANGE:
+	case JVST_CNODE_PROP_RANGE:
+	case JVST_CNODE_ITEM_RANGE:
+		// okay
+		break;
+
+	default:
+		return top;
+	}
+
+	return cnode_negate_range(range);
+}
+
+static struct jvst_cnode *
+cnode_simplify_not_switch(struct jvst_cnode *top)
+{
+	struct jvst_cnode *sw, *sw0;
+	size_t i,n;
+
+	assert(top->type == JVST_CNODE_NOT);
+	assert(top->u.ctrl != NULL);
+
+	sw0 = top->u.ctrl;
+	if (sw0->type != JVST_CNODE_SWITCH) {
+		SHOULD_NOT_REACH();
+	}
+
+	sw = jvst_cnode_alloc(JVST_CNODE_SWITCH);
+	for (i = 0, n = ARRAYLEN(sw->u.sw); i < n; i++) {
+		struct jvst_cnode *not, *n;
+
+		// these are never valid switch cases
+		if (i == SJP_ARRAY_END || i == SJP_OBJECT_END) {
+			sw->u.sw[i] = jvst_cnode_alloc(JVST_CNODE_INVALID);
+			continue;
+		}
+
+		not = jvst_cnode_alloc(JVST_CNODE_NOT);
+		not->u.ctrl = sw0->u.sw[i];
+
+		sw->u.sw[i] = jvst_cnode_simplify(not);
+	}
+
+	return sw;
+}
+
+static struct jvst_cnode *
+cnode_simplify_not(struct jvst_cnode *top)
+{
+	assert(top != NULL);
+	assert(top->type == JVST_CNODE_NOT);
+	assert(top->u.ctrl != NULL);
+	assert(top->u.ctrl->next == NULL);
+
+	if (top->u.ctrl->type == JVST_CNODE_SWITCH) {
+		// fast exit if then child node is a SWITCH node: the NOT is pushed into
+		// each case of the switch, so there's no further simplification to be
+		// done on the top node
+		return cnode_simplify_not_switch(top);
+	}
+
+	// currently simplification of NOT is pretty limited
+	if (top->type == JVST_CNODE_NOT) {
+		top = cnode_simplify_not_range(top);
+	}
+
+	if (top->type == JVST_CNODE_NOT) {
+		switch (top->u.ctrl->type) {
+		case JVST_CNODE_INVALID:
+			return jvst_cnode_alloc(JVST_CNODE_VALID);
+
+		case JVST_CNODE_VALID:
+			return jvst_cnode_alloc(JVST_CNODE_INVALID);
+
+		default:
+			/* nop */
+			break;
+		}
+	}
+
+	return top;
+}
+
+static struct jvst_cnode *
+cnode_simplify_propset(struct jvst_cnode *tree)
+{
+	struct jvst_cnode *pm;
+
+	// step 1: iterate over PROP_MATCH nodes and simplify each
+	// constraint individually
+	for (pm = tree->u.prop_set; pm != NULL; pm=pm->next) {
+		assert(pm != NULL);
+
+		switch (pm->type) {
+		case JVST_CNODE_OBJ_PROP_MATCH:
+			pm->u.prop_match.constraint = jvst_cnode_simplify(pm->u.prop_match.constraint);
+			break;
+
+		case JVST_CNODE_OBJ_PROP_DEFAULT:
+			pm->u.prop_default = jvst_cnode_simplify(pm->u.prop_default);
+			break;
+
+		case JVST_CNODE_OBJ_PROP_NAMES:
+			break;
+
+		default:
+			DIEF("%s should not have %s as a child node\n",
+				jvst_cnode_type_name(tree->type),
+				jvst_cnode_type_name(pm->type));
+		}
+
+	}
+
+	return tree;
+}
+
+static struct jvst_cnode *
+cnode_simplify_list(struct jvst_cnode *items)
+{
+	struct jvst_cnode *it, *next, *simplified_items, **spp;
+
+	simplified_items = NULL;
+	spp = &simplified_items;
+	for (it = items; it != NULL; it = next) {
+		struct jvst_cnode *simplified;
+
+		next = it->next;
+
+		simplified = jvst_cnode_simplify(it);
+		*spp = simplified;
+		spp = &(*spp)->next;
+		*spp = NULL;
+	}
+
+	return simplified_items;
+}
+
+struct jvst_cnode *
+jvst_cnode_simplify(struct jvst_cnode *tree)
+{
+	struct jvst_cnode *node;
+
+	// make a copy
+	tree = cnode_deep_copy(tree);
+
+	switch (tree->type) {
+	case JVST_CNODE_INVALID:
+	case JVST_CNODE_VALID:
+	case JVST_CNODE_NUM_INTEGER:
+	case JVST_CNODE_ARR_UNIQUE:
+		return tree;
+
+	case JVST_CNODE_AND:
+	case JVST_CNODE_OR:
+		return cnode_simplify_andor(tree);
+
+	case JVST_CNODE_XOR:
+		return cnode_simplify_xor(tree);
+
+	case JVST_CNODE_NOT:
+		// TODO: improve optimizations for NOT
+		return cnode_simplify_not(tree);
+
+	case JVST_CNODE_SWITCH:
+		{
+			size_t i, n;
+			for (i = 0, n = ARRAYLEN(tree->u.sw); i < n; i++) {
+				tree->u.sw[i] = jvst_cnode_simplify(tree->u.sw[i]);
+			}
+		}
+		return tree;
+
+	case JVST_CNODE_OBJ_PROP_SET:
+		return cnode_simplify_propset(tree);
+
+	case JVST_CNODE_OBJ_PROP_DEFAULT:
+		{
+			struct jvst_cnode *pset;
+
+			// simplify constraint
+			tree->u.prop_default = jvst_cnode_simplify(tree->u.prop_default);
+
+			// wrap any bare PROP_DEFAULT nodes in a PROP_SET
+			pset = jvst_cnode_alloc(JVST_CNODE_OBJ_PROP_SET);
+			pset->u.prop_set = tree;
+			return pset;
+		}
+
+	case JVST_CNODE_OBJ_PROP_NAMES:
+		{
+			struct jvst_cnode *pset;
+
+			// wrap any bare PROP_NAMES nodes in a PROP_SET
+			pset = jvst_cnode_alloc(JVST_CNODE_OBJ_PROP_SET);
+			pset->u.prop_set = tree;
+			return pset;
+		}
+
+	case JVST_CNODE_ARR_ITEM:
+		assert(tree->u.items != NULL);
+		tree->u.items = cnode_simplify_list(tree->u.items);
+		return tree;
+
+	case JVST_CNODE_ARR_ADDITIONAL:
+		assert(tree->u.items != NULL);
+		assert(tree->u.items->next == NULL);
+		tree->u.items = cnode_simplify_list(tree->u.items);
+		return tree;
+
+	case JVST_CNODE_ARR_CONTAINS:
+		assert(tree->u.contains != NULL);
+		assert(tree->u.contains->next == NULL);
+		tree->u.contains = jvst_cnode_simplify(tree->u.contains);
+		return tree;
+
+	case JVST_CNODE_MATCH_SWITCH:
+		{
+			struct jvst_cnode *mc, *next;
+
+			tree->u.mswitch.dft_case = jvst_cnode_simplify(tree->u.mswitch.dft_case);
+
+			for (mc=tree->u.mswitch.cases; mc != NULL; mc = next) {
+				struct jvst_cnode *smc;
+
+				assert(mc->type == JVST_CNODE_MATCH_CASE);
+				next = mc->next;
+
+				// FIXME: this is a hack.  what we should do is to rebuild the case list.
+				// When we do that, the u.mcase.tmp values aren't kept and this is required
+				// when updating FSM nodes.  We need to find a better way to do this!
+
+				smc = jvst_cnode_simplify(mc);
+				mc->u.mcase.name_constraint = smc->u.mcase.name_constraint;
+				mc->u.mcase.value_constraint = smc->u.mcase.value_constraint;
+			}
+
+			return tree;
+		}
+
+	case JVST_CNODE_MATCH_CASE:
+		if (tree->u.mcase.name_constraint != NULL) {
+			tree->u.mcase.name_constraint = jvst_cnode_simplify(tree->u.mcase.name_constraint);
+
+			if (tree->u.mcase.name_constraint->type == JVST_CNODE_VALID) {
+				// a VALID name constraint is equivalent to no name constraint
+				tree->u.mcase.name_constraint = NULL;
+				break;
+			} else if (tree->u.mcase.name_constraint->type == JVST_CNODE_INVALID) {
+				// an INVALID name constraint makes everything INVALID
+				tree->u.mcase.value_constraint = tree->u.mcase.name_constraint;
+				tree->u.mcase.name_constraint = NULL;
+			}
+		}
+
+		tree->u.mcase.value_constraint = jvst_cnode_simplify(tree->u.mcase.value_constraint);
+
+		assert(tree->u.mcase.value_constraint != NULL);
+		if (tree->u.mcase.value_constraint->type == JVST_CNODE_INVALID) {
+			// an INVALID value constraint makes everything INVALID
+			tree->u.mcase.name_constraint = NULL;
+		}
+
+		return tree;
+
+	case JVST_CNODE_NUM_RANGE:
+	case JVST_CNODE_LENGTH_RANGE:
+	case JVST_CNODE_PROP_RANGE:
+	case JVST_CNODE_ITEM_RANGE:
+	case JVST_CNODE_STR_MATCH:
+	case JVST_CNODE_OBJ_PROP_MATCH:
+	case JVST_CNODE_OBJ_REQUIRED:
+	case JVST_CNODE_OBJ_REQMASK:
+	case JVST_CNODE_OBJ_REQBIT:
+		// TODO: basic optimization for these nodes
+		return tree;
+	}
+
+	// avoid default case in switch so the compiler can complain if
+	// we add new cnode types
+	SHOULD_NOT_REACH();
+}
+
+struct json_str_iter {
+	struct json_string str;
+	size_t off;
+};
+
+static int
+json_str_getc(void *p)
+{
+	struct json_str_iter *iter = p;
+	unsigned char ch;
+
+	if (iter->off >= iter->str.len) {
+		return EOF;
+	}
+
+	ch = iter->str.s[iter->off++];
+	return ch;
+}
+
+static int 
+cmp_mcase_ptr(const void *pa, const void *pb)
+{
+	const struct jvst_cnode *a, *b;
+	ptrdiff_t delta;
+
+	a = *((const struct jvst_cnode **)pa);
+	b = *((const struct jvst_cnode **)pb);
+
+	delta = a-b;
+	if (delta < 0) {
+		return -1;
+	}
+
+	if (delta > 0) {
+		return 1;
+	}
+
+	return 0;
+}
+
+static int
+cmp_matchsets(const void *pa, const void *pb)
+{
+	const struct jvst_cnode_matchset *a, *b;
+	size_t n;
+	int delta;
+
+	a = *((const struct jvst_cnode_matchset **)pa);
+	b = *((const struct jvst_cnode_matchset **)pb);
+
+	if (a == b) {
+		return 0;
+	}
+
+	if (a == NULL) {
+		return 1;
+	}
+
+	if (b == NULL) {
+		return -1;
+	}
+
+	n = (a->match.str.len < b->match.str.len) ? a->match.str.len : b->match.str.len;
+	delta = memcmp(a->match.str.s, b->match.str.s, n);
+	if (delta != 0) {
+		return delta;
+	}
+
+	if (a->match.str.len < b->match.str.len) {
+		return -1;
+	}
+
+	if (a->match.str.len > b->match.str.len) {
+		return 1;
+	}
+
+	return 0;
+}
+
+static void
+merge_mcases_with_cjxn(const struct fsm_state **orig, size_t n,
+	struct fsm *dfa, struct fsm_state *comb, enum jvst_cnode_type cjxn_type)
+{
+	struct jvst_cnode *mcase, *njxn, **njpp, *vjxn, **vjpp;
+	struct jvst_cnode_matchset **mspp;
+	struct jvst_cnode *mcases_buf[8] = { 0 }, **mcases;
+	struct jvst_cnode_matchset *mset_buf[8] = { 0 }, **msets;
+	size_t nstates, nuniq, nmatchsets;
+	size_t i,ind;
+
+	switch (cjxn_type) {
+	case JVST_CNODE_AND:
+	case JVST_CNODE_OR:
+	case JVST_CNODE_XOR:
+		/* okay */
+		break;
+	default:
+		SHOULD_NOT_REACH();
+	}
+
+	// first count states to make sure that we need to merge...
+	mcase = NULL;
+	nstates = 0;
+	nuniq = 0;
+
+	for (i = 0; i < n; i++) {
+		struct jvst_cnode *c;
+
+		if (!fsm_isend(dfa, orig[i])) {
+			continue;
+		}
+
+		c = fsm_getopaque(dfa, orig[i]);
+		if (c == NULL) {
+			continue;
+		}
+		// assert(c != NULL);
+
+		// allow a fast path if nstates==1
+		if (mcase == NULL) {
+			mcase = c;
+			nuniq++;
+		} else if (mcase != c) {
+			nuniq++;
+		}
+
+		nstates++;
+	}
+
+	if (nstates == 0) {
+		return;
+	}
+
+	if (nstates == 1 || nuniq == 1) {
+		assert(mcase != NULL);
+		fsm_setopaque(dfa, comb, mcase);
+		return;
+	}
+
+	// okay... need to combine things...
+	if (nstates <= ARRAYLEN(mcases_buf)) {
+		mcases = &mcases_buf[0];
+	} else {
+		mcases = xcalloc(nstates, sizeof *mcases);
+	}
+
+	// gather all the mcases
+	for (ind = 0, i = 0; i < n; i++) {
+		struct jvst_cnode *c;
+
+		if (!fsm_isend(dfa, orig[i])) {
+			continue;
+		}
+
+		c = fsm_getopaque(dfa, orig[i]);
+		assert(c != NULL);
+
+		assert(c->type == JVST_CNODE_MATCH_CASE);
+		// assert(c->u.mcase.matchset != NULL);
+
+		assert(ind < nstates);
+		mcases[ind++] = c;
+	}
+
+	// sort cases, remove duplicates
+	qsort(mcases, nstates, sizeof *mcases, cmp_mcase_ptr);
+
+	njxn = jvst_cnode_alloc(cjxn_type);
+	njpp = &njxn->u.ctrl;
+
+	vjxn = jvst_cnode_alloc(cjxn_type);
+	vjpp = &vjxn->u.ctrl;
+
+	// XXX: fix cnode_new_mcase to take both name and value
+	// constraints
+	mcase = cnode_new_mcase(NULL, vjxn);
+	mspp = &mcase->u.mcase.matchset;
+
+	nmatchsets = 0;
+	for (i=0; i < nstates; i++) {
+		struct jvst_cnode_matchset *mset;
+		struct jvst_cnode *c;
+
+		if (i > 0 && mcases[i] == mcases[i-1]) {
+			continue;
+		}
+
+		c = mcases[i];
+
+		// XXX - currently don't check the matchsets for duplicates.
+		// Do we need to?
+		for (mset = c->u.mcase.matchset; mset != NULL; mset = mset->next) {
+			nmatchsets++;
+			*mspp = cnode_matchset_new(mset->match, NULL);
+			mspp = &(*mspp)->next;
+		}
+
+		if (c->u.mcase.name_constraint != NULL) {
+			assert(c->u.mcase.name_constraint->type != JVST_CNODE_MATCH_CASE);
+
+			*njpp = cnode_deep_copy(c->u.mcase.name_constraint);
+			njpp = &(*njpp)->next;
+		}
+
+		assert(c->u.mcase.value_constraint->type != JVST_CNODE_MATCH_CASE);
+		*vjpp = cnode_deep_copy(c->u.mcase.value_constraint);
+		vjpp = &(*vjpp)->next;
+	}
+
+	if (njxn->u.ctrl != NULL) {
+		mcase->u.mcase.name_constraint = njxn;
+	}
+
+	if (nmatchsets > 1) {
+		struct jvst_cnode_matchset *ms;
+		size_t i;
+
+		if (nmatchsets <= ARRAYLEN(mset_buf)) {
+			msets = &mset_buf[0];
+		} else {
+			msets = xcalloc(nmatchsets, sizeof *msets);
+		}
+
+		i=0;
+		for (ms = mcase->u.mcase.matchset; ms != NULL; ms = ms->next) {
+			assert(i < nmatchsets);
+			msets[i++] = ms;
+		}
+
+		assert(i == nmatchsets);
+
+		qsort(msets, nmatchsets, sizeof *msets, cmp_matchsets);
+
+		mspp = &mcase->u.mcase.matchset;
+		*mspp = NULL;
+		for (i=0; i < nmatchsets; i++) {
+			if (i > 0 && cmp_matchsets(&msets[i], &msets[i-1]) == 0) {
+				continue;
+			}
+			*mspp = msets[i];
+			mspp = &(*mspp)->next;
+			*mspp = NULL;
+		}
+
+		if (msets != &mset_buf[0]) {
+			free(msets);
+		}
+	}
+
+	assert(mcase->next == NULL);
+	fsm_setopaque(dfa, comb, mcase);
+
+	if (mcases != &mcases_buf[0]) {
+		free(mcases);
+	}
+}
+
+static void
+merge_mcases_with_and(const struct fsm_state **orig, size_t n,
+	struct fsm *dfa, struct fsm_state *comb)
+{
+	merge_mcases_with_cjxn(orig, n, dfa, comb, JVST_CNODE_AND);
+}
+
+static void
+merge_mcases_with_or(const struct fsm_state **orig, size_t n,
+	struct fsm *dfa, struct fsm_state *comb)
+{
+	merge_mcases_with_cjxn(orig, n, dfa, comb, JVST_CNODE_OR);
+}
+
+static void
+merge_mcases_with_xor(const struct fsm_state **orig, size_t n,
+	struct fsm *dfa, struct fsm_state *comb)
+{
+	merge_mcases_with_cjxn(orig, n, dfa, comb, JVST_CNODE_XOR);
+}
+
+static int
+fsm_debug_printer(const struct fsm *dfa, const struct fsm_state *st, void *opaque)
+{
+	struct jvst_cnode *mc;
+	static char buf[2048];
+
+	(void)opaque;
+
+	if (!fsm_isend(dfa,st)) {
+		return 1;
+	}
+
+	mc = fsm_getopaque((struct fsm *)dfa, (struct fsm_state *)st);
+
+	memset(buf,0,sizeof buf);
+	if (!fsm_example(dfa, st, buf, sizeof buf)) {
+		const char mesg[] = "... too long ...";
+		memcpy(buf, mesg, sizeof mesg);
+	}
+
+	fprintf(stderr, "graph %p, end state %p, mc = %p\n", (void *)dfa, (void *)st, (void *)mc);
+	fprintf(stderr, "  example: %s\n", buf);
+	if (mc != NULL) {
+		jvst_cnode_debug(mc);
+	}
+
+	return 1;
+}
+
+// static struct jvst_cnode **mcase_collector_head;
+
 static struct fsm *
 mcase_re_compile(struct ast_regexp *re, struct fsm_options *opts, struct jvst_cnode *mcase)
 {
@@ -2474,7 +4340,10 @@ mcase_re_compile(struct ast_regexp *re, struct fsm_options *opts, struct jvst_cn
 			(enum re_flags)0,
 			&err);
 
-	fsm_minimise(pat);
+	if (!fsm_minimise(pat)) {
+		perror("minimizing regexp");
+		abort();
+	}
 
 	if (pat == NULL) {
 		goto error;
@@ -2508,10 +4377,11 @@ error:
 static struct jvst_cnode *
 cnode_canonify_propset(struct jvst_cnode *top)
 {
-	struct jvst_cnode *pm, *mcases, *msw, **mcpp, *dft;
+	struct jvst_cnode *pm, *mcases, *msw, **mcpp, *dft, *names;
 	struct fsm_options *opts;
 	struct fsm *matches;
 	struct mcase_collector collector;
+	struct jvst_cnode *names_match;
 
 	// FIXME: this is a leak...
 	opts = xmalloc(sizeof *opts);
@@ -2541,6 +4411,7 @@ cnode_canonify_propset(struct jvst_cnode *top)
 	//     in the FSM
 	//  d. Union the FSM with the previous FSMs.
 	matches = NULL;
+	names = NULL;
 	dft = NULL;
 	for (pm = top->u.prop_set; pm != NULL; pm=pm->next) {
 		struct jvst_cnode *cons, *mcase;
@@ -2551,6 +4422,13 @@ cnode_canonify_propset(struct jvst_cnode *top)
 			// should have at most one PROP_DEFAULT child
 			assert(dft == NULL);
 			dft = pm->u.prop_default;
+			continue;
+		}
+
+		if (pm->type == JVST_CNODE_OBJ_PROP_NAMES) {
+			// should have at most one PROP_NAMES child
+			assert(names == NULL);
+			names = pm;
 			continue;
 		}
 
@@ -2574,7 +4452,72 @@ cnode_canonify_propset(struct jvst_cnode *top)
 		}
 	}
 
-	mcases = NULL;
+	// make sure we have a non-NULL default case.
+	if (dft == NULL) {
+		dft = jvst_cnode_alloc(JVST_CNODE_VALID);
+	} else {
+		dft = jvst_cnode_simplify(dft);
+		dft = jvst_cnode_canonify(dft);
+	}
+
+	names_match = NULL;
+	// if a PROP_NAMES node is present, we compile its regexp for
+	// later processing
+	if (names != NULL) {
+		struct jvst_cnode *mc, *nametree;
+
+		assert(names->type == JVST_CNODE_OBJ_PROP_NAMES);
+
+		nametree = jvst_cnode_simplify(names->u.prop_names);
+		nametree = jvst_cnode_canonify(nametree);
+
+		if (nametree->type == JVST_CNODE_SWITCH) {
+			nametree = nametree->u.sw[SJP_STRING];
+		}
+
+		switch (nametree->type) {
+		case JVST_CNODE_VALID:
+			// PROP_NAMES has no constraints on keys...
+			// leave names_match = NULL.
+			break;
+
+		case JVST_CNODE_INVALID:
+			{
+				struct fsm *empty;
+				struct fsm_state *start;
+
+				// all keys are disallowed, regardless of
+				// everything else...
+				names_match = jvst_cnode_alloc(JVST_CNODE_MATCH_SWITCH);
+
+				// empty DFA
+				empty = fsm_new(opts);
+				start = fsm_addstate(empty);
+				fsm_setstart(empty,start);
+
+				names_match->u.mswitch.dfa = empty;
+				names_match->u.mswitch.dft_case = cnode_new_mcase(NULL,nametree);
+			}
+			break;
+
+		case JVST_CNODE_MATCH_SWITCH:
+			// names_pat = nametree;
+			names_match = nametree;
+			break;
+
+		default:
+			DIEF("PROP_NAMES does not support cnode type %s\n",
+				jvst_cnode_type_name(nametree->type));
+			break;
+		}
+	}
+
+	// defer setting carryopaque until we're done compiling the REs
+	// into their own DFAs.  each RE gets a unique opaque value for
+	// all of its endstates.  When we union the DFAs together, we
+	// may need to merge these states, but not during compilation.
+	opts->carryopaque = merge_mcases_with_and;
+
 	if (matches != NULL) {
 		// step 2: convert the FSM from an NFA to a DFA.
 		//
@@ -2585,37 +4528,24 @@ cnode_canonify_propset(struct jvst_cnode *top)
 		// NB: combining requires copying because different end states
 		// may still have the original MATCH_CASE node.
 
-		// defer setting carryopaque until we're done compiling the REs
-		// into their own DFAs.  each RE gets a unique opaque value for
-		// all of its endstates.  When we union the DFAs together, we
-		// may need to merge these states, but not during compilation.
-		opts->carryopaque = merge_mcases;
-
 		if (!fsm_determinise(matches)) {
 			perror("cannot determinise fsm");
 			abort();
 		}
+	}
 
+	mcases = NULL;
+	if (matches != NULL) {
 		// step 3: collect all MATCH_CASE nodes from the DFA by
 		// iterating over the DFA end states.  All MATCH_CASE nodes must
 		// be placed into a linked list.
-		collector.mcpp = &mcases;
-
-		fsm_walk_states(matches, &collector, mcase_collector);
-
-		{
-			struct jvst_cnode *n;
-			for (n=mcases; n != NULL; n=n->next) {
-				n->u.mcase.collected = 0;
-			}
-		}
-
+		//
 		// step 4: sort the MATCH_CASE nodes.
 		//
 		// This keeps the IR output deterministic (useful for testing,
 		// possibly other places?).  Currently this could be elided (or
 		// put behind an optional flag) if necessary.
-		sort_mcases(&mcases);
+		collect_mcases(matches, &mcases);
 	}
 
 	// step 5: build the MATCH_SWITCH container to hold the cases
@@ -2625,25 +4555,41 @@ cnode_canonify_propset(struct jvst_cnode *top)
 	msw->u.mswitch.opts = opts;
 	msw->u.mswitch.cases = mcases;
 
-	if (dft == NULL) {
-		dft = jvst_cnode_alloc(JVST_CNODE_VALID);
-	} else {
-		dft = jvst_cnode_simplify(dft);
-		dft = jvst_cnode_canonify(dft);
-	}
-
-	msw->u.mswitch.default_case = dft;
+	// if have a PROP_NAMES node, the default case (non-matching) is
+	// INVALID
+	msw->u.mswitch.dft_case = cnode_new_mcase(NULL,dft);
 
 	// step 4: simplify and canonify the constraint of each MATCH_CASE node.
 	// 	   We re-simplify the constraints because multiple
 	// 	   constraints can be merged.
 	for (; mcases != NULL; mcases = mcases->next) {
-		struct jvst_cnode *cons;
-		cons = jvst_cnode_simplify(mcases->u.mcase.constraint);
-		mcases->u.mcase.constraint = jvst_cnode_canonify(cons);
+		struct jvst_cnode *ncons, *vcons;
+		ncons = mcases->u.mcase.name_constraint;
+		if (ncons != NULL) {
+			ncons = jvst_cnode_simplify(ncons);
+			ncons = jvst_cnode_canonify(ncons);
+			mcases->u.mcase.name_constraint = ncons;
+		}
+
+		vcons = jvst_cnode_simplify(mcases->u.mcase.value_constraint);
+		mcases->u.mcase.value_constraint = jvst_cnode_canonify(vcons);
 	}
 
-	return msw;
+	if (names_match == NULL) {
+		return msw;
+	}
+
+	{
+		struct jvst_cnode *merged;
+
+		assert(msw->next == NULL);
+		assert(names_match->next == NULL);
+
+		msw->next = names_match;
+		// merged = merge_mswitches_with_and(msw);
+		merged = merge_mswitches(msw, JVST_CNODE_AND);
+		return merged;
+	}
 }
 
 // replaces REQUIRED nodes with REQMASK and REQBIT nodes
@@ -2734,9 +4680,31 @@ cnode_canonify_strmatch(struct jvst_cnode *top)
 	msw->u.mswitch.dfa = match;
 	msw->u.mswitch.opts = opts;
 	msw->u.mswitch.cases = mcase;
-	msw->u.mswitch.default_case = jvst_cnode_alloc(JVST_CNODE_INVALID);
+	msw->u.mswitch.dft_case = cnode_new_mcase(NULL, jvst_cnode_alloc(JVST_CNODE_INVALID));
 
 	return msw;
+}
+
+static struct jvst_cnode *
+cnode_canonify_pass1(struct jvst_cnode *tree);
+
+// canonifies a list of nodes
+static struct jvst_cnode *
+cnode_nodelist_canonify_pass1(struct jvst_cnode *nodes)
+{
+	struct jvst_cnode *result, **rpp, *n, *next;
+
+	result = NULL;
+	rpp = &result;
+	for (n = nodes; n != NULL; n = next) {
+		next = n->next;
+		
+		*rpp = cnode_canonify_pass1(n);
+		rpp = &(*rpp)->next;
+		*rpp = NULL;
+	}
+
+	return result;
 }
 
 // Initial canonification before DFAs are constructed
@@ -2753,7 +4721,6 @@ cnode_canonify_pass1(struct jvst_cnode *tree)
 	case JVST_CNODE_VALID:
 	case JVST_CNODE_ARR_UNIQUE:
 	case JVST_CNODE_NUM_RANGE:
-	case JVST_CNODE_LENGTH_RANGE:
 	case JVST_CNODE_PROP_RANGE:
 	case JVST_CNODE_ITEM_RANGE:
 		return tree;
@@ -2762,18 +4729,7 @@ cnode_canonify_pass1(struct jvst_cnode *tree)
 	case JVST_CNODE_OR:
 	case JVST_CNODE_XOR:
 	case JVST_CNODE_NOT:
-		{
-			struct jvst_cnode *xform = NULL;
-			struct jvst_cnode **xpp = &xform;
-
-			for (node = tree->u.ctrl; node != NULL; node = node->next) {
-				*xpp = cnode_canonify_pass1(node);
-				xpp = &(*xpp)->next;
-			}
-
-			tree->u.ctrl = xform;
-
-		}
+		tree->u.ctrl = cnode_nodelist_canonify_pass1(tree->u.ctrl);
 		return tree;
 
 	case JVST_CNODE_SWITCH:
@@ -2801,11 +4757,13 @@ cnode_canonify_pass1(struct jvst_cnode *tree)
 					node->u.prop_default = cons;
 					break;
 
+				case JVST_CNODE_OBJ_PROP_NAMES:
+					break;
+
 				default:
-					fprintf(stderr, "%s:%d (%s) %s should not have %s as a child node\n",
-						__FILE__, __LINE__, __func__,
-						jvst_cnode_type_name(tree->type), jvst_cnode_type_name(node->type));
-					abort();
+					DIEF("%s should not have %s as a child node\n",
+						jvst_cnode_type_name(tree->type),
+						jvst_cnode_type_name(node->type));
 				}
 			}
 
@@ -2818,15 +4776,45 @@ cnode_canonify_pass1(struct jvst_cnode *tree)
 	case JVST_CNODE_STR_MATCH:
 		return cnode_canonify_strmatch(tree);
 
-	case JVST_CNODE_OBJ_PROP_DEFAULT:
-	case JVST_CNODE_NUM_INTEGER:
-	case JVST_CNODE_OBJ_PROP_MATCH:
+	case JVST_CNODE_LENGTH_RANGE:
+		{
+			struct jvst_cnode *msw, *mc, *v;
+
+			msw = jvst_cnode_alloc(JVST_CNODE_MATCH_SWITCH);
+			v = jvst_cnode_alloc(JVST_CNODE_VALID);
+			mc = cnode_new_mcase(NULL,v);
+			mc->u.mcase.name_constraint = tree;
+			msw->u.mswitch.dft_case = mc;
+
+			return msw;
+		}
+
 	case JVST_CNODE_ARR_ITEM:
 	case JVST_CNODE_ARR_ADDITIONAL:
+		tree->u.items = cnode_nodelist_canonify_pass1(tree->u.items);
+		return tree;
+
+	case JVST_CNODE_ARR_CONTAINS:
+		tree->u.items = cnode_nodelist_canonify_pass1(tree->u.items);
+		return tree;
+
+	case JVST_CNODE_MATCH_SWITCH:
+		tree->u.mswitch.cases = cnode_nodelist_canonify_pass1(tree->u.mswitch.cases);
+		return tree;
+
+	case JVST_CNODE_MATCH_CASE:
+		if (tree->u.mcase.name_constraint != NULL) {
+			tree->u.mcase.name_constraint = cnode_canonify_pass1(tree->u.mcase.name_constraint);
+		}
+		tree->u.mcase.value_constraint = cnode_canonify_pass1(tree->u.mcase.value_constraint);
+		return tree;
+
+	case JVST_CNODE_OBJ_PROP_DEFAULT:
+	case JVST_CNODE_OBJ_PROP_NAMES:
+	case JVST_CNODE_NUM_INTEGER:
+	case JVST_CNODE_OBJ_PROP_MATCH:
 	case JVST_CNODE_OBJ_REQMASK:
 	case JVST_CNODE_OBJ_REQBIT:
-	case JVST_CNODE_MATCH_SWITCH:
-	case JVST_CNODE_MATCH_CASE:
 		// TODO: basic optimization for these nodes
 		return tree;
 
@@ -2861,6 +4849,28 @@ static int cnode_cmp(const void *p0, const void *p1)
 }
 
 static struct jvst_cnode *
+cnode_canonify_pass2(struct jvst_cnode *tree);
+
+// canonifies a list of nodes
+static struct jvst_cnode *
+cnode_nodelist_canonify_pass2(struct jvst_cnode *nodes)
+{
+	struct jvst_cnode *result, **rpp, *n, *next;
+
+	result = NULL;
+	rpp = &result;
+	for (n = nodes; n != NULL; n = next) {
+		next = n->next;
+		
+		*rpp = cnode_canonify_pass2(n);
+		rpp = &(*rpp)->next;
+		*rpp = NULL;
+	}
+
+	return result;
+}
+
+static struct jvst_cnode *
 cnode_canonify_pass2(struct jvst_cnode *tree)
 {
 	struct jvst_cnode *node;
@@ -2884,7 +4894,7 @@ cnode_canonify_pass2(struct jvst_cnode *tree)
 			assert(tree->u.ctrl != NULL);
 			assert(tree->u.ctrl->next == NULL);
 
-			tree->u.ctrl = jvst_cnode_canonify(tree->u.ctrl);
+			tree->u.ctrl = cnode_canonify_pass2(tree->u.ctrl);
 		}
 		return tree;
 
@@ -2908,7 +4918,7 @@ cnode_canonify_pass2(struct jvst_cnode *tree)
 			nlist = xmalloc(n * sizeof nlist[0]);
 			for (i=0, node = tree->u.ctrl; node != NULL; i++, node = node->next) {
 				assert(i < n);
-				nlist[i] = jvst_cnode_canonify(node);
+				nlist[i] = cnode_canonify_pass2(node);
 			}
 			assert(i == n);
 
@@ -2938,7 +4948,7 @@ cnode_canonify_pass2(struct jvst_cnode *tree)
 		{
 			size_t i, n;
 			for (i = 0, n = ARRAYLEN(tree->u.sw); i < n; i++) {
-				tree->u.sw[i] = jvst_cnode_canonify(tree->u.sw[i]);
+				tree->u.sw[i] = cnode_canonify_pass2(tree->u.sw[i]);
 			}
 		}
 		return tree;
@@ -2947,14 +4957,14 @@ cnode_canonify_pass2(struct jvst_cnode *tree)
 		{
 			struct jvst_cnode *result;
 			result = cnode_canonify_propset(tree);
-			return jvst_cnode_canonify(result);
+			return cnode_canonify_pass2(result);
 		}
 
 	case JVST_CNODE_MATCH_SWITCH:
 		{
 			struct jvst_cnode *mc, **mcpp;
 
-			tree->u.mswitch.default_case = jvst_cnode_canonify(tree->u.mswitch.default_case);
+			tree->u.mswitch.dft_case = cnode_canonify_pass2(tree->u.mswitch.dft_case);
 
 			mc = NULL;
 			mcpp = &mc;
@@ -2963,7 +4973,7 @@ cnode_canonify_pass2(struct jvst_cnode *tree)
 
 				assert(node->u.mcase.tmp == NULL);
 
-				result = jvst_cnode_canonify(node);
+				result = cnode_canonify_pass2(node);
 				assert(result != NULL);
 				node->u.mcase.tmp = result;
 				*mcpp = result;
@@ -2987,22 +4997,31 @@ cnode_canonify_pass2(struct jvst_cnode *tree)
 
 	case JVST_CNODE_MATCH_CASE:
 		{
-			tree->u.mcase.constraint = jvst_cnode_canonify(tree->u.mcase.constraint);
+			if (tree->u.mcase.name_constraint != NULL) {
+				tree->u.mcase.name_constraint = cnode_canonify_pass2(tree->u.mcase.name_constraint);
+			}
+			tree->u.mcase.value_constraint = cnode_canonify_pass2(tree->u.mcase.value_constraint);
 		}
 		return tree;
 
-	case JVST_CNODE_NUM_INTEGER:
-	case JVST_CNODE_STR_MATCH:
 	case JVST_CNODE_ARR_ITEM:
 	case JVST_CNODE_ARR_ADDITIONAL:
+		tree->u.items = cnode_nodelist_canonify_pass2(tree->u.items);
+		return tree;
+
+	case JVST_CNODE_ARR_CONTAINS:
+		tree->u.contains = cnode_nodelist_canonify_pass2(tree->u.contains);
+		return tree;
+
+	case JVST_CNODE_NUM_INTEGER:
 	case JVST_CNODE_OBJ_REQMASK:
 	case JVST_CNODE_OBJ_REQBIT:
 		// TODO: basic optimization for these nodes
 		return tree;
 
+	case JVST_CNODE_STR_MATCH:
 	case JVST_CNODE_OBJ_PROP_DEFAULT:
-		NOT_YET_IMPLEMENTED(tree, "canonification, pass 2");
-
+	case JVST_CNODE_OBJ_PROP_NAMES:
 	case JVST_CNODE_OBJ_PROP_MATCH:
 	case JVST_CNODE_OBJ_REQUIRED:
 		INVALID_OPERATION(tree, "canonization (pass 2)");
@@ -3019,6 +5038,7 @@ jvst_cnode_canonify(struct jvst_cnode *tree)
 	tree = cnode_canonify_pass1(tree);
 	tree = jvst_cnode_simplify(tree);
 	tree = cnode_canonify_pass2(tree);
+	tree = jvst_cnode_simplify(tree);
 	return tree;
 }
 

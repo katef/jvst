@@ -99,6 +99,9 @@ struct jvst_cnode *
 newcnode_prop_default(struct arena_info *A, struct jvst_cnode *dft); 
 
 struct jvst_cnode *
+newcnode_propnames(struct arena_info *A, struct jvst_cnode *tree);
+
+struct jvst_cnode *
 newcnode_bool(struct arena_info *A, enum jvst_cnode_type type, ...);
 
 struct jvst_cnode *
@@ -118,6 +121,9 @@ struct jvst_cnode *
 newcnode_additional_items(struct arena_info *A, struct jvst_cnode *top);
 
 struct jvst_cnode *
+newcnode_contains(struct arena_info *A, struct jvst_cnode *top);
+
+struct jvst_cnode *
 newcnode_valid(void);
 
 struct jvst_cnode *
@@ -132,12 +138,19 @@ newcnode_reqmask(struct arena_info *A, size_t nbits);
 struct jvst_cnode *
 newcnode_reqbit(struct arena_info *A, size_t bit);
 
+extern const struct jvst_cnode *const mswitch_str_constraints;
+
 struct jvst_cnode *
 newcnode_mswitch(struct arena_info *A, struct jvst_cnode *dft, ...);
 
 struct jvst_cnode *
 newcnode_mcase(struct arena_info *A, struct jvst_cnode_matchset *mset,
-	struct jvst_cnode *constraint);
+	struct jvst_cnode *vconstraint);
+
+struct jvst_cnode *
+newcnode_mcase_namecons(struct arena_info *A, struct jvst_cnode_matchset *mset,
+	struct jvst_cnode *nconstraint,
+	struct jvst_cnode *vconstraint);
 
 struct jvst_cnode_matchset *
 newmatchset(struct arena_info *A, ...);

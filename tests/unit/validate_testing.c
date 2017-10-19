@@ -301,6 +301,11 @@ newschema_p(struct arena_info *A, int types, ...)
 
 			sch = va_arg(args, struct ast_schema *);
 			s->additional_properties = sch;
+		} else if (strcmp(pname, "propertyNames") == 0) {
+			struct ast_schema *sch;
+
+			sch = va_arg(args, struct ast_schema *);
+			s->property_names = sch;
 		} else if (strcmp(pname, "required") == 0) {
 			s->required.set = va_arg(args, struct ast_string_set *);
 		} else if (strcmp(pname, "minimum") == 0) {
@@ -347,6 +352,12 @@ newschema_p(struct arena_info *A, int types, ...)
 			schema = va_arg(args, struct ast_schema *);
 			if (s->additional_items == NULL) {
 				s->additional_items = schema;
+			}
+		} else if (strcmp(pname, "contains") == 0) {
+			struct ast_schema *schema;
+			schema = va_arg(args, struct ast_schema *);
+			if (s->contains == NULL) {
+				s->contains = schema;
 			}
 		} else if (strcmp(pname, "minItems") == 0) {
 			s->min_items = va_arg(args, int);
@@ -507,7 +518,7 @@ newcnode_switch(struct arena_info *A, int isvalid, ...)
 		node->u.sw[i] = isvalid ? newcnode_valid() : newcnode_invalid();
 	}
 
-	// ARRAY_END and OBJECT_END should not be valid by default...
+	// NONE, ARRAY_END, and OBJECT_END should not be valid by default...
 	node->u.sw[SJP_ARRAY_END]  = newcnode_invalid();
 	node->u.sw[SJP_OBJECT_END] = newcnode_invalid();
 
@@ -540,8 +551,16 @@ newcnode_bool(struct arena_info *A, enum jvst_cnode_type type, ...)
 	struct jvst_cnode *node, **pp;
 	va_list args;
 
-	if ((type != JVST_CNODE_AND) && (type != JVST_CNODE_OR) && (type != JVST_CNODE_XOR)) {
-		fprintf(stderr, "invalid cnode type for %s: %d\n", __func__, type);
+	switch (type) {
+	case JVST_CNODE_AND:
+	case JVST_CNODE_OR:
+	case JVST_CNODE_XOR:
+	case JVST_CNODE_NOT:
+		// okay
+		break;
+	default:
+		fprintf(stderr, "%s:%d (%s) invalid cnode type %s\n",
+			__FILE__, __LINE__, __func__, jvst_cnode_type_name(type));
 		abort();
 	}
 
@@ -614,6 +633,17 @@ newcnode_prop_default(struct arena_info *A, struct jvst_cnode *dft)
 
 	node = newcnode(A, JVST_CNODE_OBJ_PROP_DEFAULT);
 	node->u.prop_default = dft;
+
+	return node;
+}
+
+struct jvst_cnode *
+newcnode_propnames(struct arena_info *A, struct jvst_cnode *tree)
+{
+	struct jvst_cnode *node;
+
+	node = newcnode(A, JVST_CNODE_OBJ_PROP_NAMES);
+	node->u.prop_names = tree;
 
 	return node;
 }
@@ -693,6 +723,16 @@ newcnode_additional_items(struct arena_info *A, struct jvst_cnode *top)
 }
 
 struct jvst_cnode *
+newcnode_contains(struct arena_info *A, struct jvst_cnode *top)
+{
+	struct jvst_cnode *node;
+
+	node = newcnode(A, JVST_CNODE_ARR_CONTAINS);
+	node->u.contains = top;
+	return node;
+}
+
+struct jvst_cnode *
 newcnode_required(struct arena_info *A, struct ast_string_set *sset)
 {
 	struct ast_string_set **spp;
@@ -727,14 +767,24 @@ newcnode_reqbit(struct arena_info *A, size_t bit)
 	return node;
 }
 
+const struct jvst_cnode v_mswitch_str_constraints;
+const struct jvst_cnode *const mswitch_str_constraints = &v_mswitch_str_constraints;
+
 struct jvst_cnode *
 newcnode_mswitch(struct arena_info *A, struct jvst_cnode *dft, ...)
 {
-	struct jvst_cnode *node, **cpp;
+	struct jvst_cnode *node, **cpp, *dftcase;
 	va_list args;
 
 	node = newcnode(A, JVST_CNODE_MATCH_SWITCH);
-	node->u.mswitch.default_case = dft;
+	if (dft->type == JVST_CNODE_MATCH_CASE) {
+		dftcase = dft;
+	} else {
+		dftcase = newcnode(A, JVST_CNODE_MATCH_CASE);
+		dftcase->u.mcase.value_constraint = dft;
+	}
+
+	node->u.mswitch.dft_case = dftcase;
 	cpp = &node->u.mswitch.cases;
 
 	va_start(args, dft);
@@ -743,6 +793,14 @@ newcnode_mswitch(struct arena_info *A, struct jvst_cnode *dft, ...)
 		c = va_arg(args, struct jvst_cnode *);
 		if (c == NULL) {
 			break;
+		}
+
+		if (c == mswitch_str_constraints) {
+			struct jvst_cnode *cons;
+
+			cons = va_arg(args, struct jvst_cnode *);
+			// node->u.mswitch.constraints = cons;
+			continue;
 		}
 
 		*cpp = c;
@@ -754,15 +812,27 @@ newcnode_mswitch(struct arena_info *A, struct jvst_cnode *dft, ...)
 }
 
 struct jvst_cnode *
-newcnode_mcase(struct arena_info *A, struct jvst_cnode_matchset *mset,
-	struct jvst_cnode *constraint)
+newcnode_mcase_namecons(struct arena_info *A, struct jvst_cnode_matchset *mset,
+	struct jvst_cnode *nconstraint,
+	struct jvst_cnode *vconstraint)
 {
 	struct jvst_cnode *node;
+
+	assert(vconstraint != NULL);
+
 	node = newcnode(A, JVST_CNODE_MATCH_CASE);
 	node->u.mcase.matchset = mset;
-	node->u.mcase.constraint = constraint;
+	node->u.mcase.name_constraint = nconstraint;
+	node->u.mcase.value_constraint = vconstraint;
 
 	return node;
+}
+
+struct jvst_cnode *
+newcnode_mcase(struct arena_info *A, struct jvst_cnode_matchset *mset,
+	struct jvst_cnode *vconstraint)
+{
+	return newcnode_mcase_namecons(A, mset, NULL, vconstraint);
 }
 
 static struct jvst_cnode_matchset *

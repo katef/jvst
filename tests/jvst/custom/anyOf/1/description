@@ -1,0 +1,7 @@
+anyOf
+0       Matches first, not second
+1       Matches second, not first
+2       Matches both
+3       Does not match either
+4       Does not match either
+5       Does not match either
