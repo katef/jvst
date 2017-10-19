@@ -29,7 +29,7 @@
 } while(0)
 
 #define EXPR_UNIMPLEMENTED(expr) do {						\
-	fprintf(stderr, "%s:%d (%s) IR statement %s not yet implemented\n",	\
+	fprintf(stderr, "%s:%d (%s) IR expression %s not yet implemented\n",	\
 		__FILE__, __LINE__, __func__,					\
 		jvst_ir_expr_type_name((expr)->type));				\
 	abort();								\
@@ -38,6 +38,11 @@
 #define UNKNOWN_CNODE(type) do { \
 	fprintf(stderr, "%s:%d (%s) unknown cnode type %d\n", \
 		__FILE__, __LINE__, __func__, (type)); 	   \
+	abort(); } while(0)
+
+#define UNIMPLEMENTED_CNODE(node) do { \
+	fprintf(stderr, "%s:%d (%s) unimplemented cnode %s\n", \
+		__FILE__, __LINE__, __func__, jvst_cnode_type_name((node)->type));    \
 	abort(); } while(0)
 
 #define UNKNOWN_STMT(type) do { \
@@ -114,6 +119,8 @@ jvst_invalid_msg(enum jvst_invalid_code code)
 	case JVST_INVALID_TOO_MANY_ITEMS:
 		return "array has too many items";
 
+	case JVST_INVALID_UNSATISFIED_CONTAINS:
+		return "contains constraint is not satisfied";
 	}
 
 	return "Unknown error";
@@ -204,6 +211,21 @@ static inline struct jvst_ir_stmt *
 ir_stmt_valid(void)
 {
 	return ir_stmt_new(JVST_IR_STMT_VALID);
+}
+
+static inline struct jvst_ir_stmt *
+ir_consume_and_valid(void)
+{
+	struct jvst_ir_stmt *seq, **spp;
+	seq = ir_stmt_new(JVST_IR_STMT_SEQ);
+	spp = &seq->u.stmt_list;
+
+	*spp = ir_stmt_new(JVST_IR_STMT_CONSUME);
+	spp = &(*spp)->next;
+
+	*spp = ir_stmt_valid();
+	spp = &(*spp)->next;
+	return seq;
 }
 
 static inline struct jvst_ir_stmt *
@@ -770,7 +792,7 @@ jvst_ir_stmt_type_name(enum jvst_ir_stmt_type type)
 	case JVST_IR_STMT_TOKEN:
 		return "TOKEN";    	
 	case JVST_IR_STMT_CONSUME:
-		return "CONSUME";  	
+		return "CONSUME";
 	case JVST_IR_STMT_FRAME:
 		return "FRAME";    	
 	case JVST_IR_STMT_COUNTER:
@@ -1474,8 +1496,35 @@ jvst_ir_dump(struct jvst_ir_stmt *ir, char *buf, size_t nb)
 
 /* IR translation code */
 
+struct ir_str_builder {
+	struct jvst_ir_stmt *frame;
+	struct jvst_ir_stmt **ipp;
+	bool consumed;
+};
+
+struct ir_object_builder {
+	struct jvst_ir_stmt *frame;
+	struct jvst_ir_stmt *oloop;
+	struct jvst_ir_stmt *match;
+	struct jvst_ir_stmt **pre_loop;
+	struct jvst_ir_stmt **post_loop;
+	struct jvst_ir_stmt **pre_match;
+	struct jvst_ir_stmt **post_match;
+	struct jvst_ir_mcase **mcpp;
+	struct jvst_ir_stmt *reqmask;
+	struct fsm *matcher;
+
+	bool consumed;
+};
+
 static struct jvst_ir_stmt *
 ir_translate_notoken(struct jvst_cnode *ctree);
+
+static struct jvst_ir_stmt *
+ir_translate_string(struct jvst_cnode *top, struct jvst_ir_stmt *frame);
+
+static void
+ir_translate_string_inner(struct jvst_cnode *top, struct ir_str_builder *builder);
 
 static struct jvst_ir_expr *
 ir_translate_number_expr(struct jvst_cnode *top)
@@ -1490,27 +1539,41 @@ ir_translate_number_expr(struct jvst_cnode *top)
 	case JVST_CNODE_NUM_RANGE:
 		{
 			struct jvst_ir_expr *lower, *upper;
+			enum jvst_cnode_rangeflags flags;
+			double min,max;
+			
+			flags = top->u.num_range.flags;
+			min = top->u.num_range.min;
+			max = top->u.num_range.max;
 
 			lower = NULL;
 			upper = NULL;
-			if (top->u.num_range.flags & JVST_CNODE_RANGE_EXCL_MIN) {
-				lower = ir_expr_op(JVST_IR_EXPR_GT,
-						ir_expr_new(JVST_IR_EXPR_TOK_NUM),
-						ir_expr_num(top->u.num_range.min));
-			} else if (top->u.num_range.flags & JVST_CNODE_RANGE_MIN) {
-				lower = ir_expr_op(JVST_IR_EXPR_GE,
-						ir_expr_new(JVST_IR_EXPR_TOK_NUM),
-						ir_expr_num(top->u.num_range.min));
-			}
 
-			if (top->u.num_range.flags & JVST_CNODE_RANGE_EXCL_MAX) {
-				upper = ir_expr_op(JVST_IR_EXPR_LT,
+			// special case for equality
+			if (min == max && flags == (JVST_CNODE_RANGE_MIN|JVST_CNODE_RANGE_MAX)) {
+				lower = ir_expr_op(JVST_IR_EXPR_EQ,
 						ir_expr_new(JVST_IR_EXPR_TOK_NUM),
-						ir_expr_num(top->u.num_range.max));
-			} else if (top->u.num_range.flags & JVST_CNODE_RANGE_MAX) {
-				upper = ir_expr_op(JVST_IR_EXPR_LE,
-						ir_expr_new(JVST_IR_EXPR_TOK_NUM),
-						ir_expr_num(top->u.num_range.max));
+						ir_expr_num(min));
+			} else {
+				if (flags & JVST_CNODE_RANGE_EXCL_MIN) {
+					lower = ir_expr_op(JVST_IR_EXPR_GT,
+							ir_expr_new(JVST_IR_EXPR_TOK_NUM),
+							ir_expr_num(min));
+				} else if (flags & JVST_CNODE_RANGE_MIN) {
+					lower = ir_expr_op(JVST_IR_EXPR_GE,
+							ir_expr_new(JVST_IR_EXPR_TOK_NUM),
+							ir_expr_num(min));
+				}
+
+				if (flags & JVST_CNODE_RANGE_EXCL_MAX) {
+					upper = ir_expr_op(JVST_IR_EXPR_LT,
+							ir_expr_new(JVST_IR_EXPR_TOK_NUM),
+							ir_expr_num(max));
+				} else if (flags & JVST_CNODE_RANGE_MAX) {
+					upper = ir_expr_op(JVST_IR_EXPR_LE,
+							ir_expr_new(JVST_IR_EXPR_TOK_NUM),
+							ir_expr_num(max));
+				}
 			}
 
 			assert((lower != NULL) || (upper != NULL));
@@ -1580,7 +1643,7 @@ ir_translate_number_expr(struct jvst_cnode *top)
 }
 
 static struct jvst_ir_stmt *
-ir_translate_number(struct jvst_cnode *top)
+ir_translate_number(struct jvst_cnode *top, struct jvst_ir_stmt *frame)
 {
 	struct jvst_ir_stmt *stmt, **spp;
 	// struct jvst_ir_expr *expr, **epp;
@@ -1590,7 +1653,8 @@ ir_translate_number(struct jvst_cnode *top)
 
 	switch (top->type) {
 	case JVST_CNODE_VALID:
-		*spp = ir_stmt_new(JVST_IR_STMT_VALID);
+		// *spp = ir_stmt_valid();
+		*spp = ir_consume_and_valid();
 		break;
 
 	case JVST_CNODE_INVALID:
@@ -1612,14 +1676,54 @@ ir_translate_number(struct jvst_cnode *top)
 				: JVST_INVALID_NOT_INTEGER;
 
 			br = ir_stmt_if(cond,
-				ir_stmt_new(JVST_IR_STMT_VALID),
+				// ir_stmt_valid(),
+				ir_consume_and_valid(),
 				ir_stmt_invalid(ecode));
 			*spp = br;
 		}
 		break;
 
-	case JVST_CNODE_NOT:
 	case JVST_CNODE_XOR:
+		{
+			struct jvst_cnode *n;
+			struct jvst_ir_stmt *counter, *seq;
+
+			// allocate a counter...
+			counter = ir_stmt_counter(frame, "xor_num");
+			seq = ir_stmt_new(JVST_IR_STMT_SEQ);
+			*spp = seq;
+			spp = &seq->u.stmt_list;
+
+			for (n = top->u.ctrl; n != NULL; n = n->next) {
+				struct jvst_ir_stmt *br;
+				struct jvst_ir_expr *cond;
+
+				cond = ir_translate_number_expr(n);
+				br = ir_stmt_if(cond,
+					ir_stmt_counter_op(JVST_IR_STMT_INCR, counter),
+					ir_stmt_new(JVST_IR_STMT_NOP));
+				*spp = br;
+				spp = &br->next;
+			}
+
+			{
+				struct jvst_ir_stmt *br;
+				struct jvst_ir_expr *cond;
+
+				cond = ir_expr_op(JVST_IR_EXPR_EQ,
+					ir_expr_count(counter),
+					ir_expr_size(1));
+
+				br = ir_stmt_if(cond,
+					ir_stmt_valid(),
+					ir_stmt_invalid(JVST_INVALID_NUMBER));
+				*spp = br;
+			}
+
+		}
+		break;
+
+	case JVST_CNODE_NOT:
 		fprintf(stderr, "[%s:%d] cnode %s not yet implemented\n",
 				__FILE__, __LINE__, 
 				jvst_cnode_type_name(top->type));
@@ -1717,21 +1821,6 @@ merge_constraints(const struct fsm_state **orig, size_t n,
 
 #define UNASSIGNED_MATCH  (~(size_t)0)
 
-struct ir_object_builder {
-	struct jvst_ir_stmt *frame;
-	struct jvst_ir_stmt *oloop;
-	struct jvst_ir_stmt *match;
-	struct jvst_ir_stmt **pre_loop;
-	struct jvst_ir_stmt **post_loop;
-	struct jvst_ir_stmt **pre_match;
-	struct jvst_ir_stmt **post_match;
-	struct jvst_ir_mcase **mcpp;
-	struct jvst_ir_stmt *reqmask;
-	struct fsm *matcher;
-
-	bool consumed;
-};
-
 static struct jvst_ir_stmt *
 obj_mcase_translate_inner(struct jvst_cnode *ctree, struct ir_object_builder *builder)
 {
@@ -1809,8 +1898,9 @@ obj_mswitch_translate_and_ensure_consume(struct jvst_cnode *constraint, struct i
 		spp = &seq->u.stmt_list;
 		*spp = stmt;
 		spp = &(*spp)->next;
+
 		*spp = ir_stmt_new(JVST_IR_STMT_CONSUME);
-		
+
 		stmt = seq;
 	}
 
@@ -1830,7 +1920,8 @@ obj_mswitch_case_translate(struct jvst_cnode *node, struct ir_object_builder *bu
 	assert(node->type == JVST_CNODE_MATCH_CASE);
 	assert(node->u.mcase.tmp == NULL);
 
-	stmt = obj_mswitch_translate_and_ensure_consume(node->u.mcase.constraint, builder);
+	// XXX - handle string constraints
+	stmt = obj_mswitch_translate_and_ensure_consume(node->u.mcase.value_constraint, builder);
 
 	mcase = ir_mcase_new(UNASSIGNED_MATCH, stmt);
 	mcase->matchset = node->u.mcase.matchset;
@@ -1869,6 +1960,30 @@ obj_mcase_update_opaque(const struct fsm *dfa, const struct fsm_state *st, void 
 }
 
 static void
+ir_obj_prepend_constraints(struct jvst_ir_stmt **spp, struct jvst_cnode *constraints, struct ir_object_builder *builder)
+{
+	struct jvst_ir_stmt *stmt;
+	struct ir_str_builder sb;
+
+	assert(spp != NULL);
+	assert(*spp != NULL);
+
+	if (constraints == NULL || constraints->type == JVST_CNODE_VALID) {
+		return;
+	}
+
+	stmt = NULL;
+	sb.frame = builder->frame;
+	sb.ipp = &stmt;
+	sb.consumed = true;
+
+	ir_translate_string_inner(constraints, &sb);
+	*sb.ipp = *spp;
+	*spp = stmt;
+}
+
+
+static void
 ir_translate_obj_inner(struct jvst_cnode *top, struct ir_object_builder *builder)
 {
 	// descend the cnode tree and handle various events
@@ -1884,6 +1999,8 @@ ir_translate_obj_inner(struct jvst_cnode *top, struct ir_object_builder *builder
 	case JVST_CNODE_OBJ_REQUIRED:
 	case JVST_CNODE_OBJ_PROP_SET:
 	case JVST_CNODE_OBJ_PROP_DEFAULT:
+	case JVST_CNODE_OBJ_PROP_MATCH:
+	case JVST_CNODE_OBJ_PROP_NAMES:
 		fprintf(stderr, "canonified cnode trees should not have %s nodes\n",
 			jvst_cnode_type_name(top->type));
 		abort();
@@ -1912,6 +2029,12 @@ ir_translate_obj_inner(struct jvst_cnode *top, struct ir_object_builder *builder
 				assert(caselist->u.mcase.tmp == mc);
 				assert(mc->next == NULL);
 
+				// FIXME: handle string constraints
+				if (caselist->u.mcase.name_constraint != NULL) {
+					ir_obj_prepend_constraints(&mc->stmt,
+						caselist->u.mcase.name_constraint, builder);
+				}
+
 				mc->which = ++which;
 				*builder->mcpp = mc;
 				builder->mcpp = &mc->next;
@@ -1939,10 +2062,21 @@ ir_translate_obj_inner(struct jvst_cnode *top, struct ir_object_builder *builder
 				struct jvst_cnode *cnode_dft;
 				struct jvst_ir_stmt *ir_dft;
 
-				cnode_dft = top->u.mswitch.default_case;
+				cnode_dft = top->u.mswitch.dft_case;
 				assert(cnode_dft != NULL);
+				assert(cnode_dft->type == JVST_CNODE_MATCH_CASE);
+				assert(cnode_dft->u.mcase.value_constraint != NULL);
 
-				ir_dft = obj_mswitch_translate_and_ensure_consume(cnode_dft, builder);
+				// XXX - can we simplify this?  let's look at refactoring it to use the
+				// same mechanism as str_translate_concat_constraints
+				ir_dft = obj_mswitch_translate_and_ensure_consume(cnode_dft->u.mcase.value_constraint, builder);
+				if (cnode_dft->type != JVST_CNODE_INVALID) {
+					// if it's already invalid, don't bother with further
+					// constraints...
+
+					ir_obj_prepend_constraints(&ir_dft, cnode_dft->u.mcase.name_constraint, builder);
+				}
+
 				builder->match->u.match.default_case = ir_dft;
 			}
 
@@ -2050,7 +2184,6 @@ ir_translate_obj_inner(struct jvst_cnode *top, struct ir_object_builder *builder
 		return;
 
 	case JVST_CNODE_SWITCH:
-	case JVST_CNODE_OBJ_PROP_MATCH:
 	case JVST_CNODE_MATCH_CASE:
 	case JVST_CNODE_OBJ_REQBIT:
 	case JVST_CNODE_LENGTH_RANGE:
@@ -2062,6 +2195,7 @@ ir_translate_obj_inner(struct jvst_cnode *top, struct ir_object_builder *builder
 
 	case JVST_CNODE_ARR_ITEM:
 	case JVST_CNODE_ARR_ADDITIONAL:
+	case JVST_CNODE_ARR_CONTAINS:
 	case JVST_CNODE_ARR_UNIQUE:
 	case JVST_CNODE_STR_MATCH:
 	case JVST_CNODE_NUM_RANGE:
@@ -2118,9 +2252,11 @@ cnode_and_requires_split(struct jvst_cnode *and_node)
 		case JVST_CNODE_OBJ_PROP_SET:
 		case JVST_CNODE_OBJ_PROP_MATCH:
 		case JVST_CNODE_OBJ_PROP_DEFAULT:
+		case JVST_CNODE_OBJ_PROP_NAMES:
 		case JVST_CNODE_OBJ_REQUIRED:
 		case JVST_CNODE_ARR_ITEM:
 		case JVST_CNODE_ARR_ADDITIONAL:
+		case JVST_CNODE_ARR_CONTAINS:
 		case JVST_CNODE_ARR_UNIQUE:
 		case JVST_CNODE_OBJ_REQMASK:
 		case JVST_CNODE_OBJ_REQBIT:
@@ -2194,9 +2330,11 @@ cnode_count_splits(struct jvst_cnode *top, size_t *np)
 	case JVST_CNODE_OBJ_PROP_SET:
 	case JVST_CNODE_OBJ_PROP_MATCH:
 	case JVST_CNODE_OBJ_PROP_DEFAULT:
+	case JVST_CNODE_OBJ_PROP_NAMES:
 	case JVST_CNODE_OBJ_REQUIRED:
 	case JVST_CNODE_ARR_ITEM:
 	case JVST_CNODE_ARR_ADDITIONAL:
+	case JVST_CNODE_ARR_CONTAINS:
 	case JVST_CNODE_ARR_UNIQUE:
 	case JVST_CNODE_OBJ_REQMASK:
 	case JVST_CNODE_OBJ_REQBIT:
@@ -2264,9 +2402,11 @@ separate_control_nodes(struct jvst_cnode *top, struct jvst_cnode **cpp, struct j
 		case JVST_CNODE_OBJ_PROP_SET:
 		case JVST_CNODE_OBJ_PROP_MATCH:
 		case JVST_CNODE_OBJ_PROP_DEFAULT:
+		case JVST_CNODE_OBJ_PROP_NAMES:
 		case JVST_CNODE_OBJ_REQUIRED:
 		case JVST_CNODE_ARR_ITEM:
 		case JVST_CNODE_ARR_ADDITIONAL:
+		case JVST_CNODE_ARR_CONTAINS:
 		case JVST_CNODE_ARR_UNIQUE:
 		case JVST_CNODE_OBJ_REQMASK:
 		case JVST_CNODE_OBJ_REQBIT:
@@ -2285,7 +2425,8 @@ separate_control_nodes(struct jvst_cnode *top, struct jvst_cnode **cpp, struct j
 }
 
 static struct jvst_ir_expr *
-split_gather(struct jvst_cnode *top, struct split_gather_data *data)
+split_gather(struct jvst_cnode *top, struct split_gather_data *data,
+	struct jvst_ir_stmt *(*xlatefunc)(struct jvst_cnode *, struct jvst_ir_stmt *))
 {
 	struct jvst_cnode *node;
 	size_t nf;
@@ -2328,7 +2469,7 @@ split_gather(struct jvst_cnode *top, struct split_gather_data *data)
 				data->nframe++;
 
 				fr = ir_stmt_frame();
-				fr->u.frame.stmts = ir_translate_object_inner(top, fr);
+				fr->u.frame.stmts = xlatefunc(top, fr);
 				*data->fpp = fr;
 				data->fpp = &fr->next;
 
@@ -2358,7 +2499,7 @@ split_gather(struct jvst_cnode *top, struct split_gather_data *data)
 			// 3. Create separate frames for all control nodes.
 			for (node = ctrl; node != NULL; node = node->next) {
 				struct jvst_ir_expr *e_ctrl;
-				e_ctrl = split_gather(node, data);
+				e_ctrl = split_gather(node, data, ir_translate_object_inner);
 				if (node->next == NULL) {
 					*epp = e_ctrl;
 				} else {
@@ -2408,7 +2549,7 @@ split_gather(struct jvst_cnode *top, struct split_gather_data *data)
 					data->nframe++;
 
 					fr = ir_stmt_frame();
-					fr->u.frame.stmts = ir_translate_object_inner(node, fr);
+					fr->u.frame.stmts = xlatefunc(node, fr);
 					*data->fpp = fr;
 					data->fpp = &fr->next;
 
@@ -2437,7 +2578,7 @@ split_gather(struct jvst_cnode *top, struct split_gather_data *data)
 			// 3. Create separate frames for all control nodes.
 			for (node = ctrl; node != NULL; node = node->next) {
 				struct jvst_ir_expr *e_ctrl;
-				e_ctrl = split_gather(node, data);
+				e_ctrl = split_gather(node, data, ir_translate_object_inner);
 				if (node->next == NULL) {
 					*epp = e_ctrl;
 				} else {
@@ -2472,9 +2613,11 @@ split_gather(struct jvst_cnode *top, struct split_gather_data *data)
 	case JVST_CNODE_OBJ_PROP_SET:
 	case JVST_CNODE_OBJ_PROP_MATCH:
 	case JVST_CNODE_OBJ_PROP_DEFAULT:
+	case JVST_CNODE_OBJ_PROP_NAMES:
 	case JVST_CNODE_OBJ_REQUIRED:
 	case JVST_CNODE_ARR_ITEM:
 	case JVST_CNODE_ARR_ADDITIONAL:
+	case JVST_CNODE_ARR_CONTAINS:
 	case JVST_CNODE_ARR_UNIQUE:
 	case JVST_CNODE_OBJ_REQMASK:
 	case JVST_CNODE_OBJ_REQBIT:
@@ -2505,7 +2648,8 @@ gather_remove_bvec(struct jvst_ir_stmt *frame, struct split_gather_data *gather)
 }
 
 static struct jvst_ir_stmt *
-ir_translate_object_split(struct jvst_cnode *top, struct jvst_ir_stmt *frame)
+ir_translate_split(struct jvst_cnode *top, struct jvst_ir_stmt *frame,
+	struct jvst_ir_stmt *(*xlatefunc)(struct jvst_cnode *, struct jvst_ir_stmt *))
 {
 	struct jvst_cnode *node;
 	struct jvst_ir_stmt *frames, *cond, **spp;
@@ -2517,7 +2661,7 @@ ir_translate_object_split(struct jvst_cnode *top, struct jvst_ir_stmt *frame)
 	gather.fpp = &frames;
 	gather.bvec = ir_stmt_bitvec(frame, "splitvec", 0);
 
-	split = split_gather(top, &gather);
+	split = split_gather(top, &gather, xlatefunc);
 	assert(frames != NULL);
 
 	if (gather.nctrl == 0) {
@@ -2527,7 +2671,7 @@ ir_translate_object_split(struct jvst_cnode *top, struct jvst_ir_stmt *frame)
 		gather_remove_bvec(frame, &gather);
 
 		// retranslate to remove the extra frame
-		return ir_translate_object_inner(top, frame);
+		return xlatefunc(top, frame);
 	}
 
 	if (gather.nctrl == 1) {
@@ -2565,7 +2709,7 @@ ir_translate_object_split(struct jvst_cnode *top, struct jvst_ir_stmt *frame)
 		}
 
 		cond = ir_stmt_if(cmp,
-			ir_stmt_new(JVST_IR_STMT_VALID),
+			ir_stmt_valid(),
 			ir_stmt_invalid(JVST_INVALID_SPLIT_CONDITION));  // XXX - improve error message!
 
 		return cond;
@@ -2587,10 +2731,16 @@ ir_translate_object_split(struct jvst_cnode *top, struct jvst_ir_stmt *frame)
 	spp = &(*spp)->next;
 	*spp = ir_stmt_new(JVST_IR_STMT_IF);
 	*spp = ir_stmt_if(split,
-		ir_stmt_new(JVST_IR_STMT_VALID),
+		ir_stmt_valid(),
 		ir_stmt_invalid(JVST_INVALID_SPLIT_CONDITION));  // XXX - improve error message!
 
 	return cond;
+}
+
+static struct jvst_ir_stmt *
+ir_translate_object_split(struct jvst_cnode *top, struct jvst_ir_stmt *frame)
+{
+	return ir_translate_split(top, frame, ir_translate_object_inner);
 }
 
 static struct jvst_ir_stmt *
@@ -2665,6 +2815,7 @@ ir_translate_object_inner(struct jvst_cnode *top, struct jvst_ir_stmt *frame)
 		assert(*npp == NULL);
 
 		*npp = builder.match->next;
+		// ensure that we consume the property's name token
 		*matchpp = ir_stmt_new(JVST_IR_STMT_CONSUME);
 		matchpp = &(*matchpp)->next;
 		*matchpp = builder.match->u.match.default_case;
@@ -2672,7 +2823,7 @@ ir_translate_object_inner(struct jvst_cnode *top, struct jvst_ir_stmt *frame)
 
 	// handle post-loop constraints
 	if (*builder.post_loop == NULL) {
-		*builder.post_loop = ir_stmt_new(JVST_IR_STMT_VALID);
+		*builder.post_loop = ir_stmt_valid();
 	}
 
 	return stmt;
@@ -2694,49 +2845,88 @@ ir_translate_object(struct jvst_cnode *top, struct jvst_ir_stmt *frame)
 }
 
 
-struct ir_str_builder {
-	struct jvst_ir_stmt *frame;
-	struct jvst_ir_stmt *seq;
-	struct jvst_ir_stmt **ipp;
-	bool consumed;
-};
+static void
+str_translate_concat_constraints(struct jvst_cnode *sw_cons, struct jvst_cnode *case_cons,
+	struct jvst_ir_stmt **spp, struct ir_str_builder *builder)
+{
+	struct jvst_ir_stmt **saved_ipp;
 
-static struct jvst_ir_stmt *
-ir_translate_string(struct jvst_cnode *top, struct jvst_ir_stmt *frame);
+	assert(case_cons != NULL);
 
-static struct jvst_ir_stmt *
-ir_translate_string_inner(struct jvst_cnode *top, struct ir_str_builder *builder);
+	saved_ipp = builder->ipp;
+	builder->ipp = spp;
+
+	if (sw_cons != NULL && sw_cons->type != JVST_CNODE_VALID && case_cons->type != JVST_CNODE_INVALID) {
+		ir_translate_string_inner(sw_cons, builder);
+	}
+	ir_translate_string_inner(case_cons, builder);
+
+	if ((*(builder->ipp))->type == JVST_IR_STMT_NOP) {
+		(*(builder->ipp))->type = JVST_IR_STMT_VALID;
+	}
+
+	builder->ipp = saved_ipp;
+}
 
 static struct jvst_ir_stmt *
 str_translate_mswitch(struct jvst_cnode *top, struct ir_str_builder *builder)
 {
-	struct jvst_ir_stmt *match, *matcher;
+	struct jvst_ir_stmt *match, *matcher, **dftpp;
 	struct jvst_ir_mcase **mcpp;
 	struct jvst_cnode *mcase;
+	struct jvst_cnode *sw_cons;
 	struct fsm *dfa;
 	size_t which;
 
 	assert(top != NULL);
 	assert(top->type == JVST_CNODE_MATCH_SWITCH);
 
-	match = ir_stmt_new(JVST_IR_STMT_MATCH);
-	mcpp = &match->u.match.cases;
+	if (top->u.mswitch.cases == NULL) {
+		struct jvst_ir_stmt **spp;
+
+		spp = builder->ipp;
+
+		match = ir_stmt_new(JVST_IR_STMT_SEQ);
+		*spp = match;
+		spp = &match->u.stmt_list;
+
+		*spp = ir_stmt_new(JVST_IR_STMT_CONSUME);
+		spp = &(*spp)->next;
+
+		dftpp = spp;
+	} else {
+		match = ir_stmt_new(JVST_IR_STMT_MATCH);
+		*builder->ipp = match;
+		mcpp = &match->u.match.cases;
+		dftpp = &match->u.match.default_case;
+	}
 
 	// duplicate DFA.
-	dfa = fsm_clone(top->u.mswitch.dfa);
+	dfa = NULL;
+	if (top->u.mswitch.dfa != NULL) {
+		dfa = fsm_clone(top->u.mswitch.dfa);
+	}
 
 	builder->consumed = true;
+
+	// FIXME: handle string constraints
+	// sw_cons = top->u.mswitch.constraints;
+	sw_cons = NULL;
 
 	// build jvst_ir_mcase nodes from cases list
 	which = 0;
 	for (mcase = top->u.mswitch.cases; mcase != NULL; mcase = mcase->next) {
 		struct jvst_ir_mcase *mc;
-		struct jvst_ir_stmt *ir_constraint;
+		struct jvst_ir_stmt *ir_constraint, **spp;
 
 		assert(mcase->type == JVST_CNODE_MATCH_CASE);
 		assert(mcase->u.mcase.tmp == NULL);
 
-		ir_constraint = ir_translate_string_inner(mcase->u.mcase.constraint, builder);
+		ir_constraint = NULL;
+		spp = &ir_constraint;
+
+		str_translate_concat_constraints(mcase->u.mcase.name_constraint,
+			mcase->u.mcase.value_constraint, spp, builder);
 
 		mc = ir_mcase_new(++which, ir_constraint);
 		mc->matchset = mcase->u.mcase.matchset;
@@ -2747,45 +2937,174 @@ str_translate_mswitch(struct jvst_cnode *top, struct ir_str_builder *builder)
 	}
 
 	// replace MATCH_CASE opaque entries in DFA with their corresponding jvst_ir_mcase nodes
-	fsm_walk_states(dfa, NULL, obj_mcase_update_opaque);
+	if (dfa != NULL && top->u.mswitch.cases != NULL) {
+		fsm_walk_states(dfa, NULL, obj_mcase_update_opaque);
+	}
 
 	// translate the default case
-	match->u.match.default_case = ir_translate_string(top->u.mswitch.default_case, builder->frame);
+	assert(top->u.mswitch.dft_case != NULL);
+	assert(top->u.mswitch.dft_case->type == JVST_CNODE_MATCH_CASE);
+	str_translate_concat_constraints(top->u.mswitch.dft_case->u.mcase.name_constraint,
+		top->u.mswitch.dft_case->u.mcase.value_constraint, dftpp, builder);
 
-	// clear the castlist->u.mcase.tmp values in case they need to be used elsewhere
+	// clear the u.mcase.tmp values in case they need to be used elsewhere
 	for (mcase = top->u.mswitch.cases; mcase != NULL; mcase = mcase->next) {
 		assert(mcase->type == JVST_CNODE_MATCH_CASE);
 		assert(mcase->u.mcase.tmp != NULL);
 		mcase->u.mcase.tmp = NULL;
 	}
 
-	matcher = ir_stmt_matcher(builder->frame, "dfa", dfa);
-	match->u.match.dfa = dfa;
-	match->u.match.name = matcher->u.matcher.name;
-	match->u.match.ind  = matcher->u.matcher.ind;
+	if (dfa != NULL && top->u.mswitch.cases != NULL) {
+		assert(match->type == JVST_IR_STMT_MATCH);
+
+		matcher = ir_stmt_matcher(builder->frame, "dfa", dfa);
+		match->u.match.dfa = dfa;
+		match->u.match.name = matcher->u.matcher.name;
+		match->u.match.ind  = matcher->u.matcher.ind;
+	}
 
 	return match;
 }
 
-static struct jvst_ir_stmt *
+static struct jvst_ir_expr *
+ir_length_range_expr(struct jvst_cnode *range)
+{
+	struct jvst_ir_expr *expr;
+
+	expr = NULL;
+	if (range->u.counts.min > 0) {
+		expr = ir_expr_op(JVST_IR_EXPR_GE,
+				ir_expr_new(JVST_IR_EXPR_TOK_LEN),
+				ir_expr_size(range->u.counts.min));
+	}
+
+	if (range->u.counts.upper) {
+		struct jvst_ir_expr *upper;
+
+		upper = ir_expr_op(JVST_IR_EXPR_LE,
+				ir_expr_new(JVST_IR_EXPR_TOK_LEN),
+				ir_expr_size(range->u.counts.max));
+
+		if (expr != NULL) {
+			expr = ir_expr_op(JVST_IR_EXPR_AND, expr, upper);
+		} else {
+			expr = upper;
+		}
+	}
+
+	assert(expr != NULL);
+
+	return expr;
+}
+
+static struct jvst_ir_expr *
+ir_complex_length_range_expr(struct jvst_cnode *range)
+{
+	struct jvst_cnode *n;
+	struct jvst_ir_expr *expr;
+	enum jvst_ir_expr_type op;
+
+	// All child nodes should be string constraints, which are currently
+	// LENGTH_RANGE nodes.  We want to construct one large boolean expression from
+	// the length_range nodes.
+
+	if (range->type == JVST_CNODE_OR) {
+		op = JVST_IR_EXPR_OR;
+	} else {
+		op = JVST_IR_EXPR_AND;
+	}
+
+	// FIXME: this won't handle complex expressions...
+	expr = NULL;
+	for (n = range->u.ctrl; n != NULL; n = n->next) {
+		struct jvst_ir_expr *term;
+
+		switch (n->type) {
+		case JVST_CNODE_LENGTH_RANGE:
+			term = ir_length_range_expr(n);
+			break;
+
+		case JVST_CNODE_OR:
+		case JVST_CNODE_AND:
+			term = ir_complex_length_range_expr(n);
+			break;
+
+		default:
+			UNIMPLEMENTED_CNODE(n);
+		}
+
+		assert(term != NULL);
+
+		if (expr == NULL) {
+			expr = term;
+		} else {
+			expr = ir_expr_op(op,expr,term);
+		}
+	}
+
+	if (expr == NULL) {
+		fprintf(stderr, "%s node has no constraints\n",
+			jvst_cnode_type_name(range->type));
+		jvst_cnode_print(stderr, range);
+		abort();
+	}
+
+	return expr;
+}
+
+// Special case if all children of an AND(...) or OR(...) are LENGTH_RANGE constraints
+static void
+str_translate_split_length_ranges(struct jvst_cnode *top, struct ir_str_builder *builder)
+{
+	struct jvst_ir_expr *cond;
+	struct jvst_ir_stmt *br, **spp;
+
+	cond = ir_complex_length_range_expr(top);
+
+	spp = builder->ipp;
+	if (!builder->consumed) {
+		struct jvst_ir_stmt *seq;
+		seq = ir_stmt_new(JVST_IR_STMT_SEQ);
+
+		*spp = seq;
+		spp = &seq->u.stmt_list;
+
+		*spp = ir_stmt_new(JVST_IR_STMT_CONSUME);
+		spp = &(*spp)->next;
+	}
+
+	br = ir_stmt_if(cond, NULL,
+			ir_stmt_invalid(JVST_INVALID_STRING));
+
+	*spp = br;
+	spp = &br->u.if_.br_true;
+
+	*spp = ir_stmt_new(JVST_IR_STMT_NOP);
+
+	builder->ipp = spp;
+}
+
+static void
 ir_translate_string_inner(struct jvst_cnode *top, struct ir_str_builder *builder)
 {
 	switch (top->type) {
 	case JVST_CNODE_MATCH_SWITCH:
-		return str_translate_mswitch(top, builder);
+		str_translate_mswitch(top, builder);
+		return;
 
 	case JVST_CNODE_INVALID:
-		return ir_stmt_invalid(JVST_INVALID_STRING);
+		*builder->ipp = ir_stmt_invalid(JVST_INVALID_STRING);
+		return;
 
 	case JVST_CNODE_VALID:
-		return ir_stmt_valid();
+		*builder->ipp = ir_stmt_valid();
+		return;
 
 	case JVST_CNODE_LENGTH_RANGE:
 		{
-			struct jvst_ir_stmt *stmt, **spp;
+			struct jvst_ir_stmt **spp;
 
-			stmt = NULL;
-			spp = &stmt;
+			spp = builder->ipp;
 
 			if (!builder->consumed) {
 				struct jvst_ir_stmt *seq;
@@ -2827,12 +3146,37 @@ ir_translate_string_inner(struct jvst_cnode *top, struct ir_str_builder *builder
 				spp = &br->u.if_.br_true;
 			}
 
-			*spp = ir_stmt_new(JVST_IR_STMT_VALID);
-			return stmt;
+			*spp = ir_stmt_new(JVST_IR_STMT_NOP);
+
+			builder->ipp = spp;
 		}
+		return;
 
 	case JVST_CNODE_OR:
 	case JVST_CNODE_AND:
+		{
+			struct jvst_cnode *n;
+			struct jvst_ir_stmt *stmt;
+			int all_length_range;
+			
+			all_length_range = 1;
+			for (n = top->u.ctrl; n != NULL; n = n->next) {
+				if (n->type != JVST_CNODE_LENGTH_RANGE) {
+					all_length_range = 0;
+					break;
+				}
+			}
+
+			if (all_length_range) {
+				str_translate_split_length_ranges(top, builder);
+				return;
+			}
+
+			stmt = ir_translate_split(top, builder->frame, ir_translate_string);
+			*builder->ipp = stmt;
+			// builder->ipp = &stmt->next;
+		}
+		return;
 
 	case JVST_CNODE_XOR:
 	case JVST_CNODE_NOT:
@@ -2855,9 +3199,11 @@ ir_translate_string_inner(struct jvst_cnode *top, struct ir_str_builder *builder
 	case JVST_CNODE_OBJ_PROP_SET:
 	case JVST_CNODE_OBJ_PROP_MATCH:
 	case JVST_CNODE_OBJ_PROP_DEFAULT:
+	case JVST_CNODE_OBJ_PROP_NAMES:
 	case JVST_CNODE_OBJ_REQUIRED:
 	case JVST_CNODE_ARR_ITEM:
 	case JVST_CNODE_ARR_ADDITIONAL:
+	case JVST_CNODE_ARR_CONTAINS:
 	case JVST_CNODE_ARR_UNIQUE:
 	case JVST_CNODE_OBJ_REQMASK:
 	case JVST_CNODE_OBJ_REQBIT:
@@ -2875,19 +3221,39 @@ static struct jvst_ir_stmt *
 ir_translate_string(struct jvst_cnode *top, struct jvst_ir_stmt *frame)
 {
 	struct ir_str_builder builder = { 0 };
+	struct jvst_ir_stmt *stmt;
+
 	builder.frame = frame;
 
-	return ir_translate_string_inner(top, &builder);
+	stmt = NULL;
+	builder.ipp = &stmt;
+
+	ir_translate_string_inner(top, &builder);
+	assert(builder.ipp != NULL);
+	assert(*builder.ipp != NULL);
+
+	if ((*builder.ipp)->type == JVST_IR_STMT_NOP) {
+		(*builder.ipp)->type = JVST_IR_STMT_VALID;
+	}
+
+	assert(stmt != NULL);
+
+	return stmt;
 }	
 
 struct ir_arr_builder {
 	struct jvst_ir_stmt *frame;
 	struct jvst_ir_stmt *items;
 	struct jvst_ir_stmt *additional;
+	struct jvst_ir_stmt *contains;
 	struct jvst_ir_stmt *each;
 	struct jvst_ir_stmt *postloop;
 
+	struct jvst_ir_stmt *bvec_ctmp; // contains temp vec
+	struct jvst_ir_stmt *bvec_cres; // contains result vec
+
 	struct jvst_ir_stmt **itemspp;
+	struct jvst_ir_stmt **containspp;
 	struct jvst_ir_stmt **eachpp;
 	struct jvst_ir_stmt **postpp;
 };
@@ -2895,15 +3261,114 @@ struct ir_arr_builder {
 static struct jvst_ir_stmt *
 ir_translate_array_inner(struct jvst_cnode *top, struct ir_arr_builder *builder);
 
+static struct jvst_ir_stmt **
+arr_translate_contains(struct jvst_ir_stmt *arr_item, struct ir_arr_builder *builder, struct jvst_ir_stmt **ilpp)
+{
+	struct jvst_ir_stmt *splv, **frp, *fr;
+	size_t i,n;
+
+	assert(builder->contains != NULL);
+	assert(builder->bvec_cres != NULL);
+	assert(builder->bvec_ctmp != NULL);
+
+	n = builder->bvec_cres->u.bitvec.nbits;
+
+	splv = ir_stmt_new(JVST_IR_STMT_SPLITVEC);
+	splv->u.splitvec.frame = builder->frame;
+	splv->u.splitvec.bitvec = builder->bvec_ctmp;
+	frp = &splv->u.splitvec.split_frames;
+
+	for (fr = builder->contains; fr != NULL; fr = fr->next) {
+		assert(fr->type == JVST_IR_STMT_FRAME);
+
+		*frp = jvst_ir_stmt_copy(fr);
+		frp = &(*frp)->next;
+	}
+
+	if (arr_item != NULL) {
+		*frp = arr_item;
+	} else {
+		struct jvst_ir_stmt *vfr, **spp;
+		// need to construct a frame that returns valid to ensure
+		// that the split will be correctly synchronized, even if
+		// 'contains' constraint is invalid for an item
+		vfr = ir_stmt_frame();
+		spp = &vfr->u.frame.stmts;
+
+		*spp = ir_stmt_new(JVST_IR_STMT_CONSUME);
+		spp = &(*spp)->next;
+
+		*spp = ir_stmt_valid();
+		spp = &(*spp)->next;
+
+		*frp = vfr;
+	}
+
+	*ilpp = splv;
+	ilpp = &splv->next;
+
+	// Test non-contains condition
+	if (arr_item != NULL) {
+		struct jvst_ir_expr *cond;
+		struct jvst_ir_stmt *br;
+
+		cond = ir_expr_new(JVST_IR_EXPR_BTEST);
+		cond->u.btest.frame = builder->frame;
+		cond->u.btest.bitvec = builder->bvec_ctmp;
+		cond->u.btest.b0 = n;
+		cond->u.btest.b1 = n;
+
+		// XXX - capture actual error from condition and report
+		// that 
+		br = ir_stmt_if(cond, NULL, ir_stmt_invalid(JVST_INVALID_ARRAY));
+		*ilpp = br;
+		ilpp = &br->u.if_.br_true;
+	}
+
+	// Test contains conditions
+	{
+		struct jvst_ir_stmt *cseq;
+
+		cseq = ir_stmt_new(JVST_IR_STMT_SEQ);
+		*ilpp = cseq;
+		ilpp = &cseq->u.stmt_list;
+
+		for (i=0; i < n; i++) {
+			struct jvst_ir_stmt *br, *setbit;
+			struct jvst_ir_expr *cond;
+
+			cond = ir_expr_new(JVST_IR_EXPR_BTEST);
+			cond->u.btest.frame = builder->frame;
+			cond->u.btest.bitvec = builder->bvec_ctmp;
+			cond->u.btest.b0 = i;
+			cond->u.btest.b1 = i;
+
+			setbit = ir_stmt_new(JVST_IR_STMT_BSET);
+			setbit->u.bitop.frame  = builder->frame;
+			setbit->u.bitop.bitvec = builder->bvec_cres;
+			setbit->u.bitop.bit    = i;
+
+			// XXX - capture actual error from condition and report
+			// that 
+			br = ir_stmt_if(cond, setbit, ir_stmt_new(JVST_IR_STMT_NOP));
+			*ilpp = br;
+			ilpp = &br->next;
+		}
+	}
+
+	return ilpp;
+}
+
 static struct jvst_ir_stmt *
 ir_translate_array(struct jvst_cnode *top, struct jvst_ir_stmt *frame)
 {
 	struct ir_arr_builder builder = { 0 };
-	struct jvst_ir_stmt *stmt, **spp, *it, *next, *outer_loop;
+	struct jvst_ir_stmt *stmt, **spp, *it, *next, *outer_loop, *ctmp, *cres;
 
 	builder.frame = frame;
 
 	builder.itemspp = &builder.items;
+	builder.containspp = &builder.contains;
 	builder.eachpp  = &builder.each;
 	builder.postpp  = &builder.postloop;
 
@@ -2934,6 +3399,50 @@ ir_translate_array(struct jvst_cnode *top, struct jvst_ir_stmt *frame)
 	// this in the tree IR (maybe fix that?).
 	stmt = ir_stmt_new(JVST_IR_STMT_SEQ);
 	outer_loop = ir_stmt_loop(builder.frame, "ARR_OUTER");
+
+	builder.bvec_ctmp = NULL;
+	builder.bvec_cres = NULL;
+	if (builder.contains) {
+		struct jvst_ir_stmt *fr, **seqpp;
+		size_t i,n;
+
+		for (n=0, fr=builder.contains; fr != NULL; n++, fr=fr->next) {
+			continue;
+		}
+
+		assert(*builder.postpp == NULL);
+
+		builder.bvec_cres = ir_stmt_bitvec(frame, "contains", n);
+		builder.bvec_ctmp = ir_stmt_bitvec(frame, "contains_split", n+1);
+
+		if (n > 1) {
+			struct jvst_ir_stmt *seq;
+			seq = ir_stmt_new(JVST_IR_STMT_SEQ);
+			*builder.postpp = seq;
+			seqpp = &seq->u.stmt_list;
+		} else {
+			seqpp = builder.postpp;
+		}
+
+		for (i=0; i < n; i++) {
+			struct jvst_ir_stmt *br;
+			struct jvst_ir_expr *cond;
+
+			cond = ir_expr_new(JVST_IR_EXPR_BTEST);
+			cond->u.btest.frame = frame;
+			cond->u.btest.bitvec = builder.bvec_cres;
+			cond->u.btest.b0 = i;
+			cond->u.btest.b1 = i;
+
+			// XXX - capture actual error from condition and report
+			// that 
+			br = ir_stmt_if(cond, NULL, ir_stmt_invalid(JVST_INVALID_UNSATISFIED_CONTAINS));
+			*seqpp = br;
+			seqpp = &br->u.if_.br_true;
+		}
+
+		builder.postpp = seqpp;
+	}
 
 	if (*builder.postpp == NULL) {
 		*builder.postpp = ir_stmt_valid();
@@ -2971,9 +3480,14 @@ ir_translate_array(struct jvst_cnode *top, struct jvst_ir_stmt *frame)
 			spp = &each->next;
 		}
 
-		*spp = it;
-		it->next = NULL;
-		spp = &it->next;
+		if (builder.contains == NULL) {
+			*spp = it;
+			spp = &(*spp)->next;
+		} else {
+			spp = arr_translate_contains(it, &builder, spp);
+		}
+
+		*spp = NULL;
 	}
 
 	{
@@ -3001,11 +3515,13 @@ ir_translate_array(struct jvst_cnode *top, struct jvst_ir_stmt *frame)
 			ilpp = &builder.each->next;
 		}
 
-		if (builder.additional) {
-			assert(builder.additional->next == NULL);
-			*ilpp = builder.additional;
+		if (builder.contains == NULL) {
+			assert(builder.additional == NULL || builder.additional->next == NULL);
+			*ilpp = (builder.additional != NULL)
+				? builder.additional
+				: ir_stmt_new(JVST_IR_STMT_CONSUME);
 		} else {
-			*ilpp = ir_stmt_new(JVST_IR_STMT_CONSUME);
+			ilpp = arr_translate_contains(builder.additional, &builder, ilpp);
 		}
 
 		assert(stmts != NULL);
@@ -3062,6 +3578,20 @@ ir_translate_array_inner(struct jvst_cnode *top, struct ir_arr_builder *builder)
 				*builder->itemspp = item;
 				builder->itemspp = &item->next;
 			}
+
+			return NULL;
+		}
+
+	case JVST_CNODE_ARR_CONTAINS:
+		{
+			struct jvst_ir_stmt *contains;
+
+			assert(top->u.contains != NULL);
+			assert(top->u.contains->next == NULL);  // only one contains constraint
+
+			contains = ir_translate_notoken(top->u.contains);
+			*builder->containspp = contains;
+			builder->containspp = &contains->next;
 
 			return NULL;
 		}
@@ -3134,6 +3664,7 @@ ir_translate_array_inner(struct jvst_cnode *top, struct ir_arr_builder *builder)
 	case JVST_CNODE_OBJ_PROP_SET:
 	case JVST_CNODE_OBJ_PROP_MATCH:
 	case JVST_CNODE_OBJ_PROP_DEFAULT:
+	case JVST_CNODE_OBJ_PROP_NAMES:
 	case JVST_CNODE_STR_MATCH:
 		fprintf(stderr, "[%s:%d] cnode %s should not be be present in canonified cnode tree\n",
 				__FILE__, __LINE__, 
@@ -3149,7 +3680,7 @@ ir_translate_array_inner(struct jvst_cnode *top, struct ir_arr_builder *builder)
 	case JVST_CNODE_NUM_INTEGER:
 	case JVST_CNODE_OBJ_REQMASK:
 	case JVST_CNODE_OBJ_REQBIT:
-		fprintf(stderr, "[%s:%d] unexpected cnode %s in string translation\n",
+		fprintf(stderr, "[%s:%d] unexpected cnode %s in array translation\n",
 				__FILE__, __LINE__, 
 				jvst_cnode_type_name(top->type));
 		abort();
@@ -3163,7 +3694,7 @@ ir_translate_type(enum SJP_EVENT type, struct jvst_cnode *top, struct jvst_ir_st
 {
 	switch (type) {
 	case SJP_NUMBER:
-		return ir_translate_number(top);
+		return ir_translate_number(top, frame);
 
 	case SJP_OBJECT_BEG:
 		return ir_translate_object(top, frame);
@@ -3258,7 +3789,7 @@ ir_translate(struct jvst_cnode *ctree, bool first_token)
 			break;
 
 		case JVST_CNODE_VALID:
-			br_true = ir_stmt_valid();
+			br_true = ir_consume_and_valid();
 			break;
 
 		default:
@@ -3271,7 +3802,7 @@ ir_translate(struct jvst_cnode *ctree, bool first_token)
 	}
 
 	*spp = (dft_case == JVST_CNODE_VALID)
-		? ir_stmt_new(JVST_IR_STMT_VALID) 
+		? ir_consume_and_valid()
 		: ir_stmt_invalid(JVST_INVALID_UNEXPECTED_TOKEN)
 		;
 
@@ -3291,9 +3822,10 @@ jvst_ir_translate(struct jvst_cnode *ctree)
 }
 
 struct addr_fixup_list;
+struct nullify_list;
 
 static struct jvst_ir_stmt *
-jvst_ir_stmt_copy_inner(struct jvst_ir_stmt *ir, struct addr_fixup_list *fixups);
+jvst_ir_stmt_copy_inner(struct jvst_ir_stmt *ir, struct addr_fixup_list *fixups, struct nullify_list *nl);
 
 static void
 addr_fixup_add_stmt(struct addr_fixup_list *l, struct jvst_ir_stmt *stmt, struct jvst_ir_stmt **addrp, struct jvst_ir_stmt *v);
@@ -3302,7 +3834,7 @@ static void
 addr_fixup_add_expr(struct addr_fixup_list *l, struct jvst_ir_expr *expr, struct jvst_ir_stmt **addrp, struct jvst_ir_stmt *v);
 
 struct jvst_ir_expr *
-jvst_ir_expr_copy(struct jvst_ir_expr *ir, struct addr_fixup_list *fixups)
+jvst_ir_expr_copy(struct jvst_ir_expr *ir, struct addr_fixup_list *fixups, struct nullify_list *nl)
 {
 	struct jvst_ir_expr *copy;
 
@@ -3320,8 +3852,8 @@ jvst_ir_expr_copy(struct jvst_ir_expr *ir, struct addr_fixup_list *fixups)
 
 	case JVST_IR_EXPR_SEQ:
 		return ir_expr_seq(
-			jvst_ir_stmt_copy_inner(ir->u.seq.stmt, fixups),
-			jvst_ir_expr_copy(ir->u.seq.expr, fixups));
+			jvst_ir_stmt_copy_inner(ir->u.seq.stmt, fixups, nl),
+			jvst_ir_expr_copy(ir->u.seq.expr, fixups, nl));
 
 	case JVST_IR_EXPR_TOK_TYPE:
 	case JVST_IR_EXPR_TOK_NUM:
@@ -3386,12 +3918,12 @@ jvst_ir_expr_copy(struct jvst_ir_expr *ir, struct addr_fixup_list *fixups)
 	case JVST_IR_EXPR_EQ:
 	case JVST_IR_EXPR_GE:
 	case JVST_IR_EXPR_GT:
-		copy->u.cmp.left = jvst_ir_expr_copy(ir->u.cmp.left, fixups);
-		copy->u.cmp.right = jvst_ir_expr_copy(ir->u.cmp.right, fixups);
+		copy->u.cmp.left = jvst_ir_expr_copy(ir->u.cmp.left, fixups, nl);
+		copy->u.cmp.right = jvst_ir_expr_copy(ir->u.cmp.right, fixups, nl);
 		return copy;
 
 	case JVST_IR_EXPR_ISINT:
-		copy->u.isint.arg = jvst_ir_expr_copy(ir->u.isint.arg, fixups);
+		copy->u.isint.arg = jvst_ir_expr_copy(ir->u.isint.arg, fixups, nl);
 		return copy;
 
 	case JVST_IR_EXPR_SLOT:
@@ -3420,11 +3952,15 @@ jvst_ir_expr_copy(struct jvst_ir_expr *ir, struct addr_fixup_list *fixups)
 			return copy;
 		}
 
-	case JVST_IR_EXPR_NONE:
-	case JVST_IR_EXPR_BOOL:
 	case JVST_IR_EXPR_AND:
 	case JVST_IR_EXPR_OR:
+		copy->u.and_or.left  = jvst_ir_expr_copy(ir->u.and_or.left, fixups, nl);
+		copy->u.and_or.right = jvst_ir_expr_copy(ir->u.and_or.right, fixups, nl);
+		return copy;
+
 	case JVST_IR_EXPR_NOT:
+	case JVST_IR_EXPR_BOOL:
+	case JVST_IR_EXPR_NONE:
 		fprintf(stderr, "%s:%d (%s) copying IR expression %s not yet implemented\n",
 				__FILE__, __LINE__, __func__, 
 				jvst_ir_expr_type_name(ir->type));
@@ -3437,13 +3973,13 @@ jvst_ir_expr_copy(struct jvst_ir_expr *ir, struct addr_fixup_list *fixups)
 }
 
 static struct jvst_ir_stmt *
-ir_deepcopy_stmtlist(struct jvst_ir_stmt *l, struct addr_fixup_list *fixups)
+ir_deepcopy_stmtlist(struct jvst_ir_stmt *l, struct addr_fixup_list *fixups, struct nullify_list *nl)
 {
 	struct jvst_ir_stmt *n, *copy = NULL, **spp = &copy;
 
 	for (n = l; n != NULL; n = n->next) {
 		struct jvst_ir_stmt *c;
-		c = jvst_ir_stmt_copy_inner(n, fixups);
+		c = jvst_ir_stmt_copy_inner(n, fixups, nl);
 		*spp = c;
 		spp = &c->next;
 	}
@@ -3513,7 +4049,43 @@ addr_fixup_free(struct addr_fixup_list *l)
 	}
 
 	free(l->fixups);
+	l->len = l->cap = 0;
 }
+
+/*** nullify_list holds pointers to stmt->data pointers that should be nullified ***/
+struct nullify_list {
+	size_t len;
+	size_t cap;
+	void ***ptrs;
+};
+
+static void
+nullify_add(struct nullify_list *l, void **p)
+{
+	size_t i;
+
+	if (l->len >= l->cap) {
+		l->ptrs = xenlargevec(l->ptrs, &l->cap, 1, sizeof l->ptrs[0]);
+	}
+
+	i = l->len++;
+	assert(i < l->cap);
+
+	l->ptrs[i] = p;
+}
+
+static void
+nullify_list_free(struct nullify_list *l)
+{
+	if (l == NULL) {
+		return;
+	}
+
+	free(l->ptrs);
+	l->len = l->cap = 0;
+}
+
+
 
 static void
 ir_frame_copy_counters(struct jvst_ir_stmt **cpp, struct jvst_ir_stmt *c);
@@ -3525,7 +4097,7 @@ static struct jvst_ir_stmt *
 ir_copy_stmtlist(struct jvst_ir_stmt *n);
 
 static struct jvst_ir_stmt *
-jvst_ir_stmt_copy_inner(struct jvst_ir_stmt *ir, struct addr_fixup_list *fixups)
+jvst_ir_stmt_copy_inner(struct jvst_ir_stmt *ir, struct addr_fixup_list *fixups, struct nullify_list *nl)
 {
 	struct jvst_ir_stmt *copy;
 
@@ -3548,6 +4120,7 @@ jvst_ir_stmt_copy_inner(struct jvst_ir_stmt *ir, struct addr_fixup_list *fixups)
 
 			assert(ir->data == NULL);
 			ir->data = copy;
+			nullify_add(nl, &ir->data);
 
 			copy->u.frame = ir->u.frame;
 
@@ -3572,7 +4145,7 @@ jvst_ir_stmt_copy_inner(struct jvst_ir_stmt *ir, struct addr_fixup_list *fixups)
 				spp = &copy->u.frame.blocks;
 				*spp = NULL;
 				for (stmt = ir->u.frame.blocks; stmt != NULL; stmt = stmt->next) {
-					*spp = jvst_ir_stmt_copy_inner(stmt, fixups);
+					*spp = jvst_ir_stmt_copy_inner(stmt, fixups, nl);
 					spp = &(*spp)->u.block.block_next;
 				}
 
@@ -3597,7 +4170,7 @@ jvst_ir_stmt_copy_inner(struct jvst_ir_stmt *ir, struct addr_fixup_list *fixups)
 				spp = &copy->u.frame.stmts;
 				*spp = NULL;
 				for (stmt = ir->u.frame.stmts; stmt != NULL; stmt = stmt->next) {
-					*spp = jvst_ir_stmt_copy_inner(stmt, fixups);
+					*spp = jvst_ir_stmt_copy_inner(stmt, fixups, nl);
 					spp = &(*spp)->next;
 				}
 			}
@@ -3608,18 +4181,18 @@ jvst_ir_stmt_copy_inner(struct jvst_ir_stmt *ir, struct addr_fixup_list *fixups)
 		{
 			struct jvst_ir_stmt *stmt, **spp;
 
-			copy->u.if_.cond     = jvst_ir_expr_copy(ir->u.if_.cond, fixups);
-			copy->u.if_.br_true  = jvst_ir_stmt_copy_inner(ir->u.if_.br_true, fixups);
-			copy->u.if_.br_false = jvst_ir_stmt_copy_inner(ir->u.if_.br_false, fixups);
+			copy->u.if_.cond     = jvst_ir_expr_copy(ir->u.if_.cond, fixups, nl);
+			copy->u.if_.br_true  = jvst_ir_stmt_copy_inner(ir->u.if_.br_true, fixups, nl);
+			copy->u.if_.br_false = jvst_ir_stmt_copy_inner(ir->u.if_.br_false, fixups, nl);
 		}
 		return copy;
 
 	case JVST_IR_STMT_PROGRAM:
-		copy->u.program.frames = ir_deepcopy_stmtlist(ir->u.program.frames, fixups);
+		copy->u.program.frames = ir_deepcopy_stmtlist(ir->u.program.frames, fixups, nl);
 		return copy;
 
 	case JVST_IR_STMT_SEQ:
-		copy->u.stmt_list = ir_deepcopy_stmtlist(ir->u.stmt_list, fixups);
+		copy->u.stmt_list = ir_deepcopy_stmtlist(ir->u.stmt_list, fixups, nl);
 		return copy;
 
 	case JVST_IR_STMT_MATCHER:
@@ -3629,8 +4202,8 @@ jvst_ir_stmt_copy_inner(struct jvst_ir_stmt *ir, struct addr_fixup_list *fixups)
 	case JVST_IR_STMT_MOVE:
 		{
 			struct jvst_ir_expr *dst, *src;
-			dst = jvst_ir_expr_copy(ir->u.move.dst, fixups);
-			src = jvst_ir_expr_copy(ir->u.move.src, fixups);
+			dst = jvst_ir_expr_copy(ir->u.move.dst, fixups, nl);
+			src = jvst_ir_expr_copy(ir->u.move.src, fixups, nl);
 			return ir_stmt_move(dst,src);
 		}
 
@@ -3684,14 +4257,15 @@ jvst_ir_stmt_copy_inner(struct jvst_ir_stmt *ir, struct addr_fixup_list *fixups)
 			copy->u.block.block_next = NULL;
 			copy->u.block.stmts = NULL;
 			ir->data = copy;
+			nullify_add(nl, &ir->data);
 
-			copy->u.block.stmts = ir_deepcopy_stmtlist(ir->u.block.stmts, fixups);
+			copy->u.block.stmts = ir_deepcopy_stmtlist(ir->u.block.stmts, fixups, nl);
 			return copy;
 		}
 
 	case JVST_IR_STMT_CBRANCH:
 		{
-			copy->u.cbranch.cond = jvst_ir_expr_copy(ir->u.cbranch.cond, fixups);
+			copy->u.cbranch.cond = jvst_ir_expr_copy(ir->u.cbranch.cond, fixups, nl);
 
 			if (ir->u.cbranch.br_true != NULL) {
 				if (ir->u.cbranch.br_true->data == NULL) {
@@ -3778,15 +4352,31 @@ fixup_addresses(struct addr_fixup_list *fixups)
 	}
 }
 
+static void
+nullify_ptrs(struct nullify_list *nl)
+{
+	size_t i,n;
+	n = nl->len;
+	for (i=0; i < n; i++) {
+		void **pp;
+		pp = nl->ptrs[i];
+		*pp = NULL;
+	}
+}
+
 struct jvst_ir_stmt *
 jvst_ir_stmt_copy(struct jvst_ir_stmt *ir)
 {
 	struct addr_fixup_list fixups = { 0 };
+	struct nullify_list nl = { 0 };
 	struct jvst_ir_stmt *copy;
 
-	copy = jvst_ir_stmt_copy_inner(ir, &fixups);
+	copy = jvst_ir_stmt_copy_inner(ir, &fixups, &nl);
 	fixup_addresses(&fixups);
 	addr_fixup_free(&fixups);
+
+	nullify_ptrs(&nl);
+	nullify_list_free(&nl);
 
 	return copy;
 }

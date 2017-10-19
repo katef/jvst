@@ -661,6 +661,20 @@ setup_next_token(struct jvst_vm *vm, uint32_t fp)
 	}
 }
 
+static void
+load_slots_from_token(struct jvst_vm *vm, uint32_t fp)
+{
+	vm->stack[fp+JVST_VM_TT  ].i = 0;
+	vm->stack[fp+JVST_VM_TNUM].f = 0.0;
+	vm->stack[fp+JVST_VM_TLEN].i = 0;
+
+	vm->stack[fp+JVST_VM_TT].i = vm->evt.type;
+	vm->stack[fp+JVST_VM_TLEN].i += vm->evt.n;
+	if (vm->evt.type == SJP_NUMBER) {
+		vm->stack[fp+JVST_VM_TNUM].f = vm->evt.d;
+	}
+}
+
 static int
 next_token(struct jvst_vm *vm, uint32_t fp)
 {
@@ -672,16 +686,7 @@ next_token(struct jvst_vm *vm, uint32_t fp)
 
 	vm->nexttok = 0;
 
-	vm->stack[fp+JVST_VM_TT  ].i = 0;
-	vm->stack[fp+JVST_VM_TNUM].f = 0.0;
-	vm->stack[fp+JVST_VM_TLEN].i = 0;
-
-	vm->stack[fp+JVST_VM_TT].i = vm->evt.type;
-	vm->stack[fp+JVST_VM_TLEN].i += vm->evt.n;
-	if (vm->evt.type == SJP_NUMBER) {
-		vm->stack[fp+JVST_VM_TNUM].f = vm->evt.d;
-	}
-
+	load_slots_from_token(vm,fp);
 	vm->consumed = 0;
 
 	return 0;
@@ -806,10 +811,10 @@ debug_state(struct jvst_vm *vm)
 	buf.len = 0;
 	buf.np = 0;
 	vm_dumpregs(&buf, vm);
-	fprintf(stderr, "REGS > %s", buf.buf);
-	vm_dumpstack(stderr, vm);
 	fprintf(stderr, "STATE> vm=%p nobj=%zu, narr=%zu, consumed=%d, nexttok=%d, error=%d, dfa_st=%d\n",
 		(void *)vm, vm->nobj, vm->narr, vm->consumed, vm->nexttok, vm->error, vm->dfa_st);
+	fprintf(stderr, "REGS > %s", buf.buf);
+	vm_dumpstack(stderr, vm);
 }
 
 static void
@@ -887,13 +892,14 @@ vm_split(struct jvst_vm *vm, int split, union jvst_vm_stackval *slot, int splitv
 	nproc = proc1-proc0;
 
 	if (vm->nsplit == 0) {
-		uint32_t i, off;
+		uint32_t i, off, fp0;
 
 		if (nproc > vm->maxsplit) {
 			size_t incr = vm->maxsplit - nproc;
 			vm->splits = xenlargevec(vm->splits, &vm->maxsplit, incr, sizeof vm->splits[0]);
 		}
 
+		fp0 = vm->r_fp;
 		off = vm->prog->nsplit + 1 + proc0;
 		for (i=0; i < nproc; i++) {
 			jvst_vm_init_defaults(&vm->splits[i], vm->prog);
@@ -1117,11 +1123,16 @@ loop:
 				vm->stack[sp++].u = 0;
 			}
 
-			// copy registers
-			vm->stack[fp+JVST_VM_TT  ].i = vm->stack[fp0+JVST_VM_TT  ].i;
-			vm->stack[fp+JVST_VM_TNUM].f = vm->stack[fp0+JVST_VM_TNUM].f;
-			vm->stack[fp+JVST_VM_TLEN].i = vm->stack[fp0+JVST_VM_TLEN].i;
-			vm->stack[fp+JVST_VM_M   ].i = vm->stack[fp0+JVST_VM_M   ].i;
+			if (fp0 != fp) {
+				// copy registers
+				vm->stack[fp+JVST_VM_TT  ].i = vm->stack[fp0+JVST_VM_TT  ].i;
+				vm->stack[fp+JVST_VM_TNUM].f = vm->stack[fp0+JVST_VM_TNUM].f;
+				vm->stack[fp+JVST_VM_TLEN].i = vm->stack[fp0+JVST_VM_TLEN].i;
+				vm->stack[fp+JVST_VM_M   ].i = vm->stack[fp0+JVST_VM_M   ].i;
+			} else {
+				// load TT / TNUM / TLEN from current token
+				load_slots_from_token(vm,fp);
+			}
 
 			vm->r_fp = fp;
 			vm->r_sp = sp;
@@ -1237,7 +1248,7 @@ loop:
 		// consume token, then return to previous frame or, if top of
 		// stack, return JVST_VALID
 		ret = consume_current_value(vm);
-		if (ret != JVST_VALID) {
+		if (ret != JVST_VALID && ret != JVST_NEXT) {
 			return ret;
 		}
 

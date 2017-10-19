@@ -40,6 +40,11 @@ static struct ast_string_set ar_stringsets[NUM_TEST_THINGS];
 static struct ast_property_names ar_propnames[NUM_TEST_THINGS];
 static struct ast_schema_set ar_schemasets[NUM_TEST_THINGS];
 
+static struct json_value ar_json[NUM_TEST_THINGS];
+static struct json_element ar_json_elements[NUM_TEST_THINGS];
+static struct json_property ar_json_properties[NUM_TEST_THINGS];
+static struct ast_value_set ar_ast_vsets[NUM_TEST_THINGS];
+
 static struct jvst_cnode ar_cnodes[NUM_TEST_THINGS];
 static struct jvst_cnode_matchset ar_cnode_matchsets[NUM_TEST_THINGS];
 
@@ -255,6 +260,9 @@ newschema(struct arena_info *A, int types)
 	return s;
 }
 
+static struct ast_value_set *
+newvalue_set(struct arena_info *A, struct json_value *v);
+
 struct ast_schema *
 newschema_p(struct arena_info *A, int types, ...)
 {
@@ -301,6 +309,11 @@ newschema_p(struct arena_info *A, int types, ...)
 
 			sch = va_arg(args, struct ast_schema *);
 			s->additional_properties = sch;
+		} else if (strcmp(pname, "propertyNames") == 0) {
+			struct ast_schema *sch;
+
+			sch = va_arg(args, struct ast_schema *);
+			s->property_names = sch;
 		} else if (strcmp(pname, "required") == 0) {
 			s->required.set = va_arg(args, struct ast_string_set *);
 		} else if (strcmp(pname, "minimum") == 0) {
@@ -348,6 +361,12 @@ newschema_p(struct arena_info *A, int types, ...)
 			if (s->additional_items == NULL) {
 				s->additional_items = schema;
 			}
+		} else if (strcmp(pname, "contains") == 0) {
+			struct ast_schema *schema;
+			schema = va_arg(args, struct ast_schema *);
+			if (s->contains == NULL) {
+				s->contains = schema;
+			}
 		} else if (strcmp(pname, "minItems") == 0) {
 			s->min_items = va_arg(args, int);
 			s->kws |= KWS_MIN_ITEMS;
@@ -372,6 +391,23 @@ newschema_p(struct arena_info *A, int types, ...)
 			s->some_of.set = sset;
 			s->some_of.min = 1;
 			s->some_of.max = 1;
+		} else if (strcmp(pname, "const") == 0) {
+			struct ast_value_set *vset;
+			struct json_value *v;
+
+			v = va_arg(args, struct json_value *);
+			vset = newvalue_set(A, v);
+			s->xenum = vset;
+		} else if (strcmp(pname, "enum") == 0) {
+			struct ast_value_set *vset, **vpp;
+			struct json_value *v;
+
+			v = va_arg(args, struct json_value *);
+			vset = newvalue_set(A, v);
+			for (vpp = &s->xenum; *vpp != NULL; vpp = &(*vpp)->next) {
+				continue;
+			}
+			*vpp = vset;
 		} else {
 			// okay to abort() a test if the test writer forgot to add a
 			// property to the big dumb if-else chain
@@ -445,6 +481,182 @@ newpatternprops(struct arena_info *A, ...)
 	return props;
 }
 
+static struct ast_value_set *
+newvalue_set(struct arena_info *A, struct json_value *v)
+{
+	static const struct ast_value_set zero;
+	struct ast_value_set *vset;
+	size_t max;
+
+	max = ARRAYLEN(ar_ast_vsets);
+	if (A->nvset >= max) {
+		fprintf(stderr, "too many value sets: %zu max\n", max);
+		abort();
+	}
+
+	vset = &ar_ast_vsets[A->nvset++];
+
+	*vset = zero;
+	vset->value = *v;
+
+	return vset;
+}
+
+static struct json_element *
+newjson_element(struct arena_info *A, struct json_value *v)
+{
+	static const struct json_element zero;
+	struct json_element *elt;
+	size_t max;
+
+	max = ARRAYLEN(ar_json_elements);
+	if (A->njsonelt >= max) {
+		fprintf(stderr, "too many json elements: %zu max\n", max);
+		abort();
+	}
+
+	elt = &ar_json_elements[A->njsonelt++];
+
+	*elt = zero;
+	elt->value = *v;
+
+	return elt;
+}
+
+static struct json_property *
+newjson_property(struct arena_info *A, const char *name, struct json_value *v)
+{
+	static const struct json_property zero;
+	struct json_property *prop;
+	size_t max;
+
+	max = ARRAYLEN(ar_json_properties);
+	if (A->njsonprop >= max) {
+		fprintf(stderr, "too many json elements: %zu max\n", max);
+		abort();
+	}
+
+	prop = &ar_json_properties[A->njsonprop++];
+
+	*prop = zero;
+	prop->name = newstr(name);
+	prop->value = *v;
+
+	return prop;
+}
+
+static struct json_value *
+newjson_value(struct arena_info *A, enum json_valuetype type)
+{
+	static const struct json_value zero = { 0 };
+	struct json_value *v;
+	size_t max;
+
+	max = ARRAYLEN(ar_json);
+	if (A->njson >= max) {
+		fprintf(stderr, "too many json values: %zu max\n", max);
+		abort();
+	}
+
+	v = &ar_json[A->njson++];
+	*v = zero;
+	v->type = type;
+	return v;
+}
+
+struct json_value *
+newjson_num(struct arena_info *A, double x)
+{
+	struct json_value *v;
+	v = newjson_value(A, JSON_VALUE_NUMBER);
+	v->u.n = x;
+	return v;
+}
+
+struct json_value *
+newjson_str(struct arena_info *A, const char *s)
+{
+	struct json_value *v;
+	v = newjson_value(A, JSON_VALUE_STRING);
+	v->u.str = newstr(s);
+	return v;
+}
+
+struct json_value *
+newjson_bool(struct arena_info *A, int b)
+{
+	struct json_value *v;
+	v = newjson_value(A,JSON_VALUE_BOOL);
+	v->u.v = !!b;
+	return v;
+}
+
+struct json_value *
+newjson_null(struct arena_info *A)
+{
+	return newjson_value(A,JSON_VALUE_NULL);
+}
+
+struct json_value *
+newjson_array(struct arena_info *A, ...)
+{
+	struct json_value *arr;
+	struct json_element **eltpp;
+
+	va_list args;
+	va_start(args, A);
+
+	arr = newjson_value(A, JSON_VALUE_ARRAY);
+	eltpp = &arr->u.arr;
+
+	for(;;) {
+		struct json_element *elt;
+		struct json_value *itm;
+
+		itm = va_arg(args, struct json_value *);
+		if (itm == NULL) {
+			break;
+		}
+
+		*eltpp = newjson_element(A, itm);
+		eltpp = &(*eltpp)->next;
+	}
+
+	return arr;
+}
+
+struct json_value *
+newjson_object(struct arena_info *A, ...)
+{
+	struct json_value *obj;
+	struct json_property **proppp;
+
+	va_list args;
+	va_start(args, A);
+
+	obj = newjson_value(A, JSON_VALUE_OBJECT);
+	proppp = &obj->u.obj;
+
+	for(;;) {
+		struct json_propery *prop;
+		const char *k;
+		struct json_value *v;
+
+		k = va_arg(args, const char *);
+		if (k == NULL) {
+			break;
+		}
+
+		v = va_arg(args, struct json_value *);
+
+		*proppp = newjson_property(A, k,v);
+		proppp = &(*proppp)->next;
+	}
+
+	return obj;
+}
+
+
 const char *
 jvst_ret2name(int ret)
 {
@@ -507,7 +719,7 @@ newcnode_switch(struct arena_info *A, int isvalid, ...)
 		node->u.sw[i] = isvalid ? newcnode_valid() : newcnode_invalid();
 	}
 
-	// ARRAY_END and OBJECT_END should not be valid by default...
+	// NONE, ARRAY_END, and OBJECT_END should not be valid by default...
 	node->u.sw[SJP_ARRAY_END]  = newcnode_invalid();
 	node->u.sw[SJP_OBJECT_END] = newcnode_invalid();
 
@@ -540,8 +752,16 @@ newcnode_bool(struct arena_info *A, enum jvst_cnode_type type, ...)
 	struct jvst_cnode *node, **pp;
 	va_list args;
 
-	if ((type != JVST_CNODE_AND) && (type != JVST_CNODE_OR) && (type != JVST_CNODE_XOR)) {
-		fprintf(stderr, "invalid cnode type for %s: %d\n", __func__, type);
+	switch (type) {
+	case JVST_CNODE_AND:
+	case JVST_CNODE_OR:
+	case JVST_CNODE_XOR:
+	case JVST_CNODE_NOT:
+		// okay
+		break;
+	default:
+		fprintf(stderr, "%s:%d (%s) invalid cnode type %s\n",
+			__FILE__, __LINE__, __func__, jvst_cnode_type_name(type));
 		abort();
 	}
 
@@ -614,6 +834,17 @@ newcnode_prop_default(struct arena_info *A, struct jvst_cnode *dft)
 
 	node = newcnode(A, JVST_CNODE_OBJ_PROP_DEFAULT);
 	node->u.prop_default = dft;
+
+	return node;
+}
+
+struct jvst_cnode *
+newcnode_propnames(struct arena_info *A, struct jvst_cnode *tree)
+{
+	struct jvst_cnode *node;
+
+	node = newcnode(A, JVST_CNODE_OBJ_PROP_NAMES);
+	node->u.prop_names = tree;
 
 	return node;
 }
@@ -693,6 +924,16 @@ newcnode_additional_items(struct arena_info *A, struct jvst_cnode *top)
 }
 
 struct jvst_cnode *
+newcnode_contains(struct arena_info *A, struct jvst_cnode *top)
+{
+	struct jvst_cnode *node;
+
+	node = newcnode(A, JVST_CNODE_ARR_CONTAINS);
+	node->u.contains = top;
+	return node;
+}
+
+struct jvst_cnode *
 newcnode_required(struct arena_info *A, struct ast_string_set *sset)
 {
 	struct ast_string_set **spp;
@@ -727,14 +968,24 @@ newcnode_reqbit(struct arena_info *A, size_t bit)
 	return node;
 }
 
+const struct jvst_cnode v_mswitch_str_constraints;
+const struct jvst_cnode *const mswitch_str_constraints = &v_mswitch_str_constraints;
+
 struct jvst_cnode *
 newcnode_mswitch(struct arena_info *A, struct jvst_cnode *dft, ...)
 {
-	struct jvst_cnode *node, **cpp;
+	struct jvst_cnode *node, **cpp, *dftcase;
 	va_list args;
 
 	node = newcnode(A, JVST_CNODE_MATCH_SWITCH);
-	node->u.mswitch.default_case = dft;
+	if (dft->type == JVST_CNODE_MATCH_CASE) {
+		dftcase = dft;
+	} else {
+		dftcase = newcnode(A, JVST_CNODE_MATCH_CASE);
+		dftcase->u.mcase.value_constraint = dft;
+	}
+
+	node->u.mswitch.dft_case = dftcase;
 	cpp = &node->u.mswitch.cases;
 
 	va_start(args, dft);
@@ -743,6 +994,14 @@ newcnode_mswitch(struct arena_info *A, struct jvst_cnode *dft, ...)
 		c = va_arg(args, struct jvst_cnode *);
 		if (c == NULL) {
 			break;
+		}
+
+		if (c == mswitch_str_constraints) {
+			struct jvst_cnode *cons;
+
+			cons = va_arg(args, struct jvst_cnode *);
+			// node->u.mswitch.constraints = cons;
+			continue;
 		}
 
 		*cpp = c;
@@ -754,15 +1013,27 @@ newcnode_mswitch(struct arena_info *A, struct jvst_cnode *dft, ...)
 }
 
 struct jvst_cnode *
-newcnode_mcase(struct arena_info *A, struct jvst_cnode_matchset *mset,
-	struct jvst_cnode *constraint)
+newcnode_mcase_namecons(struct arena_info *A, struct jvst_cnode_matchset *mset,
+	struct jvst_cnode *nconstraint,
+	struct jvst_cnode *vconstraint)
 {
 	struct jvst_cnode *node;
+
+	assert(vconstraint != NULL);
+
 	node = newcnode(A, JVST_CNODE_MATCH_CASE);
 	node->u.mcase.matchset = mset;
-	node->u.mcase.constraint = constraint;
+	node->u.mcase.name_constraint = nconstraint;
+	node->u.mcase.value_constraint = vconstraint;
 
 	return node;
+}
+
+struct jvst_cnode *
+newcnode_mcase(struct arena_info *A, struct jvst_cnode_matchset *mset,
+	struct jvst_cnode *vconstraint)
+{
+	return newcnode_mcase_namecons(A, mset, NULL, vconstraint);
 }
 
 static struct jvst_cnode_matchset *

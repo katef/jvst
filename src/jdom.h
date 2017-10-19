@@ -48,7 +48,7 @@ struct json_property {
 /* ordered list, hetereogenous */
 struct json_element {
 	struct json_value value;
-	struct json_property *next;
+	struct json_element *next;
 };
 
 int

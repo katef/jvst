@@ -1,0 +1,20 @@
+{
+  "anyOf" : [
+    {
+      "type" : "object",
+      "properties" : {
+        "foo" : { "type" : "number" },
+        "bar" : { "type" : "string" }
+      }
+    },
+
+    {
+      "type" : "object",
+      "properties" : {
+        "foo" : { "type" : "string" },
+        "bar" : { "type" : "number" }
+      }
+    }
+  ]
+}
+

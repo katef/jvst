@@ -1,0 +1,11 @@
+custom/anyOf
+0	empty object should be valid
+1	both schemas require an object
+2	foo is a number
+3	bar is a string
+4	foo is a string
+5	bar is a number
+6	foo is a number and bar is a string
+7	foo is a string and bar is a number
+8	invalid: foo is a string and bar is a string
+9	invalid: foo is a number and bar is a number

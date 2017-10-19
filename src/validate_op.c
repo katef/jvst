@@ -790,11 +790,11 @@ proc_add_split(struct op_assembler *opasm, struct jvst_op_instr *instr, struct j
 
 	if (max > opasm->maxsplit) {
 		opasm->splits = xenlargevec(opasm->splits,
-			&opasm->maxsplit, n, sizeof opasm->splits[0]);
+			&opasm->maxsplit, max, sizeof opasm->splits[0]);
 		prog->splits = opasm->splits;
 	}
 
-	assert(max < opasm->maxsplit);
+	assert(max <= opasm->maxsplit);
 
 	frames = opasm->ir->u.program.frames;
 	for (i=0; i < n; i++) {
