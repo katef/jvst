@@ -2866,4 +2866,82 @@ buffer_diff(FILE *f, const char *buf1, const char *buf2, size_t n)
 	}
 }
 
+void
+print_buffer_with_lines(FILE *f, const char *buf, size_t n)
+{
+    size_t i,l;
+
+    l = 1;
+    fprintf(f, "%3zu | ", l);
+    for (i=0; (i < n) && buf[i] != '\0'; i++) {
+      fputc(buf[i], f);
+      if (buf[i] == '\n') {
+        l++;
+        fprintf(f, "%3zu | ", l);
+      }
+    }
+    fprintf(f, "\n");
+}
+
+// n1 is actual, n2 is expected
+int cnode_trees_equal(const char *fname, struct jvst_cnode *n1, struct jvst_cnode *n2)
+{
+  size_t n;
+  int ret, failed;
+  static char buf1[65536];
+  static char buf2[65536];
+  size_t i, linenum, beg, off;
+
+  STATIC_ASSERT(sizeof buf1 == sizeof buf2, buffer_size_not_equal);
+
+  memset(buf1, 0, sizeof buf1);
+  memset(buf2, 0, sizeof buf2);
+
+  // kind of dumb but mostly reliable way to do deep equals...  generate
+  // text dumps and compare
+  // 
+  // XXX - replace with an actual comparison
+  if (jvst_cnode_dump(n1, buf1, sizeof buf1) != 0) {
+    fprintf(stderr, "buffer for node 1 not large enough (currently %zu bytes)\n",
+        sizeof buf1);
+  }
+
+  if (jvst_cnode_dump(n2, buf2, sizeof buf2) != 0) {
+    fprintf(stderr, "buffer for node 2 not large enough (currently %zu bytes)\n",
+        sizeof buf2);
+  }
+
+  if (strncmp(buf1, buf2, sizeof buf1) == 0) {
+    // fprintf(stderr, "TREE:\n%s\n", buf1);
+    return 1;
+  }
+
+  /*
+  fprintf(stderr,
+      "test %s cnode trees are not equal:\n"
+      "Expected tree:\n%s\n\n"
+      "Actual tree:\n%s\n",
+      fname, buf2,buf1);
+      */
+
+  fprintf(stderr, "test %s cnode trees are not equal:\n", fname);
+  {
+    size_t i,n,l;
+
+    fprintf(stderr, "Expected tree:\n");
+    print_buffer_with_lines(stderr, buf2, sizeof buf2);
+    fprintf(stderr, "\n");
+
+    fprintf(stderr, "Actual tree:\n");
+    print_buffer_with_lines(stderr, buf1, sizeof buf1);
+    fprintf(stderr, "\n");
+  }
+  fprintf(stderr, "\n\n");
+
+  // difference
+  buffer_diff(stderr, buf1, buf2, sizeof buf1);
+
+  return 0;
+}
+
 /* vim: set tabstop=8 shiftwidth=8 noexpandtab: */

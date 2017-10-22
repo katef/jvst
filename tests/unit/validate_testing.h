@@ -408,6 +408,12 @@ report_tests(void);
 void
 buffer_diff(FILE *f, const char *buf1, const char *buf2, size_t n);
 
+void
+print_buffer_with_lines(FILE *f, const char *buf, size_t n);
+
+int
+cnode_trees_equal(const char *fname, struct jvst_cnode *n1, struct jvst_cnode *n2);
+
 #endif /* TESTING_H */
 
 /* vim: set tabstop=8 shiftwidth=8 noexpandtab: */
