@@ -29,7 +29,7 @@
 } while(0)
 
 #define EXPR_UNIMPLEMENTED(expr) do {						\
-	fprintf(stderr, "%s:%d (%s) IR statement %s not yet implemented\n",	\
+	fprintf(stderr, "%s:%d (%s) IR expression %s not yet implemented\n",	\
 		__FILE__, __LINE__, __func__,					\
 		jvst_ir_expr_type_name((expr)->type));				\
 	abort();								\
@@ -38,6 +38,11 @@
 #define UNKNOWN_CNODE(type) do { \
 	fprintf(stderr, "%s:%d (%s) unknown cnode type %d\n", \
 		__FILE__, __LINE__, __func__, (type)); 	   \
+	abort(); } while(0)
+
+#define UNIMPLEMENTED_CNODE(node) do { \
+	fprintf(stderr, "%s:%d (%s) unimplemented cnode %s\n", \
+		__FILE__, __LINE__, __func__, jvst_cnode_type_name((node)->type));    \
 	abort(); } while(0)
 
 #define UNKNOWN_STMT(type) do { \
@@ -204,6 +209,21 @@ static inline struct jvst_ir_stmt *
 ir_stmt_valid(void)
 {
 	return ir_stmt_new(JVST_IR_STMT_VALID);
+}
+
+static inline struct jvst_ir_stmt *
+ir_consume_and_valid(void)
+{
+	struct jvst_ir_stmt *seq, **spp;
+	seq = ir_stmt_new(JVST_IR_STMT_SEQ);
+	spp = &seq->u.stmt_list;
+
+	*spp = ir_stmt_new(JVST_IR_STMT_CONSUME);
+	spp = &(*spp)->next;
+
+	*spp = ir_stmt_valid();
+	spp = &(*spp)->next;
+	return seq;
 }
 
 static inline struct jvst_ir_stmt *
@@ -1607,7 +1627,7 @@ ir_translate_number_expr(struct jvst_cnode *top)
 }
 
 static struct jvst_ir_stmt *
-ir_translate_number(struct jvst_cnode *top)
+ir_translate_number(struct jvst_cnode *top, struct jvst_ir_stmt *frame)
 {
 	struct jvst_ir_stmt *stmt, **spp;
 	// struct jvst_ir_expr *expr, **epp;
@@ -1617,7 +1637,8 @@ ir_translate_number(struct jvst_cnode *top)
 
 	switch (top->type) {
 	case JVST_CNODE_VALID:
-		*spp = ir_stmt_new(JVST_IR_STMT_VALID);
+		// *spp = ir_stmt_valid();
+		*spp = ir_consume_and_valid();
 		break;
 
 	case JVST_CNODE_INVALID:
@@ -1639,14 +1660,54 @@ ir_translate_number(struct jvst_cnode *top)
 				: JVST_INVALID_NOT_INTEGER;
 
 			br = ir_stmt_if(cond,
-				ir_stmt_new(JVST_IR_STMT_VALID),
+				// ir_stmt_valid(),
+				ir_consume_and_valid(),
 				ir_stmt_invalid(ecode));
 			*spp = br;
 		}
 		break;
 
-	case JVST_CNODE_NOT:
 	case JVST_CNODE_XOR:
+		{
+			struct jvst_cnode *n;
+			struct jvst_ir_stmt *counter, *seq;
+
+			// allocate a counter...
+			counter = ir_stmt_counter(frame, "xor_num");
+			seq = ir_stmt_new(JVST_IR_STMT_SEQ);
+			*spp = seq;
+			spp = &seq->u.stmt_list;
+
+			for (n = top->u.ctrl; n != NULL; n = n->next) {
+				struct jvst_ir_stmt *br;
+				struct jvst_ir_expr *cond;
+
+				cond = ir_translate_number_expr(n);
+				br = ir_stmt_if(cond,
+					ir_stmt_counter_op(JVST_IR_STMT_INCR, counter),
+					ir_stmt_new(JVST_IR_STMT_NOP));
+				*spp = br;
+				spp = &br->next;
+			}
+
+			{
+				struct jvst_ir_stmt *br;
+				struct jvst_ir_expr *cond;
+
+				cond = ir_expr_op(JVST_IR_EXPR_EQ,
+					ir_expr_count(counter),
+					ir_expr_size(1));
+
+				br = ir_stmt_if(cond,
+					ir_stmt_valid(),
+					ir_stmt_invalid(JVST_INVALID_NUMBER));
+				*spp = br;
+			}
+
+		}
+		break;
+
+	case JVST_CNODE_NOT:
 		fprintf(stderr, "[%s:%d] cnode %s not yet implemented\n",
 				__FILE__, __LINE__, 
 				jvst_cnode_type_name(top->type));
@@ -1821,8 +1882,9 @@ obj_mswitch_translate_and_ensure_consume(struct jvst_cnode *constraint, struct i
 		spp = &seq->u.stmt_list;
 		*spp = stmt;
 		spp = &(*spp)->next;
+
 		*spp = ir_stmt_new(JVST_IR_STMT_CONSUME);
-		
+
 		stmt = seq;
 	}
 
@@ -1842,7 +1904,8 @@ obj_mswitch_case_translate(struct jvst_cnode *node, struct ir_object_builder *bu
 	assert(node->type == JVST_CNODE_MATCH_CASE);
 	assert(node->u.mcase.tmp == NULL);
 
-	stmt = obj_mswitch_translate_and_ensure_consume(node->u.mcase.constraint, builder);
+	// XXX - handle string constraints
+	stmt = obj_mswitch_translate_and_ensure_consume(node->u.mcase.value_constraint, builder);
 
 	mcase = ir_mcase_new(UNASSIGNED_MATCH, stmt);
 	mcase->matchset = node->u.mcase.matchset;
@@ -1950,7 +2013,11 @@ ir_translate_obj_inner(struct jvst_cnode *top, struct ir_object_builder *builder
 				assert(caselist->u.mcase.tmp == mc);
 				assert(mc->next == NULL);
 
-				ir_obj_prepend_constraints(&mc->stmt, top->u.mswitch.constraints, builder);
+				// FIXME: handle string constraints
+				if (caselist->u.mcase.name_constraint != NULL) {
+					ir_obj_prepend_constraints(&mc->stmt,
+						caselist->u.mcase.name_constraint, builder);
+				}
 
 				mc->which = ++which;
 				*builder->mcpp = mc;
@@ -1979,15 +2046,21 @@ ir_translate_obj_inner(struct jvst_cnode *top, struct ir_object_builder *builder
 				struct jvst_cnode *cnode_dft;
 				struct jvst_ir_stmt *ir_dft;
 
-				cnode_dft = top->u.mswitch.default_case;
+				cnode_dft = top->u.mswitch.dft_case;
 				assert(cnode_dft != NULL);
+				assert(cnode_dft->type == JVST_CNODE_MATCH_CASE);
+				assert(cnode_dft->u.mcase.value_constraint != NULL);
 
-				ir_dft = obj_mswitch_translate_and_ensure_consume(cnode_dft, builder);
+				// XXX - can we simplify this?  let's look at refactoring it to use the
+				// same mechanism as str_translate_concat_constraints
+				ir_dft = obj_mswitch_translate_and_ensure_consume(cnode_dft->u.mcase.value_constraint, builder);
 				if (cnode_dft->type != JVST_CNODE_INVALID) {
 					// if it's already invalid, don't bother with further
 					// constraints...
-					ir_obj_prepend_constraints(&ir_dft, top->u.mswitch.constraints, builder);
+
+					ir_obj_prepend_constraints(&ir_dft, cnode_dft->u.mcase.name_constraint, builder);
 				}
+
 				builder->match->u.match.default_case = ir_dft;
 			}
 
@@ -2332,7 +2405,8 @@ separate_control_nodes(struct jvst_cnode *top, struct jvst_cnode **cpp, struct j
 }
 
 static struct jvst_ir_expr *
-split_gather(struct jvst_cnode *top, struct split_gather_data *data)
+split_gather(struct jvst_cnode *top, struct split_gather_data *data,
+	struct jvst_ir_stmt *(*xlatefunc)(struct jvst_cnode *, struct jvst_ir_stmt *))
 {
 	struct jvst_cnode *node;
 	size_t nf;
@@ -2375,7 +2449,7 @@ split_gather(struct jvst_cnode *top, struct split_gather_data *data)
 				data->nframe++;
 
 				fr = ir_stmt_frame();
-				fr->u.frame.stmts = ir_translate_object_inner(top, fr);
+				fr->u.frame.stmts = xlatefunc(top, fr);
 				*data->fpp = fr;
 				data->fpp = &fr->next;
 
@@ -2405,7 +2479,7 @@ split_gather(struct jvst_cnode *top, struct split_gather_data *data)
 			// 3. Create separate frames for all control nodes.
 			for (node = ctrl; node != NULL; node = node->next) {
 				struct jvst_ir_expr *e_ctrl;
-				e_ctrl = split_gather(node, data);
+				e_ctrl = split_gather(node, data, ir_translate_object_inner);
 				if (node->next == NULL) {
 					*epp = e_ctrl;
 				} else {
@@ -2455,7 +2529,7 @@ split_gather(struct jvst_cnode *top, struct split_gather_data *data)
 					data->nframe++;
 
 					fr = ir_stmt_frame();
-					fr->u.frame.stmts = ir_translate_object_inner(node, fr);
+					fr->u.frame.stmts = xlatefunc(node, fr);
 					*data->fpp = fr;
 					data->fpp = &fr->next;
 
@@ -2484,7 +2558,7 @@ split_gather(struct jvst_cnode *top, struct split_gather_data *data)
 			// 3. Create separate frames for all control nodes.
 			for (node = ctrl; node != NULL; node = node->next) {
 				struct jvst_ir_expr *e_ctrl;
-				e_ctrl = split_gather(node, data);
+				e_ctrl = split_gather(node, data, ir_translate_object_inner);
 				if (node->next == NULL) {
 					*epp = e_ctrl;
 				} else {
@@ -2553,7 +2627,8 @@ gather_remove_bvec(struct jvst_ir_stmt *frame, struct split_gather_data *gather)
 }
 
 static struct jvst_ir_stmt *
-ir_translate_object_split(struct jvst_cnode *top, struct jvst_ir_stmt *frame)
+ir_translate_split(struct jvst_cnode *top, struct jvst_ir_stmt *frame,
+	struct jvst_ir_stmt *(*xlatefunc)(struct jvst_cnode *, struct jvst_ir_stmt *))
 {
 	struct jvst_cnode *node;
 	struct jvst_ir_stmt *frames, *cond, **spp;
@@ -2565,7 +2640,7 @@ ir_translate_object_split(struct jvst_cnode *top, struct jvst_ir_stmt *frame)
 	gather.fpp = &frames;
 	gather.bvec = ir_stmt_bitvec(frame, "splitvec", 0);
 
-	split = split_gather(top, &gather);
+	split = split_gather(top, &gather, xlatefunc);
 	assert(frames != NULL);
 
 	if (gather.nctrl == 0) {
@@ -2575,7 +2650,7 @@ ir_translate_object_split(struct jvst_cnode *top, struct jvst_ir_stmt *frame)
 		gather_remove_bvec(frame, &gather);
 
 		// retranslate to remove the extra frame
-		return ir_translate_object_inner(top, frame);
+		return xlatefunc(top, frame);
 	}
 
 	if (gather.nctrl == 1) {
@@ -2613,7 +2688,7 @@ ir_translate_object_split(struct jvst_cnode *top, struct jvst_ir_stmt *frame)
 		}
 
 		cond = ir_stmt_if(cmp,
-			ir_stmt_new(JVST_IR_STMT_VALID),
+			ir_stmt_valid(),
 			ir_stmt_invalid(JVST_INVALID_SPLIT_CONDITION));  // XXX - improve error message!
 
 		return cond;
@@ -2635,10 +2710,16 @@ ir_translate_object_split(struct jvst_cnode *top, struct jvst_ir_stmt *frame)
 	spp = &(*spp)->next;
 	*spp = ir_stmt_new(JVST_IR_STMT_IF);
 	*spp = ir_stmt_if(split,
-		ir_stmt_new(JVST_IR_STMT_VALID),
+		ir_stmt_valid(),
 		ir_stmt_invalid(JVST_INVALID_SPLIT_CONDITION));  // XXX - improve error message!
 
 	return cond;
+}
+
+static struct jvst_ir_stmt *
+ir_translate_object_split(struct jvst_cnode *top, struct jvst_ir_stmt *frame)
+{
+	return ir_translate_split(top, frame, ir_translate_object_inner);
 }
 
 static struct jvst_ir_stmt *
@@ -2713,6 +2794,7 @@ ir_translate_object_inner(struct jvst_cnode *top, struct jvst_ir_stmt *frame)
 		assert(*npp == NULL);
 
 		*npp = builder.match->next;
+		// ensure that we consume the property's name token
 		*matchpp = ir_stmt_new(JVST_IR_STMT_CONSUME);
 		matchpp = &(*matchpp)->next;
 		*matchpp = builder.match->u.match.default_case;
@@ -2720,7 +2802,7 @@ ir_translate_object_inner(struct jvst_cnode *top, struct jvst_ir_stmt *frame)
 
 	// handle post-loop constraints
 	if (*builder.post_loop == NULL) {
-		*builder.post_loop = ir_stmt_new(JVST_IR_STMT_VALID);
+		*builder.post_loop = ir_stmt_valid();
 	}
 
 	return stmt;
@@ -2757,6 +2839,10 @@ str_translate_concat_constraints(struct jvst_cnode *sw_cons, struct jvst_cnode *
 		ir_translate_string_inner(sw_cons, builder);
 	}
 	ir_translate_string_inner(case_cons, builder);
+
+	if ((*(builder->ipp))->type == JVST_IR_STMT_NOP) {
+		(*(builder->ipp))->type = JVST_IR_STMT_VALID;
+	}
 
 	builder->ipp = saved_ipp;
 }
@@ -2802,7 +2888,9 @@ str_translate_mswitch(struct jvst_cnode *top, struct ir_str_builder *builder)
 
 	builder->consumed = true;
 
-	sw_cons = top->u.mswitch.constraints;
+	// FIXME: handle string constraints
+	// sw_cons = top->u.mswitch.constraints;
+	sw_cons = NULL;
 
 	// build jvst_ir_mcase nodes from cases list
 	which = 0;
@@ -2815,8 +2903,9 @@ str_translate_mswitch(struct jvst_cnode *top, struct ir_str_builder *builder)
 
 		ir_constraint = NULL;
 		spp = &ir_constraint;
-		
-		str_translate_concat_constraints(sw_cons, mcase->u.mcase.constraint, spp, builder);
+
+		str_translate_concat_constraints(mcase->u.mcase.name_constraint,
+			mcase->u.mcase.value_constraint, spp, builder);
 
 		mc = ir_mcase_new(++which, ir_constraint);
 		mc->matchset = mcase->u.mcase.matchset;
@@ -2832,7 +2921,10 @@ str_translate_mswitch(struct jvst_cnode *top, struct ir_str_builder *builder)
 	}
 
 	// translate the default case
-	str_translate_concat_constraints(sw_cons, top->u.mswitch.default_case, dftpp, builder);
+	assert(top->u.mswitch.dft_case != NULL);
+	assert(top->u.mswitch.dft_case->type == JVST_CNODE_MATCH_CASE);
+	str_translate_concat_constraints(top->u.mswitch.dft_case->u.mcase.name_constraint,
+		top->u.mswitch.dft_case->u.mcase.value_constraint, dftpp, builder);
 
 	// clear the u.mcase.tmp values in case they need to be used elsewhere
 	for (mcase = top->u.mswitch.cases; mcase != NULL; mcase = mcase->next) {
@@ -2851,6 +2943,124 @@ str_translate_mswitch(struct jvst_cnode *top, struct ir_str_builder *builder)
 	}
 
 	return match;
+}
+
+static struct jvst_ir_expr *
+ir_length_range_expr(struct jvst_cnode *range)
+{
+	struct jvst_ir_expr *expr;
+
+	expr = NULL;
+	if (range->u.counts.min > 0) {
+		expr = ir_expr_op(JVST_IR_EXPR_GE,
+				ir_expr_new(JVST_IR_EXPR_TOK_LEN),
+				ir_expr_size(range->u.counts.min));
+	}
+
+	if (range->u.counts.upper) {
+		struct jvst_ir_expr *upper;
+
+		upper = ir_expr_op(JVST_IR_EXPR_LE,
+				ir_expr_new(JVST_IR_EXPR_TOK_LEN),
+				ir_expr_size(range->u.counts.max));
+
+		if (expr != NULL) {
+			expr = ir_expr_op(JVST_IR_EXPR_AND, expr, upper);
+		} else {
+			expr = upper;
+		}
+	}
+
+	assert(expr != NULL);
+
+	return expr;
+}
+
+static struct jvst_ir_expr *
+ir_complex_length_range_expr(struct jvst_cnode *range)
+{
+	struct jvst_cnode *n;
+	struct jvst_ir_expr *expr;
+	enum jvst_ir_expr_type op;
+
+	// All child nodes should be string constraints, which are currently
+	// LENGTH_RANGE nodes.  We want to construct one large boolean expression from
+	// the length_range nodes.
+
+	if (range->type == JVST_CNODE_OR) {
+		op = JVST_IR_EXPR_OR;
+	} else {
+		op = JVST_IR_EXPR_AND;
+	}
+
+	// FIXME: this won't handle complex expressions...
+	expr = NULL;
+	for (n = range->u.ctrl; n != NULL; n = n->next) {
+		struct jvst_ir_expr *term;
+
+		switch (n->type) {
+		case JVST_CNODE_LENGTH_RANGE:
+			term = ir_length_range_expr(n);
+			break;
+
+		case JVST_CNODE_OR:
+		case JVST_CNODE_AND:
+			term = ir_complex_length_range_expr(n);
+			break;
+
+		default:
+			UNIMPLEMENTED_CNODE(n);
+		}
+
+		assert(term != NULL);
+
+		if (expr == NULL) {
+			expr = term;
+		} else {
+			expr = ir_expr_op(op,expr,term);
+		}
+	}
+
+	if (expr == NULL) {
+		fprintf(stderr, "%s node has no constraints\n",
+			jvst_cnode_type_name(range->type));
+		jvst_cnode_print(stderr, range);
+		abort();
+	}
+
+	return expr;
+}
+
+// Special case if all children of an AND(...) or OR(...) are LENGTH_RANGE constraints
+static void
+str_translate_split_length_ranges(struct jvst_cnode *top, struct ir_str_builder *builder)
+{
+	struct jvst_ir_expr *cond;
+	struct jvst_ir_stmt *br, **spp;
+
+	cond = ir_complex_length_range_expr(top);
+
+	spp = builder->ipp;
+	if (!builder->consumed) {
+		struct jvst_ir_stmt *seq;
+		seq = ir_stmt_new(JVST_IR_STMT_SEQ);
+
+		*spp = seq;
+		spp = &seq->u.stmt_list;
+
+		*spp = ir_stmt_new(JVST_IR_STMT_CONSUME);
+		spp = &(*spp)->next;
+	}
+
+	br = ir_stmt_if(cond, NULL,
+			ir_stmt_invalid(JVST_INVALID_STRING));
+
+	*spp = br;
+	spp = &br->u.if_.br_true;
+
+	*spp = ir_stmt_new(JVST_IR_STMT_NOP);
+
+	builder->ipp = spp;
 }
 
 static void
@@ -2923,6 +3133,29 @@ ir_translate_string_inner(struct jvst_cnode *top, struct ir_str_builder *builder
 
 	case JVST_CNODE_OR:
 	case JVST_CNODE_AND:
+		{
+			struct jvst_cnode *n;
+			struct jvst_ir_stmt *stmt;
+			int all_length_range;
+			
+			all_length_range = 1;
+			for (n = top->u.ctrl; n != NULL; n = n->next) {
+				if (n->type != JVST_CNODE_LENGTH_RANGE) {
+					all_length_range = 0;
+					break;
+				}
+			}
+
+			if (all_length_range) {
+				str_translate_split_length_ranges(top, builder);
+				return;
+			}
+
+			stmt = ir_translate_split(top, builder->frame, ir_translate_string);
+			*builder->ipp = stmt;
+			// builder->ipp = &stmt->next;
+		}
+		return;
 
 	case JVST_CNODE_XOR:
 	case JVST_CNODE_NOT:
@@ -2974,6 +3207,12 @@ ir_translate_string(struct jvst_cnode *top, struct jvst_ir_stmt *frame)
 	builder.ipp = &stmt;
 
 	ir_translate_string_inner(top, &builder);
+	assert(builder.ipp != NULL);
+	assert(*builder.ipp != NULL);
+
+	if ((*builder.ipp)->type == JVST_IR_STMT_NOP) {
+		(*builder.ipp)->type = JVST_IR_STMT_VALID;
+	}
 
 	assert(stmt != NULL);
 
@@ -3264,7 +3503,7 @@ ir_translate_type(enum SJP_EVENT type, struct jvst_cnode *top, struct jvst_ir_st
 {
 	switch (type) {
 	case SJP_NUMBER:
-		return ir_translate_number(top);
+		return ir_translate_number(top, frame);
 
 	case SJP_OBJECT_BEG:
 		return ir_translate_object(top, frame);
@@ -3359,7 +3598,7 @@ ir_translate(struct jvst_cnode *ctree, bool first_token)
 			break;
 
 		case JVST_CNODE_VALID:
-			br_true = ir_stmt_valid();
+			br_true = ir_consume_and_valid();
 			break;
 
 		default:
@@ -3372,7 +3611,7 @@ ir_translate(struct jvst_cnode *ctree, bool first_token)
 	}
 
 	*spp = (dft_case == JVST_CNODE_VALID)
-		? ir_stmt_new(JVST_IR_STMT_VALID) 
+		? ir_consume_and_valid()
 		: ir_stmt_invalid(JVST_INVALID_UNEXPECTED_TOKEN)
 		;
 
