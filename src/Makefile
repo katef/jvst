@@ -31,6 +31,7 @@ VALID_SRC += src/sjp_parser.c
 VALID_SRC += src/sjp_testing.c
 VALID_SRC += src/compile.c
 
+VALID_SRC += src/idtbl.c
 VALID_SRC += src/hmap.c
 VALID_SRC += src/xxhash.c
 

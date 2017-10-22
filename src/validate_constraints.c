@@ -1123,10 +1123,28 @@ cnode_enum_translate(struct json_value *v)
 	return jvst_cnode_alloc(JVST_CNODE_INVALID);
 }
 
+static
+void add_cnode_ids(struct jvst_id_table *tbl, const struct ast_schema *ast, struct jvst_cnode *n)
+{
+	// XXX - better error messages!
+	// XXX - better error handling!
+	if (!jvst_id_table_add(tbl, ast->path, n)) {
+		fprintf(stderr, "error adding path -> cnode entry to id table\n");
+		abort();
+	}
+
+	if (ast->id.len > 0) {
+		if (!jvst_id_table_add(tbl, ast->id, n)) {
+			fprintf(stderr, "error adding id -> cnode entry to id table\n");
+			abort();
+		}
+	}
+}
+
 // Just do a raw translation without doing any optimization of the
 // constraint tree
 struct jvst_cnode *
-jvst_cnode_translate_ast(const struct ast_schema *ast)
+jvst_cnode_translate_ast_with_ids(const struct ast_schema *ast, struct jvst_id_table *tbl)
 {
 	struct jvst_cnode *node;
 	enum json_valuetype types;
@@ -1138,7 +1156,11 @@ jvst_cnode_translate_ast(const struct ast_schema *ast)
 			fprintf(stderr, "Invalid JSON value type.  Schemas must be objects or booleans.\n");
 			abort();
 		}
-		return cnode_new_switch(ast->value.u.v);
+
+		node = cnode_new_switch(ast->value.u.v);
+		add_cnode_ids(tbl, ast, node);
+
+		return node;
 	}
 
 	types = ast->types;
@@ -1251,7 +1273,7 @@ jvst_cnode_translate_ast(const struct ast_schema *ast)
 			assert(ast->items->schema != NULL);
 			assert(ast->items->next == NULL);
 
-			constraint = jvst_cnode_translate_ast(ast->items->schema);
+			constraint = jvst_cnode_translate_ast_with_ids(ast->items->schema, tbl);
 			items_constraint = jvst_cnode_alloc(JVST_CNODE_ARR_ADDITIONAL);
 			items_constraint->u.items = constraint;
 		} else {
@@ -1265,7 +1287,7 @@ jvst_cnode_translate_ast(const struct ast_schema *ast)
 
 				assert(sl->schema != NULL);
 
-				constraint = jvst_cnode_translate_ast(sl->schema);
+				constraint = jvst_cnode_translate_ast_with_ids(sl->schema, tbl);
 				*ilpp = constraint;
 				ilpp = &constraint->next;
 			}
@@ -1280,7 +1302,7 @@ jvst_cnode_translate_ast(const struct ast_schema *ast)
 	if (ast->additional_items != NULL && ast->items != NULL && (ast->kws & KWS_SINGLETON_ITEMS) == 0) {
 		struct jvst_cnode *constraint, *additional;
 
-		constraint = jvst_cnode_translate_ast(ast->additional_items);
+		constraint = jvst_cnode_translate_ast_with_ids(ast->additional_items, tbl);
 		additional = jvst_cnode_alloc(JVST_CNODE_ARR_ADDITIONAL);
 		additional->u.items = constraint;
 
@@ -1290,7 +1312,7 @@ jvst_cnode_translate_ast(const struct ast_schema *ast)
 	if (ast->contains != NULL) {
 		struct jvst_cnode *constraint, *contains;
 
-		constraint = jvst_cnode_translate_ast(ast->contains);
+		constraint = jvst_cnode_translate_ast_with_ids(ast->contains, tbl);
 		contains = jvst_cnode_alloc(JVST_CNODE_ARR_CONTAINS);
 		contains->u.contains = constraint;
 
@@ -1322,7 +1344,7 @@ jvst_cnode_translate_ast(const struct ast_schema *ast)
 			pnode = jvst_cnode_alloc(JVST_CNODE_OBJ_PROP_MATCH);
 			// FIXME: I think this will leak!
 			pnode->u.prop_match.match = pset->pattern;
-			pnode->u.prop_match.constraint = jvst_cnode_translate_ast(pset->schema);
+			pnode->u.prop_match.constraint = jvst_cnode_translate_ast_with_ids(pset->schema, tbl);
 			*plist = pnode;
 			plist = &pnode->next;
 		}
@@ -1337,7 +1359,7 @@ jvst_cnode_translate_ast(const struct ast_schema *ast)
 	if (ast->additional_properties != NULL) {
 		struct jvst_cnode *constraint, *pdft;
 
-		constraint = jvst_cnode_translate_ast(ast->additional_properties);
+		constraint = jvst_cnode_translate_ast_with_ids(ast->additional_properties, tbl);
 		assert(constraint != NULL);
 		assert(constraint->next == NULL);
 
@@ -1351,7 +1373,7 @@ jvst_cnode_translate_ast(const struct ast_schema *ast)
 		struct jvst_cnode *constraint;
 		struct jvst_cnode *pnames;
 
-		constraint = jvst_cnode_translate_ast(ast->property_names);
+		constraint = jvst_cnode_translate_ast_with_ids(ast->property_names, tbl);
 
 		pnames = jvst_cnode_alloc(JVST_CNODE_OBJ_PROP_NAMES);
 		pnames->u.prop_names = constraint;
@@ -1448,7 +1470,7 @@ jvst_cnode_translate_ast(const struct ast_schema *ast)
 			sw = cnode_new_switch(false);
 			sw->u.sw[SJP_OBJECT_BEG] = req;
 			andjxn->u.ctrl = sw;
-			sw->next = jvst_cnode_translate_ast(pschema->schema);
+			sw->next = jvst_cnode_translate_ast_with_ids(pschema->schema, tbl);
 
 			*jpp = andjxn;
 			jpp  = &(*jpp)->next;
@@ -1486,7 +1508,7 @@ jvst_cnode_translate_ast(const struct ast_schema *ast)
 		some_jxn->u.ctrl = NULL;
 		for (sset = ast->some_of.set; sset != NULL; sset = sset->next) {
 			struct jvst_cnode *c;
-			c = jvst_cnode_translate_ast(sset->schema);
+			c = jvst_cnode_translate_ast_with_ids(sset->schema, tbl);
 			*conds = c;
 			conds = &c->next;
 		}
@@ -1527,7 +1549,22 @@ jvst_cnode_translate_ast(const struct ast_schema *ast)
 		node = top_jxn;
 	}
 
+	add_cnode_ids(tbl, ast, node);
 	return node;
+}
+
+struct jvst_cnode *
+jvst_cnode_translate_ast(const struct ast_schema *ast)
+{
+	struct jvst_id_table *ids;
+	struct jvst_cnode *ctree;
+
+	ids = jvst_id_table_new();
+
+	ctree = jvst_cnode_translate_ast_with_ids(ast, ids);
+	jvst_id_table_delete(ids);
+
+	return ctree;
 }
 
 static struct jvst_cnode *

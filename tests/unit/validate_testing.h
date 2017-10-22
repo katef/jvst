@@ -32,6 +32,7 @@ struct arena_info {
 	/* cnode related */
 	size_t ncnode;
 	size_t nmatchsets;
+	size_t nids;
 
         /* IR related */
         size_t nstmt;
@@ -50,6 +51,12 @@ struct arena_info {
 
 	size_t nvmprog;
 	size_t nvmcode;
+};
+
+struct id_pair {
+	struct id_pair *next;
+	const char *id;
+	struct jvst_cnode *cnode;
 };
 
 struct ast_schema *
@@ -184,6 +191,14 @@ newcnode_mcase_namecons(struct arena_info *A, struct jvst_cnode_matchset *mset,
 
 struct jvst_cnode_matchset *
 newmatchset(struct arena_info *A, ...);
+
+
+/** cnode id related **/
+struct id_pair *
+new_idpair(struct arena_info *A, const char *id, struct jvst_cnode *ctree);
+
+struct id_pair *
+new_idpairs(struct id_pair *first, ...);
 
 
 /* IR-related */

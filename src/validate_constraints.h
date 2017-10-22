@@ -5,6 +5,7 @@
 
 #include "sjp_parser.h"
 #include "ast.h"
+#include "idtbl.h"
 
 /* simplified tree of validation constraints
  *
@@ -187,6 +188,8 @@ struct jvst_cnode {
 	} u;
 };
 
+struct jvst_id_table;
+
 struct jvst_cnode *
 jvst_cnode_alloc(enum jvst_cnode_type type);
 
@@ -206,6 +209,12 @@ jvst_cnode_from_ast(const struct ast_schema *ast);
 
 // Just do a raw translation without doing any optimization of the
 // constraint tree
+//
+// If tbl is not NULL, builds an id -> cnode table.
+struct jvst_cnode *
+jvst_cnode_translate_ast_with_ids(const struct ast_schema *ast, struct jvst_id_table *tbl);
+
+// Backwards-compatible version of the above while we migrate code/tests
 struct jvst_cnode *
 jvst_cnode_translate_ast(const struct ast_schema *ast);
 

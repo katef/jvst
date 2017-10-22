@@ -47,6 +47,7 @@ static struct ast_value_set ar_ast_vsets[NUM_TEST_THINGS];
 
 static struct jvst_cnode ar_cnodes[NUM_TEST_THINGS];
 static struct jvst_cnode_matchset ar_cnode_matchsets[NUM_TEST_THINGS];
+static struct id_pair ar_id_pairs[NUM_TEST_THINGS];
 
 static struct jvst_ir_stmt ar_ir_stmts[NUM_TEST_THINGS];
 static struct jvst_ir_expr ar_ir_exprs[NUM_TEST_THINGS];
@@ -1101,6 +1102,51 @@ newmatchset(struct arena_info *A, ...)
 	va_end(args);
 
 	return head;
+}
+
+struct id_pair *
+new_idpairs(struct id_pair *first, ...)
+{
+	struct id_pair **idpp;
+	va_list args;
+
+	idpp = &first->next;
+	va_start(args, first);
+	for (;;) {
+		struct id_pair *pair;
+
+		pair = va_arg(args, struct id_pair *);
+		if (pair == NULL) {
+			break;
+		}
+
+		*idpp = pair;
+		idpp = &pair->next;
+	}
+	va_end(args);
+
+	return first;
+}
+
+struct id_pair *
+new_idpair(struct arena_info *A, const char *id, struct jvst_cnode *ctree)
+{
+	size_t i, max;
+	struct id_pair *pair;
+
+	i   = A->nids++;
+	max = ARRAYLEN(ar_id_pairs);
+	if (A->nexpr >= max) {
+		fprintf(stderr, "too many id pairs: %zu max\n", max);
+		abort();
+	}
+
+	pair = &ar_id_pairs[i];
+	memset(pair, 0, sizeof *pair);
+	pair->id = id;
+	pair->cnode = ctree;
+
+	return pair;
 }
 
 struct jvst_ir_expr *

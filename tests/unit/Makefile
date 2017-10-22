@@ -4,12 +4,14 @@ TEST_PROG += test_validation
 TEST_PROG += test_constraints
 TEST_PROG += test_ir
 TEST_PROG += test_op
+TEST_PROG += test_ids
 
 # currently each test_*.c is a separate program
 TEST_SRC += tests/unit/test_validation.c
 TEST_SRC += tests/unit/test_constraints.c
 TEST_SRC += tests/unit/test_ir.c
 TEST_SRC += tests/unit/test_op.c
+TEST_SRC += tests/unit/test_ids.c
 
 TEST_SRC += tests/unit/validate_testing.c
 TEST_SRC += tests/unit/ir_testing.c
@@ -29,7 +31,7 @@ DFLAGS.${src} += ${CFLAGS.libre} ${CFLAGS.libfsm}
 
 # All the .o files that the tests depend on
 TEST_DEP_OBJS = 
-.for src in ${SRC:Msrc/*.c:Nsrc/main.c:Nsrc/parser.c} ${TEST_SRC:Ntests/unit/test_*.c}
+.for src in ${SRC:Msrc/*.c:Nsrc/main.c} ${TEST_SRC:Ntests/unit/test_*.c}
 TEST_DEP_OBJS += ${BUILD}/${src:R}.o
 .endfor
 
@@ -54,3 +56,4 @@ unittests::	${BUILD}/tests/unit/${prog}
 MODE.test/${prog} = 755
 
 .endfor
+
