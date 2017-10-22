@@ -19,13 +19,13 @@ hmap_set_inner(struct hmap *m, unsigned long h, void *k, union hmap_value v)
 {
 	size_t i,n, b;
 	void *opaque;
-	int (*cmp)(void *, const void *, const void *);
+	int (*equals)(void *, const void *, const void *);
 
 	assert(m != NULL);
 
 	n      = m->nbuckets;
 	opaque = m->opaque;
-	cmp    = m->cmp;
+        equals = m->equals;
 
 	b = h % n;
 	for (i=0; i < n; i++) {
@@ -33,7 +33,7 @@ hmap_set_inner(struct hmap *m, unsigned long h, void *k, union hmap_value v)
 			goto set_item;
 		}
 
-		if (m->khb[b].hash == h && cmp(opaque, m->khb[b].key, k) == 0) {
+		if (m->khb[b].hash == h && equals(opaque, m->khb[b].key, k)) {
 			goto set_item;
 		}
 
@@ -166,7 +166,7 @@ hmap_setuint(struct hmap *m, void *k, uint64_t u)
 struct hmap *
 hmap_create(size_t nbuckets, float maxload, void *opaque,
 	uint64_t (*hash)(void *, const void *),
-	int (*cmp)(void *opaque, const void *k1, const void *k2))
+	int (*equals)(void *opaque, const void *k1, const void *k2))
 {
 	struct hmap *m;
 	size_t i;
@@ -204,7 +204,7 @@ hmap_create(size_t nbuckets, float maxload, void *opaque,
 
 	m->opaque = opaque;
 	m->hash   = hash;
-	m->cmp    = cmp;
+	m->equals = equals;
 
 	return m;
 
@@ -237,7 +237,7 @@ hmap_get(const struct hmap *m, const void *k)
 		}
 
 		if (m->khb[b].hash == h) {
-			if (m->cmp(m->opaque, m->khb[b].key, k) == 0) {
+			if (m->equals(m->opaque, m->khb[b].key, k)) {
 				return &m->vb[b];
 			}
 		}
@@ -355,33 +355,33 @@ hash_pointer(void *opaque, const void *key)
 }
 
 static int
-cmp_string(void *dummy, const void *a, const void *b)
+equals_string(void *dummy, const void *a, const void *b)
 {
 	(void)dummy;
 	assert(a != NULL);
 	assert(b != NULL);
 
-	return strcmp(a,b);
+	return strcmp(a,b) == 0;
 }
 
 struct hmap *
 hmap_create_string(size_t nbuckets, float maxload)
 {
 	return hmap_create(nbuckets, maxload, NULL,
-		hash_string, cmp_string);
+		hash_string, equals_string);
 }
 
 static int
-cmp_pointer(void *dummy, const void *a, const void *b)
+equals_pointer(void *dummy, const void *a, const void *b)
 {
 	(void)dummy;
 
-	return a != b;
+	return a == b;
 }
 
 struct hmap *
 hmap_create_pointer(size_t nbuckets, float maxload)
 {
 	return hmap_create(nbuckets, maxload, NULL,
-		hash_pointer, cmp_pointer);
+		hash_pointer, equals_pointer);
 }

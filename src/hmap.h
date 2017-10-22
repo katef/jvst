@@ -25,7 +25,7 @@ struct hmap {
 
 	void *opaque;
 	uint64_t (*hash)(void *opaque, const void *key);
-	int (*cmp)(void *opaque, const void *k1, const void *k2);
+	int (*equals)(void *opaque, const void *k1, const void *k2);
 	float maxload;
 };
 
