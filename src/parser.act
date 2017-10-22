@@ -385,6 +385,10 @@
                 ast->additional_properties = @sch;
         @};
 
+        <set-property-names>:       (sch :ast-schema) -> () = @{
+                ast->property_names = @sch;
+        @};
+
         <new-schema-list>: () -> (lst :ast-schema-list) = @{
                 ast_schema_list_t l;
                 l = xmalloc(sizeof *l);

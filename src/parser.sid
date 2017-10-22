@@ -97,6 +97,7 @@
         <set-properties>:           (:ast-prop-schema) -> ();
         <set-additional-properties>:
                                     (:ast-schema) -> ();
+        <set-property-names>:       (:ast-schema) -> ();
 
         <set-items-list>:           (:ast-schema-list) -> ();
         <set-items-single>:         (:ast-schema) -> ();
@@ -311,6 +312,11 @@
                 <set-additional-properties>(sch);
         };
 
+        directive-property-names = {
+                sch = <parse-schema>;
+                <set-property-names>(sch);
+        };
+
         directive-pattern = {
                 s = STRING;
                 dialect = <re-pattern>;
@@ -472,7 +478,7 @@
 		placeholder;
 	||
 		? = <kw-property-names>(k);
-		placeholder;
+		directive-property-names;
 	||
 		? = <kw-enum>(k);
 		placeholder;

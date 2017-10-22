@@ -301,6 +301,11 @@ newschema_p(struct arena_info *A, int types, ...)
 
 			sch = va_arg(args, struct ast_schema *);
 			s->additional_properties = sch;
+		} else if (strcmp(pname, "propertyNames") == 0) {
+			struct ast_schema *sch;
+
+			sch = va_arg(args, struct ast_schema *);
+			s->property_names = sch;
 		} else if (strcmp(pname, "required") == 0) {
 			s->required.set = va_arg(args, struct ast_string_set *);
 		} else if (strcmp(pname, "minimum") == 0) {
@@ -619,6 +624,17 @@ newcnode_prop_default(struct arena_info *A, struct jvst_cnode *dft)
 }
 
 struct jvst_cnode *
+newcnode_propnames(struct arena_info *A, struct jvst_cnode *tree)
+{
+	struct jvst_cnode *node;
+
+	node = newcnode(A, JVST_CNODE_OBJ_PROP_NAMES);
+	node->u.prop_names = tree;
+
+	return node;
+}
+
+struct jvst_cnode *
 newcnode_range(struct arena_info *A, enum jvst_cnode_rangeflags flags, double min, double max)
 {
 	struct jvst_cnode *node, **pp;
@@ -727,6 +743,9 @@ newcnode_reqbit(struct arena_info *A, size_t bit)
 	return node;
 }
 
+const struct jvst_cnode v_mswitch_str_constraints;
+const struct jvst_cnode *const mswitch_str_constraints = &v_mswitch_str_constraints;
+
 struct jvst_cnode *
 newcnode_mswitch(struct arena_info *A, struct jvst_cnode *dft, ...)
 {
@@ -743,6 +762,14 @@ newcnode_mswitch(struct arena_info *A, struct jvst_cnode *dft, ...)
 		c = va_arg(args, struct jvst_cnode *);
 		if (c == NULL) {
 			break;
+		}
+
+		if (c == mswitch_str_constraints) {
+			struct jvst_cnode *cons;
+
+			cons = va_arg(args, struct jvst_cnode *);
+			node->u.mswitch.constraints = cons;
+			continue;
 		}
 
 		*cpp = c;
