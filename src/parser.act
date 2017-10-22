@@ -294,7 +294,7 @@
 		}
 
 		// fprintf(stderr, "path: %s\n", path);
-		result.len = e-s;
+		result.len = s-path;
 		result.s = xstrndup(path, result.len);
 		return result;
 	}
@@ -617,6 +617,10 @@
 		sch->path = current_path(path);
                 p_schema(lex_state, act_state, sch, path);
 		@sch = sch;
+        @};
+
+        <set-path>:             () -> () = @{
+                ast->path = current_path(path);
         @};
 
         <set-schema-true>:          () -> () = @{

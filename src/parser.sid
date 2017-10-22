@@ -186,6 +186,7 @@
         <free-schema-list>:         (:ast-schema-list) -> ();
 
         <parse-schema>:             () -> (:ast-schema);
+        <set-path>:             () -> ();
 
         <set-schema-true>:          () -> ();
         <set-schema-false>:         () -> ();
@@ -862,6 +863,7 @@
 
 	file = {
 		schema;
+                <set-path>;
 		EOS;
 	##
 		<err-syntax>;
