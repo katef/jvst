@@ -250,6 +250,17 @@ jvst_cnode_alloc(enum jvst_cnode_type type)
 }
 
 static struct jvst_cnode *
+cnode_new_ref(struct json_string id)
+{
+	struct jvst_cnode *node;
+
+	node = jvst_cnode_alloc(JVST_CNODE_REF);
+	node->u.ref = json_strdup(id);
+
+	return node;
+}
+
+static struct jvst_cnode *
 cnode_new_switch(int allvalid)
 {
 	size_t i, n;
@@ -421,6 +432,8 @@ jvst_cnode_type_name(enum jvst_cnode_type type)
 		return "MATCH_SWITCH";
 	case JVST_CNODE_MATCH_CASE:
 		return "MATCH_CASE";
+	case JVST_CNODE_REF:
+		return "REF";
 	}
 
 	fprintf(stderr, "unknown cnode type %d\n", type);
@@ -540,6 +553,18 @@ jvst_cnode_dump_inner(struct jvst_cnode *node, struct sbuf *buf, int indent)
 					sbuf_indent(buf, indent);
 					sbuf_snprintf(buf, ")");
 				}
+			}
+		}
+		break;
+
+	case JVST_CNODE_REF:
+		{
+			if (node->u.ref.len <= INT_MAX) {
+				sbuf_snprintf(buf, "REF( \"%.*s\" )",
+					(int)node->u.ref.len, node->u.ref.s);
+			} else {
+				sbuf_snprintf(buf, "REF( \"%.*s...\" )",
+					INT_MAX, node->u.ref.s);
 			}
 		}
 		break;
@@ -1163,6 +1188,16 @@ jvst_cnode_translate_ast_with_ids(const struct ast_schema *ast, struct jvst_id_t
 		return node;
 	}
 
+	// if an object has a "$ref", then all other properties must be
+	// ignored
+	if (ast->kws & KWS_HAS_REF) {
+		assert(ast->ref.len > 0);
+		assert(ast->ref.s != NULL);
+
+		node = cnode_new_ref(ast->ref);
+		return node;
+	}
+
 	types = ast->types;
 
 	// TODO - implement ast->some_of.set != NULL logic
@@ -1722,6 +1757,11 @@ cnode_deep_copy(struct jvst_cnode *node)
 	case JVST_CNODE_NUM_MULTIPLE_OF:
 		tree = jvst_cnode_alloc(node->type);
 		tree->u.multiple_of = node->u.multiple_of;
+		return tree;
+
+	case JVST_CNODE_REF:
+		tree = jvst_cnode_alloc(node->type);
+		tree->u.ref = json_strdup(node->u.ref);
 		return tree;
 
 	case JVST_CNODE_AND:
@@ -4185,6 +4225,7 @@ jvst_cnode_simplify(struct jvst_cnode *tree)
 	case JVST_CNODE_NUM_INTEGER:
 	case JVST_CNODE_NUM_MULTIPLE_OF:
 	case JVST_CNODE_ARR_UNIQUE:
+	case JVST_CNODE_REF:
 		return tree;
 
 	case JVST_CNODE_AND:
@@ -5028,6 +5069,7 @@ cnode_canonify_pass1(struct jvst_cnode *tree)
 	case JVST_CNODE_NUM_RANGE:
 	case JVST_CNODE_PROP_RANGE:
 	case JVST_CNODE_ITEM_RANGE:
+	case JVST_CNODE_REF:
 		return tree;
 
 	case JVST_CNODE_AND:
@@ -5202,6 +5244,7 @@ cnode_canonify_pass2(struct jvst_cnode *tree)
 	case JVST_CNODE_LENGTH_RANGE:
 	case JVST_CNODE_PROP_RANGE:
 	case JVST_CNODE_ITEM_RANGE:
+	case JVST_CNODE_REF:
 		return tree;
 
 	case JVST_CNODE_NOT:

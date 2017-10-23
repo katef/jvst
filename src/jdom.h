@@ -54,6 +54,9 @@ struct json_element {
 int
 json_strcmp(const struct json_string *str, const char *s);
 
+struct json_string
+json_strdup(const struct json_string s);
+
 enum json_valuetype
 type_lookup(const struct json_string *str);
 

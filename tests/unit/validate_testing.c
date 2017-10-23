@@ -415,6 +415,12 @@ newschema_p(struct arena_info *A, int types, ...)
 			divisor = va_arg(args, double);
 			s->multiple_of = divisor;
 			s->kws |= KWS_MULTIPLE_OF;
+		} else if (strcmp(pname, "$ref") == 0) {
+			const char *id;
+			id = va_arg(args, const char *);
+			s->kws |= KWS_HAS_REF;
+			s->ref.s = id;
+			s->ref.len = strlen(id);
 		} else {
 			// okay to abort() a test if the test writer forgot to add a
 			// property to the big dumb if-else chain
@@ -953,9 +959,7 @@ newcnode_contains(struct arena_info *A, struct jvst_cnode *top)
 struct jvst_cnode *
 newcnode_required(struct arena_info *A, struct ast_string_set *sset)
 {
-	struct ast_string_set **spp;
 	struct jvst_cnode *node;
-	va_list args;
 
 	node = newcnode(A, JVST_CNODE_OBJ_REQUIRED);
 	node->u.required = sset;
@@ -1102,6 +1106,17 @@ newmatchset(struct arena_info *A, ...)
 	va_end(args);
 
 	return head;
+}
+
+struct jvst_cnode *
+newcnode_ref(struct arena_info *A, const char *id)
+{
+	struct jvst_cnode *node;
+
+	node = newcnode(A, JVST_CNODE_REF);
+	node->u.ref = newstr(id);
+
+	return node;
 }
 
 struct id_pair *

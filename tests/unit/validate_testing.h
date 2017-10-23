@@ -192,6 +192,8 @@ newcnode_mcase_namecons(struct arena_info *A, struct jvst_cnode_matchset *mset,
 struct jvst_cnode_matchset *
 newmatchset(struct arena_info *A, ...);
 
+struct jvst_cnode *
+newcnode_ref(struct arena_info *A, const char *id);
 
 /** cnode id related **/
 struct id_pair *

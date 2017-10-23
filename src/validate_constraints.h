@@ -72,6 +72,8 @@ enum jvst_cnode_type {
 	JVST_CNODE_ARR_UNIQUE,
 	JVST_CNODE_ARR_CONTAINS,
 
+	JVST_CNODE_REF,
+
 	// The following node types are only present after
 	// canonification.
 
@@ -185,6 +187,8 @@ struct jvst_cnode {
 
 		// for array contains constraint
 		struct jvst_cnode *contains;
+
+		struct json_string ref;
 	} u;
 };
 

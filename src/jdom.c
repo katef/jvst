@@ -75,3 +75,25 @@ type_name(enum json_valuetype t)
 	return "?";
 }
 
+struct json_string
+json_strdup(const struct json_string s)
+{
+	static const struct json_string zero;
+	struct json_string dup = zero;
+	char *data;
+
+	if (s.len == 0) {
+		return dup;
+	}
+
+	data = malloc(s.len);
+	memcpy(data, s.s, s.len);
+
+	dup.s = data;
+	dup.len = s.len;
+
+	return dup;
+}
+
+/* vim: set tabstop=8 shiftwidth=8 noexpandtab: */
+

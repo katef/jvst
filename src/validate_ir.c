@@ -2213,6 +2213,7 @@ ir_translate_obj_inner(struct jvst_cnode *top, struct ir_object_builder *builder
 		return;
 
 	case JVST_CNODE_SWITCH:
+	case JVST_CNODE_REF:
 	case JVST_CNODE_MATCH_CASE:
 	case JVST_CNODE_OBJ_REQBIT:
 	case JVST_CNODE_LENGTH_RANGE:
@@ -2273,6 +2274,7 @@ cnode_and_requires_split(struct jvst_cnode *and_node)
 		case JVST_CNODE_INVALID:
 		case JVST_CNODE_VALID:
 		case JVST_CNODE_SWITCH:
+		case JVST_CNODE_REF:
 		case JVST_CNODE_LENGTH_RANGE:
 		case JVST_CNODE_PROP_RANGE:
 		case JVST_CNODE_ITEM_RANGE:
@@ -2352,6 +2354,7 @@ cnode_count_splits(struct jvst_cnode *top, size_t *np)
 	case JVST_CNODE_INVALID:
 	case JVST_CNODE_VALID:
 	case JVST_CNODE_SWITCH:
+	case JVST_CNODE_REF:
 	case JVST_CNODE_LENGTH_RANGE:
 	case JVST_CNODE_PROP_RANGE:
 	case JVST_CNODE_ITEM_RANGE:
@@ -2425,6 +2428,7 @@ separate_control_nodes(struct jvst_cnode *top, struct jvst_cnode **cpp, struct j
 		case JVST_CNODE_INVALID:
 		case JVST_CNODE_VALID:
 		case JVST_CNODE_SWITCH:
+		case JVST_CNODE_REF:
 		case JVST_CNODE_LENGTH_RANGE:
 		case JVST_CNODE_PROP_RANGE:
 		case JVST_CNODE_ITEM_RANGE:
@@ -2637,6 +2641,7 @@ split_gather(struct jvst_cnode *top, struct split_gather_data *data,
 	case JVST_CNODE_INVALID:
 	case JVST_CNODE_VALID:
 	case JVST_CNODE_SWITCH:
+	case JVST_CNODE_REF:
 	case JVST_CNODE_LENGTH_RANGE:
 	case JVST_CNODE_PROP_RANGE:
 	case JVST_CNODE_ITEM_RANGE:
@@ -3228,6 +3233,7 @@ ir_translate_string_inner(struct jvst_cnode *top, struct ir_str_builder *builder
 	case JVST_CNODE_PROP_RANGE:
 	case JVST_CNODE_ITEM_RANGE:
 	case JVST_CNODE_SWITCH:
+	case JVST_CNODE_REF:
 	case JVST_CNODE_NUM_RANGE:
 	case JVST_CNODE_NUM_INTEGER:
 	case JVST_CNODE_NUM_MULTIPLE_OF:
@@ -3711,6 +3717,7 @@ ir_translate_array_inner(struct jvst_cnode *top, struct ir_arr_builder *builder)
 	case JVST_CNODE_MATCH_CASE:
 	case JVST_CNODE_PROP_RANGE:
 	case JVST_CNODE_SWITCH:
+	case JVST_CNODE_REF:
 	case JVST_CNODE_NUM_RANGE:
 	case JVST_CNODE_NUM_INTEGER:
 	case JVST_CNODE_NUM_MULTIPLE_OF:

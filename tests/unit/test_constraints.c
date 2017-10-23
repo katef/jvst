@@ -4188,6 +4188,42 @@ static void test_xlate_enum(void)
   RUNTESTS(tests);
 }
 
+static void test_xlate_ref(void)
+{
+  struct arena_info A = {0};
+
+  const struct cnode_test tests[] = {
+    {
+      TRANSLATE,
+      newschema_p(&A, 0,
+        "properties", newprops(&A, 
+          "foo", newschema_p(&A, 0, "$ref", "#", NULL),
+          NULL),
+        "additionalProperties", false_schema(),
+        NULL),
+
+      NULL,
+
+      newcnode_switch(&A, 1,
+        SJP_OBJECT_BEG, newcnode_bool(&A,JVST_CNODE_AND,
+                          newcnode_prop_default(&A, 
+                            newcnode_switch(&A, 0, SJP_NONE)),
+                          newcnode_bool(&A,JVST_CNODE_AND,
+                            newcnode_propset(&A,
+                              newcnode_prop_match(&A, RE_LITERAL, "foo",
+                                newcnode_ref(&A, "#")),
+                              NULL),
+                            newcnode_valid(),
+                            NULL),
+                          NULL),
+        SJP_NONE)
+    },
+
+    { STOP },
+  };
+
+  RUNTESTS(tests);
+}
 int main(void)
 {
   test_xlate_empty_schema();
@@ -4228,6 +4264,8 @@ int main(void)
 
   test_xlate_const();
   test_xlate_enum();
+
+  test_xlate_ref();
 
   test_simplify_ands();
   test_simplify_ored_schema();
