@@ -85,6 +85,9 @@ hmap_iter_first(const struct hmap *m, struct hmap_iter *it);
 void *
 hmap_iter_next(struct hmap_iter *it);
 
+union hmap_value *
+hmap_iter_fetch(struct hmap_iter *it);
+
 uint64_t
 hash_string(void *hopaque, const void *key);
 

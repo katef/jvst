@@ -334,6 +334,16 @@ hmap_iter_next(struct hmap_iter *it)
 	return next_bucket(it);
 }
 
+union hmap_value *
+hmap_iter_fetch(struct hmap_iter *it)
+{
+  if (it->i == 0 || it->i > it->m->nbuckets) {
+    return NULL;
+  }
+
+  return &it->m->vb[it->i-1];
+}
+
 uint64_t
 hash_string(void *opaque, const void *key)
 {
