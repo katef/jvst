@@ -4196,6 +4196,7 @@ static void test_xlate_ref(void)
     {
       TRANSLATE,
       newschema_p(&A, 0,
+        "id", "#",
         "properties", newprops(&A, 
           "foo", newschema_p(&A, 0, "$ref", "#", NULL),
           NULL),

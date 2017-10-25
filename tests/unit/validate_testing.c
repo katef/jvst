@@ -415,6 +415,14 @@ newschema_p(struct arena_info *A, int types, ...)
 			divisor = va_arg(args, double);
 			s->multiple_of = divisor;
 			s->kws |= KWS_MULTIPLE_OF;
+		} else if (strcmp(pname, "id") == 0) {
+			const char *id;
+			id = va_arg(args, const char *);
+			s->id = newstr(id);
+		} else if (strcmp(pname, "path") == 0) {
+			const char *id;
+			id = va_arg(args, const char *);
+			s->path = newstr(id);
 		} else if (strcmp(pname, "$ref") == 0) {
 			const char *id;
 			id = va_arg(args, const char *);

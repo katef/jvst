@@ -14,7 +14,14 @@
 #include "validate_constraints.h"
 #include "idtbl.h"
 
+enum id_test_type {
+  IDS,
+  ROOTS,
+  STOP,
+};
+
 struct id_test {
+  enum id_test_type type;
   const char *schema;
   struct id_pair *pairs;
 };
@@ -24,8 +31,7 @@ run_test(const char *fname, const struct id_test *t)
 {
   struct sjp_lexer l = { 0 };
   struct ast_schema ast = { 0 };
-  struct jvst_cnode *tree;
-  struct jvst_id_table *tbl;
+  struct jvst_cnode_forest *forest;
   struct id_pair *pair;
   size_t i,len;
   int ret;
@@ -39,30 +45,62 @@ run_test(const char *fname, const struct id_test *t)
   sjp_lexer_more(&l, buf, len);
   parse(&l, &ast);
 
-  tbl = jvst_id_table_new();
-  tree = jvst_cnode_translate_ast_with_ids(&ast, tbl);
+  forest = jvst_cnode_translate_ast_with_ids(&ast);
+  assert(forest != NULL);
 
-  jvst_id_table_dump_ids(tbl);
-
-  assert(tree != NULL);
+  // jvst_id_table_dump_ids(forest->all_ids);
 
   ret = 1;
-  for (pair = t->pairs; pair != NULL; pair = pair->next) {
-    struct jvst_cnode *ctree;
-    const char *id;
 
-    id = pair->id;
-    ctree = jvst_id_table_lookup_cstr(tbl, id);
-    if (ctree == NULL) {
-      fprintf(stderr, "id '%s' does not exit\n", id);
-      ret = 0;
-      continue;
+  switch (t->type) {
+  case IDS:
+    for (pair = t->pairs; pair != NULL; pair = pair->next) {
+      struct jvst_cnode *ctree;
+      const char *id;
+
+      id = pair->id;
+      ctree = jvst_id_table_lookup_cstr(forest->all_ids, id);
+      if (ctree == NULL) {
+        fprintf(stderr, "id '%s' does not exit\n", id);
+        ret = 0;
+        continue;
+      }
+
+      ret = ret && cnode_trees_equal(fname, ctree, pair->cnode);
     }
+    break;
 
-    ret = ret && cnode_trees_equal(fname, ctree, pair->cnode);
+  case ROOTS:
+    {
+      size_t i;
+      for (i=0, pair = t->pairs; pair != NULL; i++, pair = pair->next) {
+        struct jvst_cnode *ctree;
+
+        if (i >= forest->len) {
+          fprintf(stderr, "expected too many roots (only %zu)\n",
+              forest->len);
+          ret = 0;
+          break;
+        }
+
+        ctree = forest->trees[i];
+        assert(ctree != NULL);
+        ret = ret && cnode_trees_equal(fname, ctree, pair->cnode);
+      }
+
+      if (i < forest->len) {
+        fprintf(stderr, "too few roots (expected %zu, forest has %zu)\n",
+            i, forest->len);
+        ret = 0;
+      }
+    }
+    break;
+
+  case STOP:
+    break;
   }
 
-  jvst_id_table_delete(tbl);
+  jvst_cnode_forest_delete(forest);
 
   return ret;
 }
@@ -75,7 +113,8 @@ static void runtests(const char *testname, const struct id_test tests[])
 
   (void)testname;
 
-  for (i=0; tests[i].schema != NULL; i++) {
+  printf("test %s\n", testname);
+  for (i=0; tests[i].type != STOP; i++) {
     ntest++;
 
     if (!run_test(testname, &tests[i])) {
@@ -91,6 +130,7 @@ static void test_path_root(void)
 
   const struct id_test tests[] = {
     {
+      IDS,
       "{}",
       new_idpairs(
           new_idpair(&A, "#", newcnode_switch(&A, 1, SJP_NONE)),
@@ -98,7 +138,7 @@ static void test_path_root(void)
       ),
     },
 
-    { NULL },
+    { STOP },
   };
 
   RUNTESTS(tests);
@@ -110,6 +150,7 @@ static void test_path_properties(void)
 
   const struct id_test tests[] = {
     {
+      IDS,
       "{ \"properties\" : { \"foo\" : { \"type\" : \"integer\" } } }",
       new_idpairs(
           new_idpair(&A, "#",
@@ -129,7 +170,7 @@ static void test_path_properties(void)
       ),
     },
 
-    { NULL },
+    { STOP },
   };
 
   RUNTESTS(tests);
@@ -151,6 +192,7 @@ static void test_path_dependencies(void)
 
   const struct id_test tests[] = {
     {
+      IDS,
       "{ \"dependencies\" : { "
         "\"bar\" : "
           "{ \"properties\" : "
@@ -185,7 +227,7 @@ static void test_path_dependencies(void)
       ),
     },
 
-    { NULL },
+    { STOP },
   };
 
   RUNTESTS(tests);
@@ -199,6 +241,7 @@ static void test_ids(void)
   // currently do.  Thus, this test isn't quite right.
   const struct id_test tests[] = {
     {
+      IDS,
       "{ \"properties\" : { \"foo\" : { \"id\" : \"foo-thing\", \"type\" : \"integer\" } } }",
       new_idpairs(
           new_idpair(&A, "#",
@@ -222,11 +265,69 @@ static void test_ids(void)
       ),
     },
 
-    { NULL },
+    { STOP },
   };
 
   RUNTESTS(tests);
 }
+
+static void test_rerooted_refs(void)
+{
+  struct arena_info A = {0};
+
+  // FIXME - id requires handling URIs correctly, which we don't
+  // currently do.  Thus, this test isn't quite right.
+  const struct id_test tests[] = {
+    {
+      ROOTS,
+      "{ \"properties\" : { \"foo\" : { \"$ref\" : \"#\" } } }",
+      new_idpairs(
+          new_idpair(&A, "",
+            newcnode_switch(&A, 1,
+              SJP_OBJECT_BEG, newcnode_bool(&A, JVST_CNODE_AND,
+                                newcnode_propset(&A,
+                                  newcnode_prop_match(&A, RE_LITERAL, "foo",
+                                    newcnode_ref(&A, "#")),
+                                  NULL),
+                                newcnode_valid(),
+                                NULL),
+              SJP_NONE)),
+
+          NULL),
+    },
+
+    {
+      ROOTS,
+      "{ \"properties\" : { \"foo\" : { \"type\" : \"integer\" }, "
+        "\"bar\" : { \"$ref\" : \"#/properties/foo\" } } }",
+      new_idpairs(
+          new_idpair(&A, "",
+            newcnode_switch(&A, 1,
+              SJP_OBJECT_BEG, newcnode_bool(&A, JVST_CNODE_AND,
+                                newcnode_propset(&A,
+                                  newcnode_prop_match(&A, RE_LITERAL, "bar",
+                                    newcnode_ref(&A, "#/properties/foo")),
+                                  newcnode_prop_match(&A, RE_LITERAL, "foo",
+                                    newcnode_ref(&A, "#/properties/foo")),
+                                  NULL),
+                                newcnode_valid(),
+                                NULL),
+              SJP_NONE)),
+
+          new_idpair(&A, "",
+            newcnode_switch(&A, 0,
+              SJP_NUMBER, newcnode(&A,JVST_CNODE_NUM_INTEGER),
+              SJP_NONE)),
+
+          NULL),
+    },
+
+    { STOP },
+  };
+
+  RUNTESTS(tests);
+}
+
 
 int main(void)
 {
@@ -234,6 +335,8 @@ int main(void)
   test_path_properties();
   test_path_dependencies();
   test_ids();
+
+  test_rerooted_refs();
 
   return report_tests();
 }

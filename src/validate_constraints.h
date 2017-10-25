@@ -215,8 +215,8 @@ jvst_cnode_from_ast(const struct ast_schema *ast);
 // constraint tree
 //
 // If tbl is not NULL, builds an id -> cnode table.
-struct jvst_cnode *
-jvst_cnode_translate_ast_with_ids(const struct ast_schema *ast, struct jvst_id_table *tbl);
+struct jvst_cnode_forest *
+jvst_cnode_translate_ast_with_ids(const struct ast_schema *ast);
 
 // Backwards-compatible version of the above while we migrate code/tests
 struct jvst_cnode *
@@ -267,6 +267,21 @@ struct jvst_cnode_forest {
 	struct jvst_id_table *all_ids;
 	struct jvst_id_table *ref_ids;
 };
+
+struct jvst_cnode_forest *
+jvst_cnode_forest_new(void);
+
+void
+jvst_cnode_forest_delete(struct jvst_cnode_forest *forest);
+
+void
+jvst_cnode_forest_initialize(struct jvst_cnode_forest *forest);
+
+void
+jvst_cnode_forest_finalize(struct jvst_cnode_forest *forest);
+
+void
+jvst_cnode_forest_add_tree(struct jvst_cnode_forest *forest, struct jvst_cnode *tree);
 
 #endif /* VALIDATE_CONSTRAINTS_H */
 
