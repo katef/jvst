@@ -133,7 +133,7 @@ main(int argc, char *argv[])
 	int r;
 	int compile=0, runvm=0;
 	struct jvst_vm_program *prog = NULL;
-	struct jvst_ir_stmt *ir;
+	struct jvst_ir_forest *ir_forest;
 	enum jvst_lang lang = JVST_LANG_VM;
 
 	{
@@ -200,7 +200,7 @@ main(int argc, char *argv[])
 
 		struct sjp_lexer l;
 		struct ast_schema ast = ast_default;
-		struct jvst_cnode *ctree, *simplified, *canonified;
+		struct jvst_cnode_forest *ctrees;
 
 		sjp_lexer_init(&l);
 
@@ -232,31 +232,31 @@ main(int argc, char *argv[])
 		free(p);
 		n = 0;
 
-		ctree = jvst_cnode_translate_ast(&ast);
+		ctrees = jvst_cnode_translate_ast_with_ids(&ast);
 		if (debug & DEBUG_INITIAL_CNODE) {
 			printf("Initial cnode tree\n");
-			jvst_cnode_print(stdout, ctree);
+			jvst_cnode_print_forest(stdout, ctrees);
 			printf("\n");
 		}
 
-		simplified = jvst_cnode_simplify(ctree);
+		jvst_cnode_simplify_forest(ctrees);
 		if (debug & DEBUG_SIMPLIFIED_CNODE) {
 			printf("Simplified cnode tree\n");
-			jvst_cnode_print(stdout, simplified);
+			jvst_cnode_print_forest(stdout, ctrees);
 			printf("\n");
 		}
 
-		canonified = jvst_cnode_canonify(simplified);
+		jvst_cnode_canonify_forest(ctrees);
 		if (debug & DEBUG_CANONIFIED_CNODE) {
 			printf("Canonified cnode tree\n");
-			jvst_cnode_print(stdout, canonified);
+			jvst_cnode_print_forest(stdout, ctrees);
 			printf("\n");
 		}
 
-		ir = jvst_ir_translate(canonified);
+		ir_forest = jvst_ir_translate_forest(ctrees);
 		if (debug & DEBUG_IR) {
 			printf("Initial IR\n");
-			jvst_ir_print(stdout, ir);
+			jvst_ir_print_forest(stdout, ir_forest);
 			printf("\n");
 		}
 	}
@@ -269,7 +269,7 @@ main(int argc, char *argv[])
 				struct jvst_ir_stmt *linearized, *flattened;
 				struct jvst_op_program *op_prog;
 
-				linearized = jvst_ir_linearize(ir);
+				linearized = jvst_ir_linearize_forest(ir_forest);
 				if (debug & DEBUG_LINEAR_IR) {
 					printf("Linearized IR\n");
 					jvst_ir_print(stdout, linearized);
