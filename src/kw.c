@@ -17,6 +17,7 @@ static struct {
 	{ "$schema",              KW_SCHEMA                },
 	{ "$ref",                 KW_REF                   },
 	{ "id",                   KW_ID                    },
+	{ "$id",                  KW_ID                    },
 
 	{ "multipleOf",           KW_MULTIPLE_OF           },
 	{ "maximum",              KW_MAXIMUM               },
