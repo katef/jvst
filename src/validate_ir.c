@@ -830,6 +830,8 @@ jvst_ir_stmt_type_name(enum jvst_ir_stmt_type type)
 		return "MOVE";
 	case JVST_IR_STMT_CALL:
 		return "CALL";
+	case JVST_IR_STMT_CALL_ID:
+		return "CALL_ID";
 	case JVST_IR_STMT_PROGRAM:
 		return "PROGRAM";
 	}
@@ -1490,6 +1492,24 @@ jvst_ir_dump_inner(struct sbuf *buf, struct jvst_ir_stmt *ir, int indent)
 			sbuf_snprintf(buf, "%s(%zu)",
 				jvst_ir_stmt_type_name(ir->type),
 				ir->u.call.frame->u.frame.frame_ind);
+		}
+		return;
+
+	case JVST_IR_STMT_CALL_ID:
+		{
+			assert(ir->u.call_id.id.s != NULL);
+
+			if (ir->u.call_id.id.len < INT_MAX) {
+				sbuf_snprintf(buf, "%s(%.*s)",
+					jvst_ir_stmt_type_name(ir->type),
+					(int) ir->u.call_id.id.len,
+					ir->u.call_id.id.s);
+			} else {
+				sbuf_snprintf(buf, "%s(%.*s...)",
+					jvst_ir_stmt_type_name(ir->type),
+					INT_MAX,
+					ir->u.call_id.id.s);
+			}
 		}
 		return;
 	}
@@ -4362,6 +4382,7 @@ jvst_ir_stmt_copy_inner(struct jvst_ir_stmt *ir, struct addr_fixup_list *fixups,
 	case JVST_IR_STMT_BREAK:
 	case JVST_IR_STMT_MATCH:
 
+	case JVST_IR_STMT_CALL_ID:
 	case JVST_IR_STMT_BCLEAR:
 	case JVST_IR_STMT_DECR:
 		fprintf(stderr, "%s:%d (%s) copying IR statement %s not yet implemented\n",
@@ -5792,6 +5813,7 @@ ir_linearize_stmt(struct op_linearizer *oplin, struct jvst_ir_stmt *stmt)
 		}
 		return;
 
+	case JVST_IR_STMT_CALL_ID:
 	case JVST_IR_STMT_BCLEAR:
 	case JVST_IR_STMT_DECR:
 		fprintf(stderr, "%s:%d (%s) linearizing IR statement %s not yet implemented\n",

@@ -5,6 +5,7 @@
 #include <stdint.h>
 #include <stdio.h>
 
+#include "jdom.h"
 #include "sjp_parser.h"
 
 // IR has two components: statements and expressions
@@ -59,6 +60,8 @@ enum jvst_ir_stmt_type {
 
 	JVST_IR_STMT_SPLITVEC,		// Splits the validator, stores
 					// results for each subvalidator in a bitvec
+
+	JVST_IR_STMT_CALL_ID,		// Calls a named IR frame
 
 	JVST_IR_STMT_BLOCK,
 	JVST_IR_STMT_BRANCH,
@@ -158,6 +161,7 @@ jvst_invalid_msg(enum jvst_invalid_code code);
 
 struct jvst_ir_expr;
 struct jvst_ir_label;
+struct jvst_cnode_matchset;
 
 struct jvst_ir_mcase {
 	struct jvst_ir_mcase *next;
@@ -316,6 +320,10 @@ struct jvst_ir_stmt {
 		struct {
 			struct jvst_ir_stmt *frame;
 		} call;
+
+		struct {
+			struct json_string id;
+		} call_id;
 	} u;
 };
 
