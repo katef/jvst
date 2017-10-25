@@ -468,6 +468,12 @@ jvst_ir_linearize_forest(struct jvst_ir_forest *ir);
 void
 jvst_ir_forest_free(struct jvst_ir_forest *ir_forest);
 
+void
+jvst_ir_print_forest(FILE *f, struct jvst_ir_forest *ir_forest);
+
+void
+jvst_ir_debug_forest(struct jvst_ir_forest *ir_forest);
+
 #endif /* JVST_VALIDATE_IR_H */
 
 /* vim: set tabstop=8 shiftwidth=8 noexpandtab: */

@@ -6150,5 +6150,59 @@ jvst_ir_linearize_forest(struct jvst_ir_forest *ir_forest)
 	return prog;
 }
 
+void
+jvst_ir_debug_forest(struct jvst_ir_forest *ir_forest)
+{
+	jvst_ir_print_forest(stderr, ir_forest);
+}
+
+struct ir_id_pair {
+	struct json_string id;
+	struct jvst_ir_stmt *ir;
+};
+
+static int
+find_ref_name(void *opaque, struct json_string *key, struct jvst_ir_stmt  **irp)
+{
+	struct ir_id_pair *pair = opaque;
+
+	assert(irp != NULL);
+
+	if (*irp != pair->ir) {
+		return 1; // keep going
+	}
+
+	pair->id = *key;
+
+	return 0;
+}
+
+void
+jvst_ir_print_forest(FILE *f, struct jvst_ir_forest *forest)
+{
+	size_t i;
+	static const struct ir_id_pair zero;
+
+	fprintf(f, "IR forest: %zu IR trees\n", forest->len);
+
+	for (i=0; i < forest->len; i++) {
+		struct ir_id_pair pair = zero;
+		pair.ir = forest->trees[i];
+
+		if (jvst_ir_id_table_foreach(forest->refs, find_ref_name, &pair) == 0) {
+			if (pair.id.len < INT_MAX) {
+				fprintf(f, "[ REF: \"%.*s\" ]\n", (int)pair.id.len, pair.id.s);
+			} else {
+				fprintf(f, "[ REF: \"%.*s...\" ]\n", INT_MAX, pair.id.s);
+			}
+		} else {
+			fprintf(f, "[ REF: UNKNOWN ]\n");
+		}
+
+		jvst_ir_print(f, forest->trees[i]);
+		fprintf(f,"\n");
+	}
+}
+
 /* vim: set tabstop=8 shiftwidth=8 noexpandtab: */
 
