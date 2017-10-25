@@ -59,6 +59,9 @@ struct id_pair {
 	struct jvst_cnode *cnode;
 };
 
+
+/** AST related **/
+
 struct ast_schema *
 empty_schema(void);
 
@@ -115,7 +118,9 @@ newjson_bool(struct arena_info *A, int b);
 struct json_value *
 newjson_null(struct arena_info *A);
 
-/** cnodes **/
+
+/** cnodes related **/
+
 struct jvst_cnode *
 newcnode(struct arena_info *A, enum jvst_cnode_type type);
 
@@ -203,7 +208,8 @@ struct id_pair *
 new_idpairs(struct id_pair *first, ...);
 
 
-/* IR-related */
+/** IR-related **/
+
 extern const struct jvst_ir_stmt *const frameindex;
 extern const struct jvst_ir_stmt *const splitlist;
 
@@ -329,6 +335,9 @@ newir_eseq(struct arena_info *A, struct jvst_ir_stmt *stmt, struct jvst_ir_expr 
 struct jvst_ir_expr *
 newir_ematch(struct arena_info *A, size_t mind);
 
+
+/* OP related */
+
 struct jvst_op_program *
 newop_program(struct arena_info *A, ...);
 
@@ -405,6 +414,8 @@ oparg_tok(enum SJP_EVENT evt) { return oparg_make(JVST_VM_ARG_TOKTYPE,evt); }
 static inline struct jvst_op_arg 
 oparg_slot(int n) { return oparg_make(JVST_VM_ARG_SLOT,n); }
 
+
+/* VM opcode related */
 enum {
 	VM_END    = -1,
 	VM_LABEL  = -2,
