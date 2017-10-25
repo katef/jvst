@@ -20,6 +20,7 @@
 #include "jvst_macros.h"
 #include "sjp_testing.h"
 #include "validate_sbuf.h"
+#include "hmap.h"
 
 #define WHEREFMT "%s:%d (%s) "
 #define WHEREARGS __FILE__, __LINE__, __func__
@@ -5601,6 +5602,72 @@ jvst_cnode_forest_delete(struct jvst_cnode_forest *forest)
 {
 	jvst_cnode_forest_finalize(forest);
 	free(forest);
+}
+
+static int
+cnode_id_update(void *opaque, struct json_string *k, struct jvst_cnode **ctreep)
+{
+	struct hmap *upds = opaque;
+
+	(void)k;
+
+	assert(ctreep != NULL);
+	assert(upds != NULL);
+
+	if (*ctreep != NULL) {
+		struct jvst_cnode *ctree_new;
+		ctree_new = hmap_getptr(upds, *ctreep);
+		assert(ctree_new != NULL);
+
+		*ctreep = ctree_new;
+	}
+
+	return 1;
+}
+
+static struct jvst_cnode_forest *
+cnode_update_forest(struct jvst_cnode_forest *forest, struct jvst_cnode *(*updater)(struct jvst_cnode *))
+{
+	size_t i,n;
+	struct hmap *upds;
+
+	upds = hmap_create_pointer(
+			jvst_cnode_id_table_nbuckets(forest->ref_ids),
+			jvst_cnode_id_table_maxload(forest->ref_ids));
+
+	n = forest->len;
+	for (i = 0; i < n; i++) {
+		struct jvst_cnode *cnode;
+
+		cnode = updater(forest->trees[i]);
+		if (!hmap_setptr(upds, forest->trees[i], cnode)) {
+			fprintf(stderr, "could not add entry to cnode update table\n");
+			abort();
+		}
+
+		forest->trees[i] = cnode;
+	}
+
+	jvst_cnode_id_table_foreach(forest->all_ids, cnode_id_update, upds);
+	jvst_cnode_id_table_foreach(forest->ref_ids, cnode_id_update, upds);
+
+	hmap_free(upds);
+
+	return forest;
+}
+
+struct jvst_cnode_forest *
+jvst_cnode_simplify_forest(struct jvst_cnode_forest *forest)
+{
+	return cnode_update_forest(forest, jvst_cnode_simplify);
+}
+
+// Canonifies the cnode forest.  Replaces each tree in the forest with a
+// canonified one.
+struct jvst_cnode_forest *
+jvst_cnode_canonify_forest(struct jvst_cnode_forest *forest)
+{
+	return cnode_update_forest(forest, jvst_cnode_canonify);
 }
 
 /* vim: set tabstop=8 shiftwidth=8 noexpandtab: */

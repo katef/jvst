@@ -266,6 +266,16 @@ jvst_cnode_forest_finalize(struct jvst_cnode_forest *forest);
 void
 jvst_cnode_forest_add_tree(struct jvst_cnode_forest *forest, struct jvst_cnode *tree);
 
+// Simplifies the cnode forest.  Replaces each tree in the forest with a
+// simplified one.
+struct jvst_cnode_forest *
+jvst_cnode_simplify_forest(struct jvst_cnode_forest *forest);
+
+// Canonifies the cnode forest.  Replaces each tree in the forest with a
+// canonified one.
+struct jvst_cnode_forest *
+jvst_cnode_canonify_forest(struct jvst_cnode_forest *tree);
+
 #endif /* VALIDATE_CONSTRAINTS_H */
 
 /* vim: set tabstop=8 shiftwidth=8 noexpandtab: */
