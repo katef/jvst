@@ -40,6 +40,8 @@ struct arena_info {
 	size_t nmcases;
 	size_t nsplitinds;
 
+	size_t nirpairs;
+
 	/* OP related */
 	size_t nprog;
 	size_t nproc;
@@ -57,6 +59,12 @@ struct id_pair {
 	struct id_pair *next;
 	const char *id;
 	struct jvst_cnode *cnode;
+};
+
+struct ir_pair {
+	struct ir_pair *next;
+	const char *id;
+	struct jvst_ir_stmt *ir;
 };
 
 
@@ -281,6 +289,15 @@ newir_move(struct arena_info *A, struct jvst_ir_expr *tmp, struct jvst_ir_expr *
 
 struct jvst_ir_stmt *
 newir_call(struct arena_info *A, size_t frame_ind);
+
+struct jvst_ir_stmt *
+newir_callid(struct arena_info *A, const char *id);
+
+struct ir_pair *
+new_irpair(struct arena_info *A, const char *id, struct jvst_ir_stmt *ir);
+
+struct ir_pair *
+new_irpairs(struct arena_info *A, ...);
 
 struct jvst_ir_mcase *
 newir_case(struct arena_info *A, size_t ind, struct jvst_cnode_matchset *mset, struct jvst_ir_stmt *frame);

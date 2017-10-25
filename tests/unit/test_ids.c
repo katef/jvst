@@ -11,12 +11,15 @@
 #include "sjp_testing.h"
 
 #include "parser.h"
-#include "validate_constraints.h"
 #include "idtbl.h"
+#include "validate_constraints.h"
+#include "validate_ir.h"
 
 enum id_test_type {
   IDS,
   ROOTS,
+  IR_TRANSLATE,
+  IR_LINEARIZE,
   STOP,
 };
 
@@ -24,6 +27,7 @@ struct id_test {
   enum id_test_type type;
   const char *schema;
   struct id_pair *pairs;
+  struct ir_pair *ir;
 };
 
 static int
@@ -97,6 +101,14 @@ run_test(const char *fname, const struct id_test *t)
       }
     }
     break;
+
+  case IR_TRANSLATE:
+    fprintf(stderr, "IR translate tests not yet written\n");
+    abort();
+
+  case IR_LINEARIZE:
+    fprintf(stderr, "IR linearize tests not yet written\n");
+    abort();
 
   case STOP:
     break;

@@ -53,6 +53,7 @@ static struct jvst_ir_stmt ar_ir_stmts[NUM_TEST_THINGS];
 static struct jvst_ir_expr ar_ir_exprs[NUM_TEST_THINGS];
 static struct jvst_ir_mcase ar_ir_mcases[NUM_TEST_THINGS];
 static size_t ar_ir_splitinds[NUM_TEST_THINGS];
+static struct ir_pair ar_ir_pairs[NUM_TEST_THINGS];
 
 static struct jvst_op_program ar_op_prog[NUM_TEST_THINGS];
 static struct jvst_op_proc ar_op_proc[NUM_TEST_THINGS];
@@ -1658,6 +1659,19 @@ newir_call(struct arena_info *A, size_t frame_ind)
 	return stmt;
 }
 
+struct jvst_ir_stmt *
+newir_callid(struct arena_info *A, const char *id)
+{
+	struct jvst_ir_stmt *stmt;
+
+	assert(id != NULL);
+
+	stmt = newir_stmt(A,JVST_IR_STMT_CALL_ID);
+	stmt->u.call_id.id = newstr(id);
+
+	return stmt;
+}
+
 struct jvst_ir_mcase *
 newir_case(struct arena_info *A, size_t ind, struct jvst_cnode_matchset *mset, struct jvst_ir_stmt *frame)
 {
@@ -2048,6 +2062,61 @@ newsplits(struct arena_info *A, struct jvst_op_proc **sv, size_t n)
 	}
 
 	return splits;
+}
+
+struct ir_pair *
+new_irpair(struct arena_info *A, const char *id, struct jvst_ir_stmt *ir)
+{
+	size_t i, max;
+	struct ir_pair *pair;
+
+	i   = A->nirpairs++;
+	max = ARRAYLEN(ar_ir_pairs);
+	if (A->nexpr >= max) {
+		fprintf(stderr, "too many ir pairs: %zu max\n", max);
+		abort();
+	}
+
+	pair = &ar_ir_pairs[i];
+	memset(pair, 0, sizeof *pair);
+	pair->id = id;
+	pair->ir = ir;
+
+	return pair;
+}
+
+struct ir_pair *
+new_irpairs(struct arena_info *A, ...)
+{
+	struct ir_pair *head;
+	struct ir_pair **idpp;
+	va_list args;
+
+	head = NULL;
+	idpp = &head;
+
+	va_start(args, A);
+	for (;;) {
+		const char *id;
+		struct jvst_ir_stmt *ir;
+		struct ir_pair *pair;
+
+		id = va_arg(args, const char *);
+		if (id == NULL) {
+			break;
+		}
+
+		ir = va_arg(args, struct jvst_ir_stmt *);
+		assert(ir != NULL);
+
+		pair = new_irpair(A, id, ir);
+
+		*idpp = pair;
+		idpp = &pair->next;
+	}
+	va_end(args);
+
+	return head;
 }
 
 struct jvst_op_program *
