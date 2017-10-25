@@ -917,6 +917,60 @@ jvst_cnode_debug(struct jvst_cnode *node)
 }
 
 void
+jvst_cnode_debug_forest(struct jvst_cnode_forest *ctrees)
+{
+	jvst_cnode_print_forest(stderr, ctrees);
+}
+
+struct cnode_id_pair {
+	struct json_string id;
+	struct jvst_cnode *ctree;
+};
+
+static int
+find_ref_name(void *opaque, struct json_string *key, struct jvst_cnode **ctreep)
+{
+	struct cnode_id_pair *pair = opaque;
+
+	assert(ctreep != NULL);
+
+	if (*ctreep != pair->ctree) {
+		return 1; // keep going
+	}
+
+	pair->id = *key;
+
+	return 0;
+}
+
+void
+jvst_cnode_print_forest(FILE *f, struct jvst_cnode_forest *forest)
+{
+	size_t i;
+	static const struct cnode_id_pair zero;
+
+	fprintf(f, "CNODE forest: %zu cnode trees\n", forest->len);
+
+	for (i=0; i < forest->len; i++) {
+		struct cnode_id_pair pair = zero;
+		pair.ctree = forest->trees[i];
+
+		if (jvst_cnode_id_table_foreach(forest->ref_ids, find_ref_name, &pair) == 0) {
+			if (pair.id.len < INT_MAX) {
+				fprintf(f, "[ REF: \"%.*s\" ]\n", (int)pair.id.len, pair.id.s);
+			} else {
+				fprintf(f, "[ REF: \"%.*s...\" ]\n", INT_MAX, pair.id.s);
+			}
+		} else {
+			fprintf(f, "[ REF: UNKNOWN ]\n");
+		}
+
+		jvst_cnode_print(f, forest->trees[i]);
+		fprintf(f,"\n");
+	}
+}
+
+void
 jvst_cnode_print(FILE *f, struct jvst_cnode *node)
 {
 	// FIXME: gross hack
@@ -1267,6 +1321,9 @@ cnode_translate_ast_with_ids(const struct ast_schema *ast, struct ast_translator
 
 		// for first pass, add (id -> NULL) entries to the
 		// ref_ids table
+		fprintf(stderr, "REF %.*s\n",
+			(int)ast->ref.len, ast->ref.s);
+
 		jvst_cnode_id_table_add(xl->forest.ref_ids, ast->ref, NULL);
 
 		// add node the ref list
@@ -1722,12 +1779,20 @@ jvst_cnode_translate_ast_with_ids(const struct ast_schema *ast)
 	xlator_initialize(&xl);
 	ctree = cnode_translate_ast_with_ids(ast, &xl);
 
+	assert(ctree != NULL);
+
 	// add the main tree
 	xlator_add_tree(&xl, ctree);
 
 	// now iterate through the entries of the ref_ids table,
 	// splitting them into separate trees
 	jvst_cnode_id_table_foreach(xl.forest.ref_ids, cnode_reroot_referred_ids, &xl);
+
+	// finally, add the root as a ref
+	{
+		struct json_string root_id = { .s = "#", .len = 1 };
+		jvst_cnode_id_table_add(xl.forest.ref_ids, root_id, ctree);
+	}
 
 	forest = malloc(sizeof *forest);
 	*forest = xl.forest;
@@ -5648,7 +5713,7 @@ cnode_update_forest(struct jvst_cnode_forest *forest, struct jvst_cnode *(*updat
 		forest->trees[i] = cnode;
 	}
 
-	jvst_cnode_id_table_foreach(forest->all_ids, cnode_id_update, upds);
+	// jvst_cnode_id_table_foreach(forest->all_ids, cnode_id_update, upds);
 	jvst_cnode_id_table_foreach(forest->ref_ids, cnode_id_update, upds);
 
 	hmap_free(upds);
