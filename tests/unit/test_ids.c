@@ -59,14 +59,16 @@ run_test(const char *fname, const struct id_test *t)
       const char *id;
 
       id = pair->id;
-      ctree = jvst_id_table_lookup_cstr(forest->all_ids, id);
+      ctree = jvst_cnode_id_table_lookup_cstr(forest->all_ids, id);
       if (ctree == NULL) {
         fprintf(stderr, "id '%s' does not exit\n", id);
         ret = 0;
         continue;
       }
 
-      ret = ret && cnode_trees_equal(fname, ctree, pair->cnode);
+      if (!cnode_trees_equal(fname, ctree, pair->cnode)) {
+        ret = 0;
+      }
     }
     break;
 

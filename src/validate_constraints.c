@@ -1149,17 +1149,17 @@ cnode_enum_translate(struct json_value *v)
 }
 
 static
-void add_cnode_ids(struct jvst_id_table *tbl, const struct ast_schema *ast, struct jvst_cnode *n)
+void add_cnode_ids(struct jvst_cnode_id_table *tbl, const struct ast_schema *ast, struct jvst_cnode *n)
 {
 	// XXX - better error messages!
 	// XXX - better error handling!
-	if (!jvst_id_table_add(tbl, ast->path, n)) {
+	if (!jvst_cnode_id_table_add(tbl, ast->path, n)) {
 		fprintf(stderr, "error adding path -> cnode entry to id table\n");
 		abort();
 	}
 
 	if (ast->id.len > 0) {
-		if (!jvst_id_table_add(tbl, ast->id, n)) {
+		if (!jvst_cnode_id_table_add(tbl, ast->id, n)) {
 			fprintf(stderr, "error adding id -> cnode entry to id table\n");
 			abort();
 		}
@@ -1266,7 +1266,7 @@ cnode_translate_ast_with_ids(const struct ast_schema *ast, struct ast_translator
 
 		// for first pass, add (id -> NULL) entries to the
 		// ref_ids table
-		jvst_id_table_add(xl->forest.ref_ids, ast->ref, NULL);
+		jvst_cnode_id_table_add(xl->forest.ref_ids, ast->ref, NULL);
 
 		// add node the ref list
 		xlator_add_ref(xl, node);
@@ -1675,7 +1675,7 @@ cnode_reroot_referred_ids(void *opaque, struct json_string *id, struct jvst_cnod
 
 	xl = opaque;
 
-	orig = jvst_id_table_lookup(xl->forest.all_ids, *id);
+	orig = jvst_cnode_id_table_lookup(xl->forest.all_ids, *id);
 
 	// if it's already a root, we're good
 	if (xlator_has_root(xl, orig)) {
@@ -1700,7 +1700,7 @@ cnode_reroot_referred_ids(void *opaque, struct json_string *id, struct jvst_cnod
 	orig->u.ref = *id;
 
 	// update value in all_ids map
-	if (!jvst_id_table_set(xl->forest.all_ids, *id, copy)) {
+	if (!jvst_cnode_id_table_set(xl->forest.all_ids, *id, copy)) {
 		fprintf(stderr, "cannot update ID in table\n");
 		abort();
 	}
@@ -1726,7 +1726,7 @@ jvst_cnode_translate_ast_with_ids(const struct ast_schema *ast)
 
 	// now iterate through the entries of the ref_ids table,
 	// splitting them into separate trees
-	jvst_id_table_foreach(xl.forest.ref_ids, cnode_reroot_referred_ids, &xl);
+	jvst_cnode_id_table_foreach(xl.forest.ref_ids, cnode_reroot_referred_ids, &xl);
 
 	forest = malloc(sizeof *forest);
 	*forest = xl.forest;
@@ -5569,8 +5569,8 @@ jvst_cnode_forest_initialize(struct jvst_cnode_forest *forest)
 	static const struct jvst_cnode_forest zero;
 
 	*forest = zero;
-	forest->all_ids = jvst_id_table_new();
-	forest->ref_ids = jvst_id_table_new();
+	forest->all_ids = jvst_cnode_id_table_new();
+	forest->ref_ids = jvst_cnode_id_table_new();
 }
 
 struct jvst_cnode_forest *
@@ -5591,8 +5591,8 @@ jvst_cnode_forest_finalize(struct jvst_cnode_forest *forest)
 		return;
 	}
 
-	jvst_id_table_delete(forest->all_ids);
-	jvst_id_table_delete(forest->ref_ids);
+	jvst_cnode_id_table_delete(forest->all_ids);
+	jvst_cnode_id_table_delete(forest->ref_ids);
 	free(forest->trees);
 }
 

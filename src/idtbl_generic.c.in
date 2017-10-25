@@ -1,0 +1,193 @@
+#ifndef IDTBL_NAME
+#  error must define IDTBL_NAME
+#endif
+
+#ifndef IDTBL_VTYPE
+#  error must define IDTBL_VTYPE
+#endif
+
+#ifndef IDTBL_NO_SUPPORTING
+/* various supporting bits, but optionally exclude so this file can be
+ * #include'd several times for different value types
+ */
+
+// TODO - this parameter should be tuned for performance
+enum { IDTBL_INITIAL_NBUCKETS = 256 };
+#define IDTBL_MAXLOAD 0.65f
+
+static uint64_t json_string_hash(void *opaque, const void *k)
+{
+	const struct json_string *sk = k;
+
+	(void)opaque; // unused
+
+	// XXX - use non-zero seed? (third arg)
+	return XXH64(sk->s, sk->len, 0);
+}
+
+static int json_string_equals(void *opaque, const void *k1, const void *k2)
+{
+	const struct json_string *sk1 = k1, *sk2 = k2;
+	int cmp;
+
+	(void)opaque; // unused
+
+	return (sk1->len == sk2->len) &&
+		((sk1->len > 0) || (memcmp(sk1->s, sk2->s, sk1->len) == 0));
+}
+#endif /* IDTBL_SUPPORTING */
+
+
+/* Definitions start here */
+
+struct IDTBL_NAME {
+	// XXX - add initialize/finalize to hmap so we can store this as
+	// a value instead of a pointer
+	struct hmap *map;
+};
+
+struct IDTBL_NAME *
+SYMCAT(IDTBL_NAME, _new) (void)
+{
+	static const struct IDTBL_NAME zero;
+	struct IDTBL_NAME *tbl;
+
+	tbl = malloc(sizeof *tbl);
+	*tbl = zero;
+
+	tbl->map = hmap_create(IDTBL_INITIAL_NBUCKETS, IDTBL_MAXLOAD, NULL,
+		json_string_hash, json_string_equals);
+
+	return tbl;
+}
+
+int
+SYMCAT(IDTBL_NAME, _add) (struct IDTBL_NAME *tbl, struct json_string id, IDTBL_VTYPE *val)
+{
+	static const struct json_string zero;
+	struct json_string *key;
+
+	assert(tbl != NULL);
+	assert(tbl->map != NULL);
+
+	key = malloc(sizeof *key);
+	*key = zero;
+
+	if (id.len > 0) {
+		char *s = malloc(id.len);
+		memcpy(s, id.s, id.len);
+		key->s = s;
+		key->len = id.len;
+	}
+
+	return hmap_setptr(tbl->map, key, val);
+}
+
+int
+SYMCAT(IDTBL_NAME, _set) (struct IDTBL_NAME *tbl, struct json_string id, IDTBL_VTYPE *val)
+{
+	union hmap_value *v;
+
+	v = hmap_get(tbl->map, &id);
+	if (v == NULL) {
+		return 0;
+	}
+
+	v->p = val;
+	return 1;
+}
+
+void
+SYMCAT(IDTBL_NAME, _delete) (struct IDTBL_NAME *tbl)
+{
+	void *k;
+	struct hmap_iter it;
+
+	// iterate over keys, freeing keys.  the ID table makes a
+	// duplicate copy of each key.
+	for (k = hmap_iter_first(tbl->map, &it); k != NULL; k = hmap_iter_next(&it)) {
+		struct json_string *str;
+		IDTBL_VTYPE *val;
+
+		str = k;
+		val = it.v.p;
+
+		free((void *)str->s);
+		free(str);
+
+		IDTBL_VFREE(val);
+	}
+
+	// XXX - revisit this now that we've genericized the table!
+	//
+	// free the table.  expect values to be collected by the usual
+	// value garbage collection machinery
+	hmap_free(tbl->map);
+	free(tbl);
+}
+
+IDTBL_VTYPE *
+SYMCAT(IDTBL_NAME, _lookup) (struct IDTBL_NAME *tbl, struct json_string s)
+{
+	assert(tbl != NULL);
+	assert(tbl->map != NULL);
+
+	return hmap_getptr(tbl->map, &s);
+}
+
+IDTBL_VTYPE *
+SYMCAT(IDTBL_NAME, _lookup_cstr) (struct IDTBL_NAME *tbl, const char *s)
+{
+	assert(s != NULL);
+	return SYMCAT(IDTBL_NAME, _lookup_with_len) (tbl, s, strlen(s));
+}
+
+IDTBL_VTYPE *
+SYMCAT(IDTBL_NAME, _lookup_with_len) (struct IDTBL_NAME *tbl, const char *s, size_t n)
+{
+	struct json_string str = { .s = s, .len = n };
+	assert(s != NULL);
+	return SYMCAT(IDTBL_NAME, _lookup) (tbl, str);
+}
+
+int
+SYMCAT(IDTBL_NAME, _foreach) (struct IDTBL_NAME *tbl,
+	int (*each)(void *, struct json_string *, IDTBL_VTYPE **valp),
+	void *opaque)
+{
+	struct hmap_iter it;
+	struct json_string *k;
+
+	for (k = hmap_iter_first(tbl->map, &it); k != NULL; k = hmap_iter_next(&it)) {
+		IDTBL_VTYPE *vn;
+
+		vn = it.v.p;
+		// XXX - cast is slightly non-portable
+		if (!each(opaque, k, &vn)) {
+			return 0;
+		}
+
+		// update the value if it has changed
+		if (vn != it.v.p) {
+			union hmap_value *v;
+			v = hmap_iter_fetch(&it);
+			v->p = vn;
+		}
+	}
+
+	return 1;
+}
+
+size_t
+SYMCAT(IDTBL_NAME, _nbuckets) (struct IDTBL_NAME *tbl)
+{
+	return tbl->map->nbuckets;
+}
+
+float
+SYMCAT(IDTBL_NAME, _maxload) (struct IDTBL_NAME *tbl)
+{
+	return tbl->map->maxload;
+}
+
+/* vim: set tabstop=8 shiftwidth=8 noexpandtab filetype=c: */

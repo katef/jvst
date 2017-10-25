@@ -192,7 +192,7 @@ struct jvst_cnode {
 	} u;
 };
 
-struct jvst_id_table;
+struct jvst_cnode_id_table;
 
 struct jvst_cnode *
 jvst_cnode_alloc(enum jvst_cnode_type type);
@@ -222,7 +222,7 @@ jvst_cnode_translate_ast_with_ids(const struct ast_schema *ast);
 struct jvst_cnode *
 jvst_cnode_translate_ast(const struct ast_schema *ast);
 
-// Simplfies the cnode tree.  Returns a new tree.
+// Simplifies a single cnode tree.  Returns a new tree.
 struct jvst_cnode *
 jvst_cnode_simplify(struct jvst_cnode *tree);
 
@@ -243,29 +243,12 @@ jvst_cnode_print(FILE *f, struct jvst_cnode *node);
 void
 jvst_cnode_debug(struct jvst_cnode *node);
 
-struct jvst_id_table;
-
-struct jvst_id_table *
-jvst_id_table_new(void);
-
-void
-jvst_id_table_delete(struct jvst_id_table *tbl);
-
-struct jvst_cnode *
-jvst_id_table_lookup(struct jvst_id_table *tbl, struct json_string s);
-
-struct jvst_cnode *
-jvst_id_table_lookup_cstr(struct jvst_id_table *tbl, const char *s);
-
-struct jvst_cnode *
-jvst_id_table_lookup_with_len(struct jvst_id_table *tbl, const char *s, size_t n);
-
 struct jvst_cnode_forest {
 	size_t len;
 	size_t cap;
 	struct jvst_cnode **trees;
-	struct jvst_id_table *all_ids;
-	struct jvst_id_table *ref_ids;
+	struct jvst_cnode_id_table *all_ids;
+	struct jvst_cnode_id_table *ref_ids;
 };
 
 struct jvst_cnode_forest *
