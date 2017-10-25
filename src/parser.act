@@ -752,6 +752,12 @@
                 set_schema_list(&ast->items, items, "set-items-list");
         @};
 
+        <set-definitions>:          (lst :ast-schema-list) -> () = @{
+		ast_schema_list_t defs;
+		defs = @lst;
+		set_schema_list(&ast->definitions, defs, "set-definitions");
+	@};
+
 	<set-min-items>: (n :number) -> () = @{
                 ast_count c;
 

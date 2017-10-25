@@ -211,6 +211,8 @@ struct ast_schema {
 
 	struct ast_schema *not;
 
+	struct ast_schema_set *definitions;
+
 	struct json_string schema;
 	struct json_string id;
 	struct json_string path;	/* for json pointer */

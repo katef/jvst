@@ -54,7 +54,7 @@ run_test(const char *fname, const struct id_test *t)
   forest = jvst_cnode_translate_ast_with_ids(&ast);
   assert(forest != NULL);
 
-  // jvst_id_table_dump_ids(forest->all_ids);
+  // jvst_cnode_id_table_dump_ids(forest->all_ids);
 
   ret = 1;
 
@@ -202,7 +202,7 @@ static void runtests(const char *testname, const struct id_test tests[])
 
   (void)testname;
 
-  printf("test %s\n", testname);
+  // printf("test %s\n", testname);
   for (i=0; tests[i].type != STOP; i++) {
     ntest++;
 
@@ -231,6 +231,28 @@ static void test_path_root(void)
   };
 
   RUNTESTS(tests);
+}
+
+static void test_definitions(void)
+{
+  struct arena_info A = {0};
+
+  const struct id_test tests[] = {
+    {
+      IDS,
+      "{ \"definitions\" : { \"foo\" : { \"type\" : \"number\" } } }",
+      new_idpairs(
+          new_idpair(&A, "#", newcnode_switch(&A, 1, SJP_NONE)),
+          new_idpair(&A, "#/definitions/foo", newcnode_switch(&A, 0, SJP_NUMBER, newcnode_valid(), SJP_NONE)),
+          NULL
+      ),
+    },
+
+    { STOP },
+  };
+
+  RUNTESTS(tests);
+
 }
 
 static void test_path_properties(void)
@@ -856,6 +878,7 @@ int main(void)
   test_path_properties();
   test_path_dependencies();
   test_ids();
+  test_definitions();
 
   test_rerooted_refs();
 

@@ -1321,15 +1321,21 @@ cnode_translate_ast_with_ids(const struct ast_schema *ast, struct ast_translator
 
 		// for first pass, add (id -> NULL) entries to the
 		// ref_ids table
-		fprintf(stderr, "REF %.*s\n",
-			(int)ast->ref.len, ast->ref.s);
-
 		jvst_cnode_id_table_add(xl->forest.ref_ids, ast->ref, NULL);
 
 		// add node the ref list
 		xlator_add_ref(xl, node);
 
 		return node;
+	}
+
+	if (ast->definitions != NULL) {
+		const struct ast_schema_set *def;
+		// add definitions to the all_ids table
+		for (def = ast->definitions; def != NULL; def = def->next) {
+			assert(def->schema != NULL);
+			cnode_translate_ast_with_ids(def->schema, xl);
+		}
 	}
 
 	types = ast->types;
@@ -1734,6 +1740,22 @@ cnode_reroot_referred_ids(void *opaque, struct json_string *id, struct jvst_cnod
 	xl = opaque;
 
 	orig = jvst_cnode_id_table_lookup(xl->forest.all_ids, *id);
+
+	if (orig == NULL) {
+		if (id->len <= INT_MAX) {
+			fprintf(stderr, "WARNING: cannot match $ref(%.*s) with a node\n",
+				(int)id->len, id->s);
+		} else {
+			fprintf(stderr, "WARNING: cannot match $ref(%.*s...) with a node\n",
+				INT_MAX, id->s);
+		}
+
+		// Keep going to report all missing references
+		//
+		// The dangling reference will be caught in the IR
+		// translation and we'll abort then.
+		return 1;
+	}
 
 	// if it's already a root, we're good
 	if (xlator_has_root(xl, orig)) {

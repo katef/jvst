@@ -168,6 +168,8 @@
         <set-any-of>:               (:ast-schema-list) -> ();
         <set-one-of>:               (:ast-schema-list) -> ();
 
+        <set-definitions>:          (:ast-schema-list) -> ();
+
         <new-regexp>:               (:re-dialect, :string) -> (:regexp);
         <re-literal>:               () -> (:re-dialect);
         <re-pattern>:               () -> (:re-dialect);
@@ -468,6 +470,37 @@
 	##
 		<err-expected-type>;
 	};
+
+        directive-definitions: () -> () [
+                def-schema: () -> (sch :ast-schema) = {
+                        s = STRING;
+                        colon;
+			<path-push-str>(s);
+                        sch = <parse-schema>;
+			<path-pop>;
+                };
+
+                list-of-definitions: (l :ast-schema-list) -> () = {
+			s = def-schema;
+			<append-schema-to-list>(l,s);
+                        {
+                                comma;
+				list-of-definitions(l);
+                        ||
+                                $;
+                        };
+                };
+        ] = {
+                OCURLY;
+		{
+			l = <new-schema-list>;
+			list-of-definitions(l);
+			<set-definitions>(l);
+		||
+			$;
+		};
+                CCURLY;
+        };
 
         directive-properties: (dialect :re-dialect) -> () [
                 prop-schema: (dialect :re-dialect) -> (ps :ast-prop-schema) = {
@@ -803,7 +836,7 @@
 		directive-title;
 	||
 		? = <kw-definitions>(k);
-		placeholder;
+		directive-definitions;
 	||
 		? = <kw-description>(k);
 		directive-description;
