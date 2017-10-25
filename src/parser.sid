@@ -188,6 +188,8 @@
         <parse-schema>:             () -> (:ast-schema);
         <set-path>:             () -> ();
 
+        <set-ref>:              (:string) -> ();
+
         <set-schema-true>:          () -> ();
         <set-schema-false>:         () -> ();
 
@@ -346,7 +348,10 @@
 	};
 
 	directive-ref = {
-		placeholder;
+                s = STRING;
+                <set-ref>(s);
+	##
+		<err-expected-string>;
 	};
 
 	directive-id = {

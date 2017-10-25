@@ -623,6 +623,16 @@
                 ast->path = current_path(path);
         @};
 
+        <set-ref>:              (s :string) -> () = @{
+		struct json_string s = @s;
+		ast->ref = copy_json_string(s);
+                ast->kws |= KWS_HAS_REF;
+		if (debug & DEBUG_ACT) {
+                        // XXX - make this useful!
+			fprintf(stderr, "<set-ref>: %.*s\n", (int)s.len, s.s);
+		}
+        @};
+
         <set-schema-true>:          () -> () = @{
                 ast->kws |= KWS_VALUE;
                 ast->value.type = JSON_VALUE_BOOL;
