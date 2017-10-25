@@ -115,15 +115,13 @@
 		return &p->items[p->len-1];
 	}
 
-	static struct json_string copy_json_string(struct json_string s);
-
 	static void path_push_str(struct path *p, struct json_string s)
 	{
 		struct path_element *elt;
 		elt = push_element(p);
 
 		elt->isnum = 0;
-		elt->u.str = copy_json_string(s);
+		elt->u.str = json_strdup(s);
 	}
 
 	static void path_push_num_zero(struct path *p)
@@ -297,14 +295,6 @@
 		result.len = s-path;
 		result.s = xstrndup(path, result.len);
 		return result;
-	}
-
-	static struct json_string copy_json_string(struct json_string s)
-	{
-		struct json_string copy;
-		copy.s   = xstrndup(s.s, s.len);
-		copy.len = s.len;
-		return copy;
 	}
 
 	#define CURRENT_TERMINAL act_state->t.type
@@ -625,7 +615,7 @@
 
         <set-ref>:              (s :string) -> () = @{
 		struct json_string s = @s;
-		ast->ref = copy_json_string(s);
+		ast->ref = json_strdup(s);
                 ast->kws |= KWS_HAS_REF;
 		if (debug & DEBUG_ACT) {
                         // XXX - make this useful!
@@ -1136,7 +1126,7 @@
 		pv = @v;
 
 		pp = malloc(sizeof *pp);
-		pp->name = copy_json_string(pn);
+		pp->name = json_strdup(pn);
 		pp->value = pv;
 
 		@pair = pp;
@@ -1219,7 +1209,7 @@
 
 		s = @s;
 		v.type = JSON_VALUE_STRING;
-		v.u.str = copy_json_string(s);
+		v.u.str = json_strdup(s);
 
 		@v = v;
 	@};
