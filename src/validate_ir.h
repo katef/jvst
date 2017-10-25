@@ -431,6 +431,32 @@ jvst_ir_debug(struct jvst_ir_stmt *node);
 void
 jvst_ir_print(FILE *f, struct jvst_ir_stmt *node);
 
+struct jvst_ir_id_table;
+
+// IR forests: used to assemble cnode forests into initial IR trees. An
+// IR forest is then linearized into an IR program.
+struct jvst_ir_forest {
+	size_t len;
+	size_t cap;
+	struct jvst_ir_stmt **trees;
+
+	struct jvst_ir_id_table *refs;
+};
+
+struct jvst_cnode_forest;
+
+// Translates a forest of cnodes into a forest of IR trees
+struct jvst_ir_forest *
+jvst_ir_translate_forest(struct jvst_cnode_forest *ctrees);
+
+// Translates a forest of IR trees into a single linearized IR
+// representation of the program
+struct jvst_ir_stmt *
+jvst_ir_linearize_forest(struct jvst_ir_forest *ir);
+
+void
+jvst_ir_forest_free(struct jvst_ir_forest *ir_forest);
+
 #endif /* JVST_VALIDATE_IR_H */
 
 /* vim: set tabstop=8 shiftwidth=8 noexpandtab: */
