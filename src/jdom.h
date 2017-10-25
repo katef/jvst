@@ -57,6 +57,15 @@ json_strcmp(const struct json_string *str, const char *s);
 struct json_string
 json_strdup(const struct json_string s);
 
+struct json_string
+json_new_cstr(const char *s);
+
+struct json_string
+json_new_str(const char *s, size_t len);
+
+void
+json_str_free(struct json_string s);
+
 enum json_valuetype
 type_lookup(const struct json_string *str);
 
