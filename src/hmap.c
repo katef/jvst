@@ -30,6 +30,7 @@ hmap_set_inner(struct hmap *m, unsigned long h, void *k, union hmap_value v)
 	b = h % n;
 	for (i=0; i < n; i++) {
 		if (m->khb[b].hash == 0 && m->khb[b].key == NULL) {
+			m->nitems++; // new item
 			goto set_item;
 		}
 
@@ -50,7 +51,6 @@ set_item:
 	m->khb[b].hash = h;
 	m->khb[b].key = k;
 	m->vb[b] = v;
-	m->nitems++;
 
 	return 1;
 }
@@ -395,3 +395,5 @@ hmap_create_pointer(size_t nbuckets, float maxload)
 	return hmap_create(nbuckets, maxload, NULL,
 		hash_pointer, equals_pointer);
 }
+
+/* vim: set tabstop=8 shiftwidth=8 noexpandtab: */
