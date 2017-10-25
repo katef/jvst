@@ -15,6 +15,9 @@ jvst_id_table_delete(struct jvst_id_table *tbl);
 int
 jvst_id_table_add(struct jvst_id_table *tbl, struct json_string id, struct jvst_cnode *ctree);
 
+int
+jvst_id_table_set(struct jvst_id_table *tbl, struct json_string id, struct jvst_cnode *ctree);
+
 struct jvst_cnode *
 jvst_id_table_lookup(struct jvst_id_table *tbl, struct json_string s);
 
@@ -24,6 +27,12 @@ jvst_id_table_lookup_cstr(struct jvst_id_table *tbl, const char *s);
 struct jvst_cnode *
 jvst_id_table_lookup_with_len(struct jvst_id_table *tbl, const char *s, size_t n);
 
+int
+jvst_id_table_foreach(struct jvst_id_table *tbl,
+	int (*each)(void *, struct json_string *, struct jvst_cnode **ctreep),
+	void *opaque);
+
+// for debugging
 void
 jvst_id_table_dump_ids(struct jvst_id_table *tbl);
 

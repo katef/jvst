@@ -76,6 +76,20 @@ jvst_id_table_add(struct jvst_id_table *tbl, struct json_string id, struct jvst_
 	return hmap_setptr(tbl->map, key, ctree);
 }
 
+int
+jvst_id_table_set(struct jvst_id_table *tbl, struct json_string id, struct jvst_cnode *ctree)
+{
+	union hmap_value *v;
+
+	v = hmap_get(tbl->map, &id);
+	if (v == NULL) {
+		return 0;
+	}
+
+	v->p = ctree;
+	return 1;
+}
+
 void
 jvst_id_table_delete(struct jvst_id_table *tbl)
 {
@@ -120,6 +134,34 @@ jvst_id_table_lookup_with_len(struct jvst_id_table *tbl, const char *s, size_t n
 	struct json_string str = { .s = s, .len = n };
 	assert(s != NULL);
 	return jvst_id_table_lookup(tbl, str);
+}
+
+int
+jvst_id_table_foreach(struct jvst_id_table *tbl,
+	int (*each)(void *, struct json_string *, struct jvst_cnode **ctreep),
+	void *opaque)
+{
+	struct hmap_iter it;
+	struct json_string *k;
+
+	for (k = hmap_iter_first(tbl->map, &it); k != NULL; k = hmap_iter_next(&it)) {
+		struct jvst_cnode *vn;
+
+		vn = it.v.p;
+		// XXX - cast is slightly non-portable
+		if (!each(opaque, k, &vn)) {
+			return 0;
+		}
+
+		// update the value if it has changed
+		if (vn != it.v.p) {
+			union hmap_value *v;
+			v = hmap_iter_fetch(&it);
+			v->p = vn;
+		}
+	}
+
+	return 1;
 }
 
 void
