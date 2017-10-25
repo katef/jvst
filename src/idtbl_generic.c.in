@@ -1,3 +1,5 @@
+#include "xalloc.h"
+
 #ifndef IDTBL_NAME
 #  error must define IDTBL_NAME
 #endif
@@ -52,7 +54,7 @@ SYMCAT(IDTBL_NAME, _new) (void)
 	static const struct IDTBL_NAME zero;
 	struct IDTBL_NAME *tbl;
 
-	tbl = malloc(sizeof *tbl);
+	tbl = xmalloc(sizeof *tbl);
 	*tbl = zero;
 
 	tbl->map = hmap_create(IDTBL_INITIAL_NBUCKETS, IDTBL_MAXLOAD, NULL,
@@ -70,15 +72,8 @@ SYMCAT(IDTBL_NAME, _add) (struct IDTBL_NAME *tbl, struct json_string id, IDTBL_V
 	assert(tbl != NULL);
 	assert(tbl->map != NULL);
 
-	key = malloc(sizeof *key);
-	*key = zero;
-
-	if (id.len > 0) {
-		char *s = malloc(id.len);
-		memcpy(s, id.s, id.len);
-		key->s = s;
-		key->len = id.len;
-	}
+	key = xmalloc(sizeof *key);
+	*key = json_strdup(id);
 
 	return hmap_setptr(tbl->map, key, val);
 }
@@ -182,6 +177,12 @@ size_t
 SYMCAT(IDTBL_NAME, _nbuckets) (struct IDTBL_NAME *tbl)
 {
 	return tbl->map->nbuckets;
+}
+
+size_t
+SYMCAT(IDTBL_NAME, _nitems) (struct IDTBL_NAME *tbl)
+{
+	return tbl->map->nitems;
 }
 
 float

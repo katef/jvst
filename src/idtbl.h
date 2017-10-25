@@ -35,6 +35,9 @@ jvst_cnode_id_table_foreach(struct jvst_cnode_id_table *tbl,
 	void *opaque);
 
 size_t
+jvst_cnode_id_table_nitems(struct jvst_cnode_id_table *tbl);
+
+size_t
 jvst_cnode_id_table_nbuckets(struct jvst_cnode_id_table *tbl);
 
 float
@@ -75,6 +78,9 @@ int
 jvst_ir_id_table_foreach(struct jvst_ir_id_table *tbl,
 	int (*each)(void *, struct json_string *, struct jvst_ir_stmt **ctreep),
 	void *opaque);
+
+size_t
+jvst_ir_id_table_nitems(struct jvst_ir_id_table *tbl);
 
 size_t
 jvst_ir_id_table_nbuckets(struct jvst_ir_id_table *tbl);
