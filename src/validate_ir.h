@@ -323,6 +323,10 @@ struct jvst_ir_stmt {
 
 		struct {
 			struct json_string id;
+
+			// temporary used for keeping track of call_id
+			// lists
+			struct jvst_ir_stmt *next_call;
 		} call_id;
 	} u;
 };
@@ -445,7 +449,6 @@ struct jvst_ir_id_table;
 // IR forest is then linearized into an IR program.
 struct jvst_ir_forest {
 	size_t len;
-	size_t cap;
 	struct jvst_ir_stmt **trees;
 
 	struct jvst_ir_id_table *refs;

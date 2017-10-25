@@ -17,6 +17,7 @@
 #include <fsm/walk.h>
 #include <re/re.h>
 
+#include "hmap.h"
 #include "validate_sbuf.h"
 #include "validate_constraints.h"
 #include "sjp_testing.h"
@@ -240,6 +241,16 @@ ir_stmt_if(struct jvst_ir_expr *cond, struct jvst_ir_stmt *br_true, struct jvst_
 	br->u.if_.br_true = br_true;
 	br->u.if_.br_false = br_false;
 	return br;
+}
+
+static inline struct jvst_ir_stmt *
+ir_stmt_callid(struct json_string id)
+{
+	struct jvst_ir_stmt *call;
+	call = ir_stmt_new(JVST_IR_STMT_CALL_ID);
+
+	call->u.call_id.id = json_strdup(id);
+	return call;
 }
 
 static inline struct jvst_ir_stmt *
@@ -3798,6 +3809,13 @@ ir_translate(struct jvst_cnode *ctree, bool first_token)
 	enum jvst_cnode_type dft_case;
 	size_t i;
 
+	if (ctree->type == JVST_CNODE_REF) {
+		struct jvst_ir_stmt *ir;
+
+		ir = ir_stmt_callid(ctree->u.ref);
+		return ir;
+	}
+
 	if (ctree->type != JVST_CNODE_SWITCH) {
 		fprintf(stderr, "%s:%d translation must start at a SWITCH node\n",
 			__FILE__, __LINE__);
@@ -4378,11 +4396,16 @@ jvst_ir_stmt_copy_inner(struct jvst_ir_stmt *ir, struct addr_fixup_list *fixups,
 		}
 		/* need to fixup frame and block references */
 
+	case JVST_IR_STMT_CALL_ID:
+		{
+			copy->u.call_id.id = json_strdup(ir->u.call_id.id);
+			return copy;
+		}
+
 	case JVST_IR_STMT_LOOP:
 	case JVST_IR_STMT_BREAK:
 	case JVST_IR_STMT_MATCH:
 
-	case JVST_IR_STMT_CALL_ID:
 	case JVST_IR_STMT_BCLEAR:
 	case JVST_IR_STMT_DECR:
 		fprintf(stderr, "%s:%d (%s) copying IR statement %s not yet implemented\n",
@@ -4461,6 +4484,10 @@ struct op_linearizer {
 	struct jvst_ir_stmt **bpp;
 
 	size_t frame_ind;
+	struct hmap *frame_map;
+
+	struct jvst_ir_stmt *callids;
+	struct jvst_ir_stmt **callidpp;
 };
 
 static struct jvst_ir_stmt *
@@ -4922,6 +4949,11 @@ ir_linearize_frame(struct op_linearizer *oplin, struct jvst_ir_stmt *fr)
 	copy->u.frame = fr->u.frame;
 	fr->data = copy;
 
+	if (!hmap_setptr(oplin->frame_map, fr, copy)) {
+		fprintf(stderr, "error adding frame->copy pair in frame map\n");
+		abort();
+	}
+
 	*oplin->fpp = copy;
 	oplin->fpp = &copy->next;
 
@@ -4941,7 +4973,9 @@ ir_linearize_frame(struct op_linearizer *oplin, struct jvst_ir_stmt *fr)
 
 	frame_oplin.orig_frame = fr;
 	frame_oplin.frame = copy;
+	frame_oplin.frame_map = oplin->frame_map;
 	frame_oplin.fpp = oplin->fpp;
+	frame_oplin.callidpp = oplin->callidpp;
 	frame_oplin.frame_ind = oplin->frame_ind;
 
 	entry = ir_stmt_block(copy, "entry");
@@ -4963,6 +4997,7 @@ ir_linearize_frame(struct op_linearizer *oplin, struct jvst_ir_stmt *fr)
 	ir_assemble_basic_blocks(copy);
 
 	oplin->fpp = frame_oplin.fpp;
+	oplin->callidpp = frame_oplin.callidpp;
 	oplin->frame_ind = frame_oplin.frame_ind;
 	return copy;
 }
@@ -5009,6 +5044,7 @@ ir_linearize_block(struct op_linearizer *oplin, const char *prefix, struct jvst_
 
 	oplin->bpp = block_oplin.bpp;
 	oplin->fpp = block_oplin.fpp;
+	oplin->callidpp = block_oplin.callidpp;
 	oplin->frame_ind = block_oplin.frame_ind;
 
 	oplin->valid_block = block_oplin.valid_block;
@@ -5276,6 +5312,7 @@ ir_linearize_cond(struct op_linearizer *oplin, struct jvst_ir_expr *cond, struct
 
 			oplin->fpp = and_oplin.fpp;
 			oplin->bpp = and_oplin.bpp;
+			oplin->callidpp = and_oplin.callidpp;
 			oplin->frame_ind = and_oplin.frame_ind;
 			oplin->valid_block = and_oplin.valid_block;
 			oplin->invalid_blocks = and_oplin.invalid_blocks;
@@ -5301,6 +5338,7 @@ ir_linearize_cond(struct op_linearizer *oplin, struct jvst_ir_expr *cond, struct
 
 			oplin->fpp = or_oplin.fpp;
 			oplin->bpp = or_oplin.bpp;
+			oplin->callidpp = or_oplin.callidpp;
 			oplin->frame_ind = or_oplin.frame_ind;
 			oplin->valid_block = or_oplin.valid_block;
 			oplin->invalid_blocks = or_oplin.invalid_blocks;
@@ -5654,6 +5692,7 @@ ir_linearize_stmt(struct op_linearizer *oplin, struct jvst_ir_stmt *stmt)
 			oplin->ipp = seq_oplin.ipp;
 			oplin->fpp = seq_oplin.fpp;
 			oplin->bpp = seq_oplin.bpp;
+			oplin->callidpp = seq_oplin.callidpp;
 			oplin->frame_ind = seq_oplin.frame_ind;
 		}
 		return;
@@ -5814,6 +5853,20 @@ ir_linearize_stmt(struct op_linearizer *oplin, struct jvst_ir_stmt *stmt)
 		return;
 
 	case JVST_IR_STMT_CALL_ID:
+		{
+			assert(stmt->u.call_id.next_call == NULL);
+
+			linstmt = jvst_ir_stmt_copy(stmt);
+
+			*oplin->callidpp = linstmt;
+			oplin->callidpp = &linstmt->u.call_id.next_call;
+
+			*oplin->ipp = linstmt;
+			oplin->ipp = &linstmt->next;
+
+			return;
+		}
+
 	case JVST_IR_STMT_BCLEAR:
 	case JVST_IR_STMT_DECR:
 		fprintf(stderr, "%s:%d (%s) linearizing IR statement %s not yet implemented\n",
@@ -5859,6 +5912,7 @@ jvst_ir_linearize(struct jvst_ir_stmt *ir)
 	oplin.frame = NULL;
 	oplin.fpp = &oplin.frame;
 	oplin.ipp = NULL;
+	oplin.callidpp = &oplin.callids;
 
 	ir_linearize_frame(&oplin, ir);
 	for (i=1,fr = oplin.frame; fr != NULL; i++,fr = fr->next) {
@@ -5918,4 +5972,183 @@ jvst_ir_from_cnode(struct jvst_cnode *ctree)
 	return flattened;
 }
 
+struct ir_cnode_xlate_ref_updater {
+	struct hmap *xl_tbl;
+	struct jvst_ir_id_table *refs;
+};
+
+static int
+ir_cnode_xlate_update_refs(void *opaque, struct json_string *k, struct jvst_cnode **ctreep)
+{
+	struct ir_cnode_xlate_ref_updater *upds = opaque;
+	const struct json_string *id = k;
+	struct jvst_ir_stmt *ir;
+
+	assert(id != NULL);
+	assert(upds != NULL);
+	assert(upds->xl_tbl != NULL);
+	assert(upds->refs != NULL);
+
+	assert(ctreep != NULL);
+	assert(*ctreep != NULL);
+
+	ir = hmap_getptr(upds->xl_tbl, *ctreep);
+	if (ir == NULL) {
+		int len = id->len >= INT_MAX ? INT_MAX : (int)id->len;
+
+		fprintf(stderr, "failed looking up (ctree,ir) pair for ID %.*s\n", len, id->s);
+		abort();
+	}
+
+	if (!jvst_ir_id_table_add(upds->refs, *id, ir)) {
+		int len = id->len >= INT_MAX ? INT_MAX : (int)id->len;
+
+		fprintf(stderr, "failed adding (id,IR) pair for ID %.*s\n", len, id->s);
+		abort();
+	}
+
+	return 1;
+}
+
+// Translates a forest of cnodes into a forest of IR trees
+struct jvst_ir_forest *
+jvst_ir_translate_forest(struct jvst_cnode_forest *forest)
+{
+	static const struct jvst_ir_forest zero;
+
+	struct jvst_ir_forest *ir_forest;
+	struct ir_cnode_xlate_ref_updater upds;
+	struct hmap *xl_tbl;
+	size_t i,n;
+
+	xl_tbl = hmap_create_pointer(
+			jvst_cnode_id_table_nbuckets(forest->ref_ids),
+			jvst_cnode_id_table_maxload(forest->ref_ids));
+
+	ir_forest = malloc(sizeof *ir_forest);
+	*ir_forest = zero;
+
+	n = forest->len;
+	ir_forest->len = n;
+	ir_forest->trees = xcalloc(n, sizeof ir_forest->trees[0]);
+
+	ir_forest->refs = jvst_ir_id_table_new();
+
+	for (i=0; i < n; i++) {
+		struct jvst_cnode *cnode;
+		struct jvst_ir_stmt *ir;
+
+		cnode = forest->trees[i];
+		ir = jvst_ir_translate(cnode);
+
+		if (!hmap_setptr(xl_tbl, cnode, ir)) {
+			fprintf(stderr, "could not add entry to cnode->IR translation table\n");
+			abort();
+		}
+
+		ir_forest->trees[i] = ir;
+	}
+
+	// build refs table
+	upds.refs = ir_forest->refs;
+	upds.xl_tbl = xl_tbl;
+	jvst_cnode_id_table_foreach(forest->ref_ids, ir_cnode_xlate_update_refs, &upds);
+
+	hmap_free(xl_tbl);
+
+	return ir_forest;
+}
+
+void
+jvst_ir_forest_free(struct jvst_ir_forest *ir_forest)
+{
+	if (ir_forest == NULL) {
+		return;
+	}
+
+	if (ir_forest->refs != NULL) {
+		jvst_ir_id_table_delete(ir_forest->refs);
+	}
+
+	// trees are collected by the usual IR garbage collection
+	// mechanism
+
+	free(ir_forest);
+}
+
+enum { FRAME_MAP_SIZE = 256 };
+#define FRAME_MAP_MAXLOAD 0.65f
+
+// Translates a forest of cnodes into a forest of IR trees
+struct jvst_ir_stmt *
+jvst_ir_linearize_forest(struct jvst_ir_forest *ir_forest)
+{
+	struct jvst_ir_stmt *prog, *fr;
+	struct op_linearizer oplin = { 0 };
+	size_t i, n;
+
+	oplin.frame_map = hmap_create_pointer(FRAME_MAP_SIZE, FRAME_MAP_MAXLOAD);
+	oplin.fpp = &oplin.frame;
+	oplin.callidpp = &oplin.callids;
+
+	for (i=0; i < ir_forest->len; i++) {
+		oplin.ipp = NULL;
+		assert(ir_forest->trees[i]->type == JVST_IR_STMT_FRAME);
+		ir_linearize_frame(&oplin, ir_forest->trees[i]);
+	}
+
+	/* need to resolve all CALL_ID nodes, converting them into CALL
+	 * nodes */
+	{
+		struct jvst_ir_stmt *callid, *next;
+		for (next = NULL, callid = oplin.callids; callid != NULL; callid = next) {
+			struct json_string s;
+			struct jvst_ir_stmt *orig_fr, *lin_fr;
+
+			// have to store next here; after resolving the frame, this
+			// CALL_ID node will be transmogrified into a CALL node.
+			next = callid->u.call_id.next_call;
+
+			s = callid->u.call_id.id;
+			orig_fr = jvst_ir_id_table_lookup(ir_forest->refs, s);
+
+			if (orig_fr == NULL) {
+				if (s.len < INT_MAX) {
+					fprintf(stderr, "UNRESOLVED reference \"%.*s\", aborting.\n", (int)s.len, s.s);
+				} else {
+					fprintf(stderr, "UNRESOLVED reference \"%.*s...\", aborting.\n", INT_MAX, s.s);
+				}
+				abort();
+			}
+
+			lin_fr = hmap_getptr(oplin.frame_map, orig_fr);
+			if (lin_fr == NULL) {
+				if (s.len < INT_MAX) {
+					fprintf(stderr, "CANNOT FIND linearized frame for reference \"%.*s\", aborting.\n",
+						(int)s.len, s.s);
+				} else {
+					fprintf(stderr, "CANNOT FIND linearized frame for reference \"%.*s\", aborting.\n",
+						INT_MAX, s.s);
+				}
+				abort();
+			}
+
+			// transmogrify CALL_ID node into a CALL node
+			callid->type = JVST_IR_STMT_CALL;
+			callid->u.call.frame = lin_fr;
+
+			json_str_free(s); // clean up id; GC won't pick it up after we overwrite the node
+		}
+	}
+
+	/* clean up */
+	hmap_free(oplin.frame_map);
+
+	prog = ir_stmt_new(JVST_IR_STMT_PROGRAM);
+	prog->u.program.frames = oplin.frame;
+
+	return prog;
+}
+
 /* vim: set tabstop=8 shiftwidth=8 noexpandtab: */
+
