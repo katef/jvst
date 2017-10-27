@@ -353,6 +353,12 @@ newschema_p(struct arena_info *A, int types, ...)
 			if (s->additional_items == NULL) {
 				s->additional_items = schema;
 			}
+		} else if (strcmp(pname, "contains") == 0) {
+			struct ast_schema *schema;
+			schema = va_arg(args, struct ast_schema *);
+			if (s->contains == NULL) {
+				s->contains = schema;
+			}
 		} else if (strcmp(pname, "minItems") == 0) {
 			s->min_items = va_arg(args, int);
 			s->kws |= KWS_MIN_ITEMS;
@@ -713,6 +719,16 @@ newcnode_additional_items(struct arena_info *A, struct jvst_cnode *top)
 
 	node = newcnode(A, JVST_CNODE_ARR_ADDITIONAL);
 	node->u.items = top;
+	return node;
+}
+
+struct jvst_cnode *
+newcnode_contains(struct arena_info *A, struct jvst_cnode *top)
+{
+	struct jvst_cnode *node;
+
+	node = newcnode(A, JVST_CNODE_ARR_CONTAINS);
+	node->u.contains = top;
 	return node;
 }
 

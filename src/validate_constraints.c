@@ -349,8 +349,8 @@ jvst_cnode_free_tree(struct jvst_cnode *root)
 
 		case JVST_CNODE_ARR_ITEM:
 		case JVST_CNODE_ARR_ADDITIONAL:
-			if (node->u.arr_item != NULL) {
-				jvst_cnode_free_tree(node->u.arr_item);
+			if (node->u.items != NULL) {
+				jvst_cnode_free_tree(node->u.items);
 			}
 			break;
 
@@ -407,6 +407,8 @@ jvst_cnode_type_name(enum jvst_cnode_type type)
 		return "ARR_ITEM";
 	case JVST_CNODE_ARR_ADDITIONAL:
 		return "ARR_ADDITIONAL";
+	case JVST_CNODE_ARR_CONTAINS:
+		return "ARR_CONTAINS";
 	case JVST_CNODE_ARR_UNIQUE:
 		return "ARR_UNIQUE";
 	case JVST_CNODE_OBJ_REQMASK:
@@ -824,6 +826,24 @@ and_or_xor:
 		}
 		break;
 
+	case JVST_CNODE_ARR_CONTAINS:
+		{
+			struct jvst_cnode *it;
+
+			sbuf_snprintf(buf, "CONTAINS(\n");
+
+			it = node->u.contains;
+			assert(it->next == NULL);
+
+			sbuf_indent(buf, indent+2);
+			jvst_cnode_dump_inner(it, buf, indent+2);
+			sbuf_snprintf(buf, "\n");
+
+			sbuf_indent(buf, indent);
+			sbuf_snprintf(buf, ")");
+		}
+		break;
+
 	case JVST_CNODE_ARR_UNIQUE:
 		fprintf(stderr, WHEREFMT "**not implemented**\n",
 			WHEREARGS);
@@ -1048,6 +1068,16 @@ jvst_cnode_translate_ast(const struct ast_schema *ast)
 		add_ast_constraint(node, SJP_ARRAY_BEG, additional);
 	}
 
+	if (ast->contains != NULL) {
+		struct jvst_cnode *constraint, *contains;
+
+		constraint = jvst_cnode_translate_ast(ast->contains);
+		contains = jvst_cnode_alloc(JVST_CNODE_ARR_CONTAINS);
+		contains->u.contains = constraint;
+
+		add_ast_constraint(node, SJP_ARRAY_BEG, contains);
+	}
+
 	if (ast->kws & (KWS_MIN_ITEMS | KWS_MAX_ITEMS)) {
 		struct jvst_cnode *range, *jxn;
 
@@ -1086,8 +1116,7 @@ jvst_cnode_translate_ast(const struct ast_schema *ast)
 	}
 
 	if (ast->additional_properties != NULL) {
-		struct jvst_cnode *constraint, **cpp, *pdft;
-		struct ast_schema_set *sset;
+		struct jvst_cnode *constraint, *pdft;
 
 		constraint = jvst_cnode_translate_ast(ast->additional_properties);
 		assert(constraint != NULL);
@@ -1474,8 +1503,8 @@ cnode_deep_copy(struct jvst_cnode *node)
 		{
 			struct jvst_cnode *item, **ip;
 			tree = jvst_cnode_alloc(node->type);
-			ip = &tree->u.arr_item;
-			for (item = node->u.arr_item; item != NULL; item = item->next) {
+			ip = &tree->u.items;
+			for (item = node->u.items; item != NULL; item = item->next) {
 				*ip = cnode_deep_copy(item);
 				ip  = &(*ip)->next;
 			}
@@ -1484,7 +1513,12 @@ cnode_deep_copy(struct jvst_cnode *node)
 
 	case JVST_CNODE_ARR_ADDITIONAL:
 		tree = jvst_cnode_alloc(node->type);
-		tree->u.arr_item = cnode_deep_copy(node->u.arr_item);
+		tree->u.items = cnode_deep_copy(node->u.items);
+		return tree;
+
+	case JVST_CNODE_ARR_CONTAINS:
+		tree = jvst_cnode_alloc(node->type);
+		tree->u.contains = cnode_deep_copy(node->u.contains);
 		return tree;
 
 	case JVST_CNODE_OBJ_REQMASK:
@@ -3813,6 +3847,27 @@ cnode_simplify_propset(struct jvst_cnode *tree)
 	return tree;
 }
 
+static struct jvst_cnode *
+cnode_simplify_list(struct jvst_cnode *items)
+{
+	struct jvst_cnode *it, *next, *simplified_items, **spp;
+
+	simplified_items = NULL;
+	spp = &simplified_items;
+	for (it = items; it != NULL; it = next) {
+		struct jvst_cnode *simplified;
+
+		next = it->next;
+
+		simplified = jvst_cnode_simplify(it);
+		*spp = simplified;
+		spp = &(*spp)->next;
+		*spp = NULL;
+	}
+
+	return simplified_items;
+}
+
 struct jvst_cnode *
 jvst_cnode_simplify(struct jvst_cnode *tree)
 {
@@ -3875,26 +3930,21 @@ jvst_cnode_simplify(struct jvst_cnode *tree)
 		}
 
 	case JVST_CNODE_ARR_ITEM:
+		assert(tree->u.items != NULL);
+		tree->u.items = cnode_simplify_list(tree->u.items);
+		return tree;
+
 	case JVST_CNODE_ARR_ADDITIONAL:
-		{
-			struct jvst_cnode *it, *next, *simplified_items, **spp;
+		assert(tree->u.items != NULL);
+		assert(tree->u.items->next == NULL);
+		tree->u.items = cnode_simplify_list(tree->u.items);
+		return tree;
 
-			simplified_items = NULL;
-			spp = &simplified_items;
-			for (it = tree->u.items; it != NULL; it = next) {
-				struct jvst_cnode *simplified;
-
-				next = it->next;
-
-				simplified = jvst_cnode_simplify(it);
-				*spp = simplified;
-				spp = &(*spp)->next;
-				*spp = NULL;
-			}
-
-			tree->u.items = simplified_items;
-			return tree;
-		}
+	case JVST_CNODE_ARR_CONTAINS:
+		assert(tree->u.contains != NULL);
+		assert(tree->u.contains->next == NULL);
+		tree->u.contains = jvst_cnode_simplify(tree->u.contains);
+		return tree;
 
 	case JVST_CNODE_MATCH_SWITCH:
 		{
@@ -4635,6 +4685,28 @@ cnode_canonify_strmatch(struct jvst_cnode *top)
 	return msw;
 }
 
+static struct jvst_cnode *
+cnode_canonify_pass1(struct jvst_cnode *tree);
+
+// canonifies a list of nodes
+static struct jvst_cnode *
+cnode_nodelist_canonify_pass1(struct jvst_cnode *nodes)
+{
+	struct jvst_cnode *result, **rpp, *n, *next;
+
+	result = NULL;
+	rpp = &result;
+	for (n = nodes; n != NULL; n = next) {
+		next = n->next;
+		
+		*rpp = cnode_canonify_pass1(n);
+		rpp = &(*rpp)->next;
+		*rpp = NULL;
+	}
+
+	return result;
+}
+
 // Initial canonification before DFAs are constructed
 static struct jvst_cnode *
 cnode_canonify_pass1(struct jvst_cnode *tree)
@@ -4657,18 +4729,7 @@ cnode_canonify_pass1(struct jvst_cnode *tree)
 	case JVST_CNODE_OR:
 	case JVST_CNODE_XOR:
 	case JVST_CNODE_NOT:
-		{
-			struct jvst_cnode *xform = NULL;
-			struct jvst_cnode **xpp = &xform;
-
-			for (node = tree->u.ctrl; node != NULL; node = node->next) {
-				*xpp = cnode_canonify_pass1(node);
-				xpp = &(*xpp)->next;
-			}
-
-			tree->u.ctrl = xform;
-
-		}
+		tree->u.ctrl = cnode_nodelist_canonify_pass1(tree->u.ctrl);
 		return tree;
 
 	case JVST_CNODE_SWITCH:
@@ -4728,16 +4789,32 @@ cnode_canonify_pass1(struct jvst_cnode *tree)
 			return msw;
 		}
 
+	case JVST_CNODE_ARR_ITEM:
+	case JVST_CNODE_ARR_ADDITIONAL:
+		tree->u.items = cnode_nodelist_canonify_pass1(tree->u.items);
+		return tree;
+
+	case JVST_CNODE_ARR_CONTAINS:
+		tree->u.items = cnode_nodelist_canonify_pass1(tree->u.items);
+		return tree;
+
+	case JVST_CNODE_MATCH_SWITCH:
+		tree->u.mswitch.cases = cnode_nodelist_canonify_pass1(tree->u.mswitch.cases);
+		return tree;
+
+	case JVST_CNODE_MATCH_CASE:
+		if (tree->u.mcase.name_constraint != NULL) {
+			tree->u.mcase.name_constraint = cnode_canonify_pass1(tree->u.mcase.name_constraint);
+		}
+		tree->u.mcase.value_constraint = cnode_canonify_pass1(tree->u.mcase.value_constraint);
+		return tree;
+
 	case JVST_CNODE_OBJ_PROP_DEFAULT:
 	case JVST_CNODE_OBJ_PROP_NAMES:
 	case JVST_CNODE_NUM_INTEGER:
 	case JVST_CNODE_OBJ_PROP_MATCH:
-	case JVST_CNODE_ARR_ITEM:
-	case JVST_CNODE_ARR_ADDITIONAL:
 	case JVST_CNODE_OBJ_REQMASK:
 	case JVST_CNODE_OBJ_REQBIT:
-	case JVST_CNODE_MATCH_SWITCH:
-	case JVST_CNODE_MATCH_CASE:
 		// TODO: basic optimization for these nodes
 		return tree;
 
@@ -4769,6 +4846,28 @@ static int cnode_cmp(const void *p0, const void *p1)
 
 	// TODO: implement comparison for nodes of the same type!
 	return 0;
+}
+
+static struct jvst_cnode *
+cnode_canonify_pass2(struct jvst_cnode *tree);
+
+// canonifies a list of nodes
+static struct jvst_cnode *
+cnode_nodelist_canonify_pass2(struct jvst_cnode *nodes)
+{
+	struct jvst_cnode *result, **rpp, *n, *next;
+
+	result = NULL;
+	rpp = &result;
+	for (n = nodes; n != NULL; n = next) {
+		next = n->next;
+		
+		*rpp = cnode_canonify_pass2(n);
+		rpp = &(*rpp)->next;
+		*rpp = NULL;
+	}
+
+	return result;
 }
 
 static struct jvst_cnode *
@@ -4905,15 +5004,22 @@ cnode_canonify_pass2(struct jvst_cnode *tree)
 		}
 		return tree;
 
-	case JVST_CNODE_NUM_INTEGER:
-	case JVST_CNODE_STR_MATCH:
 	case JVST_CNODE_ARR_ITEM:
 	case JVST_CNODE_ARR_ADDITIONAL:
+		tree->u.items = cnode_nodelist_canonify_pass2(tree->u.items);
+		return tree;
+
+	case JVST_CNODE_ARR_CONTAINS:
+		tree->u.contains = cnode_nodelist_canonify_pass2(tree->u.contains);
+		return tree;
+
+	case JVST_CNODE_NUM_INTEGER:
 	case JVST_CNODE_OBJ_REQMASK:
 	case JVST_CNODE_OBJ_REQBIT:
 		// TODO: basic optimization for these nodes
 		return tree;
 
+	case JVST_CNODE_STR_MATCH:
 	case JVST_CNODE_OBJ_PROP_DEFAULT:
 	case JVST_CNODE_OBJ_PROP_NAMES:
 	case JVST_CNODE_OBJ_PROP_MATCH:
