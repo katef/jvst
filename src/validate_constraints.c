@@ -547,22 +547,46 @@ jvst_cnode_dump_inner(struct jvst_cnode *node, struct sbuf *buf, int indent)
 		break;
 
 	case JVST_CNODE_NUM_RANGE:
-		sbuf_snprintf(buf, "NUM_RANGE(");
-		if (node->u.num_range.flags & JVST_CNODE_RANGE_EXCL_MIN) {
-			sbuf_snprintf(buf, "%g < ", node->u.num_range.min);
-		} else if (node->u.num_range.flags & JVST_CNODE_RANGE_MIN) {
-			sbuf_snprintf(buf, "%g <= ", node->u.num_range.min);
+		{
+			enum jvst_cnode_rangeflags flags;
+			double min,max;
+
+			flags = node->u.num_range.flags;
+			min = node->u.num_range.min;
+			max = node->u.num_range.max;
+
+			// special case for equality
+			if (min == max && flags == (JVST_CNODE_RANGE_MIN | JVST_CNODE_RANGE_MAX)) {
+				goto num_range_equals;
+			}
+
+			sbuf_snprintf(buf, "NUM_RANGE(");
+			if (flags & JVST_CNODE_RANGE_EXCL_MIN) {
+				sbuf_snprintf(buf, "%g < ", node->u.num_range.min);
+			} else if (flags & JVST_CNODE_RANGE_MIN) {
+				sbuf_snprintf(buf, "%g <= ", node->u.num_range.min);
+			}
+
+			sbuf_snprintf(buf, "x");
+
+			if (flags & JVST_CNODE_RANGE_EXCL_MAX) {
+				sbuf_snprintf(buf, " < %g", node->u.num_range.max);
+			} else if (flags & JVST_CNODE_RANGE_MAX) {
+				sbuf_snprintf(buf, " <= %g", node->u.num_range.max);
+			}
+
+			sbuf_snprintf(buf, ")");
 		}
+		break;
 
-		sbuf_snprintf(buf, "x");
+num_range_equals:
+		{
+			double x = node->u.num_range.min;
+			assert(node->u.num_range.max == x);
+			assert(node->u.num_range.flags == (JVST_CNODE_RANGE_MIN | JVST_CNODE_RANGE_MAX));
 
-		if (node->u.num_range.flags & JVST_CNODE_RANGE_EXCL_MAX) {
-			sbuf_snprintf(buf, " < %g", node->u.num_range.max);
-		} else if (node->u.num_range.flags & JVST_CNODE_RANGE_MAX) {
-			sbuf_snprintf(buf, " <= %g", node->u.num_range.max);
+			sbuf_snprintf(buf, "NUM_RANGE(x == %g)", x);
 		}
-
-		sbuf_snprintf(buf, ")");
 		break;
 
 	case JVST_CNODE_NOT:
@@ -914,6 +938,185 @@ add_ast_constraint(struct jvst_cnode *sw, enum SJP_EVENT evt, struct jvst_cnode 
 	sw->u.sw[evt] = jxn;
 }
 
+static struct jvst_cnode *
+cnode_enum_translate(struct json_value *v);
+
+static struct jvst_cnode *
+cnode_enum_translate_obj(struct json_value *v)
+{
+	struct jvst_cnode *jxn, **jpp;
+	struct json_property *prop;
+
+	struct ast_string_set *rprops, **rpp;
+	struct jvst_cnode *pmatches, **pmpp;
+
+	assert(v != NULL);
+	assert(v->type == JSON_VALUE_OBJECT);
+
+	// Need to build three constraints: properties, additional
+	// properties, and required.
+	//
+	// All properties of the object are given const schemas.
+	// All properties are required.
+	// Any additional property is invalid.
+
+	jxn = jvst_cnode_alloc(JVST_CNODE_AND);
+	jpp = &jxn->u.ctrl;
+	*jpp = jvst_cnode_alloc(JVST_CNODE_OBJ_PROP_DEFAULT);
+	(*jpp)->u.prop_default = jvst_cnode_alloc(JVST_CNODE_INVALID);
+	jpp = &(*jpp)->next;
+
+	rprops = NULL;
+	rpp = &rprops;
+
+	pmatches = NULL;
+	pmpp = &pmatches;
+
+	for (prop = v->u.obj; prop != NULL; prop = prop->next) {
+		struct ast_string_set *pn;
+		struct jvst_cnode *vcons, *pmatch;
+
+		*rpp = cnode_strset(prop->name, NULL);
+		rpp = &(*rpp)->next;
+
+		vcons = cnode_enum_translate(&prop->value);
+		assert(vcons != NULL);
+
+		pmatch = jvst_cnode_alloc(JVST_CNODE_OBJ_PROP_MATCH);
+		pmatch->u.prop_match.match.dialect = RE_LITERAL;
+		pmatch->u.prop_match.match.str = prop->name;
+		pmatch->u.prop_match.constraint = vcons;
+
+		*pmpp = pmatch;
+		pmpp = &pmatch->next;
+	}
+
+	// if either is non-NULL then both should be non-NULL
+	assert((rprops != NULL) == (pmatches != NULL));
+
+	if (rprops != NULL) {
+		struct jvst_cnode *req;
+
+		req = jvst_cnode_alloc(JVST_CNODE_OBJ_REQUIRED);
+		req->u.required = rprops;
+
+		*jpp = req;
+		jpp = &(*jpp)->next;
+	}
+
+	if (pmatches != NULL) {
+		struct jvst_cnode *pset;
+		pset = jvst_cnode_alloc(JVST_CNODE_OBJ_PROP_SET);
+		pset->u.prop_set = pmatches;
+		
+		*jpp = pset;
+		jpp = &(*jpp)->next;
+	}
+
+	return jxn;
+}
+
+static struct jvst_cnode *
+cnode_enum_translate_arr(struct json_value *v)
+{
+	struct jvst_cnode *jxn, **jpp;
+	struct json_element *elt;
+	struct jvst_cnode *items, **ipp;
+
+	assert(v != NULL);
+	assert(v->type == JSON_VALUE_ARRAY);
+
+	// Need to build two constraints: items and additional
+	// items
+	//
+	// All items of the array are given const schemas.
+	// Any additional item is invalid.
+
+	jxn = jvst_cnode_alloc(JVST_CNODE_AND);
+	jpp = &jxn->u.ctrl;
+
+	*jpp = jvst_cnode_alloc(JVST_CNODE_ARR_ADDITIONAL);
+	(*jpp)->u.items = cnode_new_switch(0);
+	jpp = &(*jpp)->next;
+
+	items = NULL;
+	ipp = &items;
+
+	for (elt = v->u.arr; elt != NULL; elt = elt->next) {
+		*ipp = cnode_enum_translate(&elt->value);
+		ipp = &(*ipp)->next;
+	}
+
+	if (items != NULL) {
+		struct jvst_cnode *cons;
+		cons = jvst_cnode_alloc(JVST_CNODE_ARR_ITEM);
+		cons->u.items = items;
+
+		*jpp = cons;
+		jpp = &(*jpp)->next;
+	}
+
+	return jxn;
+}
+
+static struct jvst_cnode *
+cnode_enum_translate(struct json_value *v)
+{
+	struct jvst_cnode *sw;
+
+	sw = cnode_new_switch(0);
+	switch (v->type) {
+	case JSON_VALUE_ARRAY:
+		sw->u.sw[SJP_ARRAY_BEG] = cnode_enum_translate_arr(v);
+		return sw;
+
+	case JSON_VALUE_OBJECT:
+		sw->u.sw[SJP_OBJECT_BEG] = cnode_enum_translate_obj(v);
+		return sw;
+
+	case JSON_VALUE_STRING:
+		{
+			struct jvst_cnode *scons;
+
+			scons = jvst_cnode_alloc(JVST_CNODE_STR_MATCH);
+			scons->u.str_match.dialect = RE_LITERAL;
+			scons->u.str_match.str = v->u.str;
+
+			sw->u.sw[SJP_STRING] = scons;
+		}
+		return sw;
+
+	case JSON_VALUE_NUMBER:
+	case JSON_VALUE_INTEGER:
+		{
+			struct jvst_cnode *neq;
+			double x;
+
+			x = v->u.n;
+
+			neq = jvst_cnode_alloc(JVST_CNODE_NUM_RANGE);
+			neq->u.num_range.flags = JVST_CNODE_RANGE_MIN|JVST_CNODE_RANGE_MAX;
+			neq->u.num_range.min = x;
+			neq->u.num_range.max = x;
+			sw->u.sw[SJP_NUMBER] = neq;
+		}
+		return sw;
+
+	case JSON_VALUE_BOOL:
+		sw->u.sw[v->u.v ? SJP_TRUE : SJP_FALSE] = jvst_cnode_alloc(JVST_CNODE_VALID);
+		return sw;
+
+	case JSON_VALUE_NULL:
+		sw->u.sw[SJP_NULL] = jvst_cnode_alloc(JVST_CNODE_VALID);
+		return sw;
+
+	default:
+		DIEF("unknown JSON type for enum/const: 0x%x\n", v->type);
+	}
+
+	return jvst_cnode_alloc(JVST_CNODE_INVALID);
+}
+
 // Just do a raw translation without doing any optimization of the
 // constraint tree
 struct jvst_cnode *
@@ -1194,6 +1397,8 @@ jvst_cnode_translate_ast(const struct ast_schema *ast)
 			tpp  = &jxn->next;
 		}
 
+		// FIXME: this assumes that the top node is a switch!
+		assert(node->type == JVST_CNODE_SWITCH);
 		*tpp = node->u.sw[SJP_OBJECT_BEG];
 		node->u.sw[SJP_OBJECT_BEG] = top_jxn;
 	}
@@ -1276,6 +1481,36 @@ jvst_cnode_translate_ast(const struct ast_schema *ast)
 		node = top_jxn;
 	}
 
+	if (ast->xenum != NULL) {
+		struct ast_value_set *v;
+		struct jvst_cnode *top_jxn, *cons, **jpp;
+
+		cons = NULL;
+		jpp = &cons;
+
+		for (v=ast->xenum; v != NULL; v = v->next) {
+			*jpp = cnode_enum_translate(&v->value);
+			jpp = &(*jpp)->next;
+		}
+
+		top_jxn = jvst_cnode_alloc(JVST_CNODE_AND);
+		assert(cons != NULL);
+		if (cons->next == NULL) {
+			cons->next = node;
+			top_jxn->u.ctrl = cons;
+		} else {
+			struct jvst_cnode *jxn;
+
+			jxn = jvst_cnode_alloc(JVST_CNODE_OR);
+			jxn->u.ctrl = cons;
+			jxn->next = node;
+
+			top_jxn->u.ctrl = jxn;
+		}
+
+		node = top_jxn;
+	}
+
 	return node;
 }
 
@@ -1353,6 +1588,11 @@ cnode_mswitch_copy(struct jvst_cnode *node)
 	struct jvst_cnode *tree, *mcases, **mcpp;
 	struct fsm *dup_fsm;
 
+	/*
+	fprintf(stderr,"---> orig: %p\n", (void *)node);
+	print_mswitch(node);
+	fprintf(stderr, "\n");
+	*/
 	tree = jvst_cnode_alloc(JVST_CNODE_MATCH_SWITCH);
 
 	// it would be lovely to copy this but there doesn't seem to be
@@ -1406,6 +1646,11 @@ cnode_mswitch_copy(struct jvst_cnode *node)
 	}
 	*/
 
+	/*
+	fprintf(stderr,"---> copy: %p\n", (void *)tree);
+	print_mswitch(tree);
+	fprintf(stderr, "\n");
+	*/
 	return tree;
 }
 
@@ -4799,15 +5044,25 @@ cnode_canonify_pass1(struct jvst_cnode *tree)
 		return tree;
 
 	case JVST_CNODE_MATCH_SWITCH:
-		tree->u.mswitch.cases = cnode_nodelist_canonify_pass1(tree->u.mswitch.cases);
+		{
+			struct jvst_cnode *c;
+			for (c = tree->u.mswitch.cases; c != NULL; c = c->next) {
+				if (c->u.mcase.name_constraint != NULL) {
+					c->u.mcase.name_constraint = cnode_canonify_pass1(c->u.mcase.name_constraint);
+				}
+				c->u.mcase.value_constraint = cnode_canonify_pass1(c->u.mcase.value_constraint);
+			}
+
+			c = tree->u.mswitch.dft_case;
+			if (c->u.mcase.name_constraint != NULL) {
+				c->u.mcase.name_constraint = cnode_canonify_pass1(c->u.mcase.name_constraint);
+			}
+			c->u.mcase.value_constraint = cnode_canonify_pass1(c->u.mcase.value_constraint);
+		}
 		return tree;
 
 	case JVST_CNODE_MATCH_CASE:
-		if (tree->u.mcase.name_constraint != NULL) {
-			tree->u.mcase.name_constraint = cnode_canonify_pass1(tree->u.mcase.name_constraint);
-		}
-		tree->u.mcase.value_constraint = cnode_canonify_pass1(tree->u.mcase.value_constraint);
-		return tree;
+		SHOULD_NOT_REACH();
 
 	case JVST_CNODE_OBJ_PROP_DEFAULT:
 	case JVST_CNODE_OBJ_PROP_NAMES:

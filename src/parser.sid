@@ -18,6 +18,11 @@
 
 	ast-string-set;
 
+        ast-json-value;
+	ast-json-property-list;
+	ast-json-property-pair;
+	ast-json-item-list;
+
         regexp;
         re-dialect;
 
@@ -37,6 +42,35 @@
 	NULL;
 
 %productions%
+
+	/*** for const/enum constraints ***/
+
+	/* error handling */
+	<ast-json-empty-value>: () -> (:ast-json-value);
+
+	/* parsing json object */
+	<ast-json-new-property-list>: () -> (:ast-json-property-list);
+	<ast-json-free-property-list>: (:ast-json-property-list) -> ();
+	<ast-json-free-property-list-and-properties>: (:ast-json-property-list) -> ();
+
+	<ast-json-new-property-pair>: (:string, :ast-json-value) -> (:ast-json-property-pair);
+	<ast-json-append-property>: (:ast-json-property-list, :ast-json-property-pair) -> ();
+
+	<ast-json-new-object>: (:ast-json-property-list) -> (:ast-json-value);
+
+	/* parsing json arrays */
+	<ast-json-new-item-list>: () -> (:ast-json-item-list);
+	<ast-json-free-item-list>: (:ast-json-item-list) -> ();
+	<ast-json-free-item-list-and-items>: (:ast-json-item-list) -> ();
+
+	<ast-json-item-list-append>: (:ast-json-item-list, :ast-json-value) -> ();
+	<ast-json-new-array>: (:ast-json-item-list) -> (:ast-json-value);
+
+	/* parsing json simple values */
+	<ast-json-new-string>: (:string) -> (:ast-json-value);
+	<ast-json-new-number>: (:number) -> (:ast-json-value);
+	<ast-json-new-bool>: (:bool) -> (:ast-json-value);
+	<ast-json-new-null>: () -> (:ast-json-value);
 
 	/* some helpers */
 	<new-string-set>: () -> (:ast-string-set);
@@ -88,6 +122,8 @@
 	<kw-default>:               (:kw) -> (:bool);
 	<kw-examples>:              (:kw) -> (:bool);
 
+	<set-const>:		    (:ast-json-value) -> ();
+	<add-enum>:		    (:ast-json-value) -> ();
 	<set-schema>:               (:string) -> ();
 	<set-id>:                   (:string) -> ();
 	<set-multiple-of>:          (:number) -> ();
@@ -171,6 +207,125 @@
 	##
 		<err-expected-comma>;
 	};
+
+        json-value: () -> (v :ast-json-value) [
+		json-object: () -> (v :ast-json-value) [
+			property: (pl :ast-json-property-list) -> () = {
+				pname = STRING;
+				COLON;
+				pvalue = json-value;
+				p = <ast-json-new-property-pair>(pname, pvalue);
+				<ast-json-append-property>(pl, p);
+			};
+
+			property-list: (pl :ast-json-property-list) -> () = {
+				property(pl);
+				{
+					comma;
+					property-list(pl);
+				||
+					$;
+				};
+			};
+
+			whole-object: (pl :ast-json-property-list) -> () = {
+				OCURLY;
+				{
+					property-list(pl);
+				||
+					$;
+				};
+				CCURLY;
+			};
+		] = {
+			pl = <ast-json-new-property-list>;
+			{
+				whole-object(pl);
+				v = <ast-json-new-object>(pl);
+				<ast-json-free-property-list>(pl);
+			##
+				<ast-json-free-property-list-and-properties>(pl);
+				v = <ast-json-empty-value>;
+				<err-syntax>;
+				/* @!; */ /* XXX - propagate exception */
+			};
+		};
+
+		json-array: () -> (v :ast-json-value) [
+			single-item: (al :ast-json-item-list) -> () = {
+				v = json-value;
+				<ast-json-item-list-append>(al, v);
+			};
+
+			item-list: (al :ast-json-item-list) -> () = {
+				single-item(al);
+				{
+					comma;
+					item-list(al);
+				||
+					$;
+				};
+			};
+
+			whole-array: (al :ast-json-item-list) -> () = {
+				OBRACKET;
+				{
+					item-list(al);
+				||
+					$;
+				};
+				CBRACKET;
+			};
+		] = {
+			al = <ast-json-new-item-list>;
+			{
+				whole-array(al);
+				v = <ast-json-new-array>(al);
+				<ast-json-free-item-list>(al);
+			##
+				<ast-json-free-item-list-and-items>(al);
+				v = <ast-json-empty-value>;
+				<err-syntax>;
+				/* @!; */ /* XXX - propagate exception */
+			};
+		};
+
+		json-string: () -> (v :ast-json-value) = {
+			s = STRING;
+			v = <ast-json-new-string>(s);
+		};
+
+		json-number: () -> (v :ast-json-value) = {
+			n = NUMBER;
+			v = <ast-json-new-number>(n);
+		};
+
+		json-bool: () -> (v :ast-json-value) = {
+			{
+				b = TRUE;
+			||
+				b = FALSE;
+			};
+			v = <ast-json-new-bool>(b);
+		};
+
+		json-null: () -> (v :ast-json-value) = {
+			NULL;
+			v = <ast-json-new-null>;
+		};
+        ] = {
+                v = json-object;
+        ||
+                v = json-array;
+        ||
+                v = json-string;
+        ||
+                v = json-number;
+        ||
+                v = json-bool;
+        ||
+                v = json-null;
+        };
 
 	directive-schema = {
 		s = STRING;
@@ -496,6 +651,32 @@
 		<err-expected-string>;
 	};
 
+	directive-const = {
+		v = json-value;
+		<set-const>(v);
+	};
+
+	directive-enum [
+		single-value = {
+			v = json-value;
+			<add-enum>(v);
+		};
+
+		list-of-values = {
+			single-value;
+			{
+				comma;
+				list-of-values;
+			||
+				$;
+			};
+		};
+	] = {
+		OBRACKET;
+		list-of-values;
+		CBRACKET;
+	};
+
 	directive: (k: kw) -> () = {
 		? = <kw-schema>(k);
 		directive-schema;
@@ -575,10 +756,10 @@
 		directive-property-names;
 	||
 		? = <kw-enum>(k);
-		placeholder;
+		directive-enum;
 	||
 		? = <kw-const>(k);
-		placeholder;
+		directive-const;
 	||
 		? = <kw-type>(k);
 		directive-type;

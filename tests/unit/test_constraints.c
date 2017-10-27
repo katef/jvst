@@ -3998,7 +3998,7 @@ static void test_xlate_minmax_items(void)
   RUNTESTS(tests);
 }
 
-void test_xlate_contains(void)
+static void test_xlate_contains(void)
 {
   struct arena_info A = {0};
 
@@ -4025,6 +4025,267 @@ void test_xlate_contains(void)
                            NULL
                          ),
           SJP_NONE),
+    },
+
+    { STOP },
+  };
+
+  RUNTESTS(tests);
+}
+
+static void test_xlate_const(void)
+{
+  struct arena_info A = {0};
+
+  const struct cnode_test tests[] = {
+    {
+      TRANSLATE,
+      newschema_p(&A, 0,
+          "const", newjson_num(&A,5),
+          NULL),
+
+      NULL,
+
+      newcnode_bool(&A, JVST_CNODE_AND,
+        newcnode_switch(&A, 0,
+            SJP_NUMBER, newcnode_range(&A,
+                          JVST_CNODE_RANGE_MIN|JVST_CNODE_RANGE_MAX,
+                          5.0, 5.0),
+            SJP_NONE),
+        newcnode_switch(&A, 1, SJP_NONE),
+        NULL
+      )
+    },
+
+    {
+      TRANSLATE,
+      newschema_p(&A, 0,
+          "const", newjson_str(&A,"the quick brown fox jumps over the lazy dog"),
+          NULL),
+
+      NULL,
+
+      newcnode_bool(&A, JVST_CNODE_AND,
+        newcnode_switch(&A, 0,
+            SJP_STRING, newcnode_strmatch(&A, RE_LITERAL,
+                          "the quick brown fox jumps over the lazy dog"),
+            SJP_NONE),
+        newcnode_switch(&A, 1, SJP_NONE),
+        NULL
+      )
+    },
+
+    {
+      TRANSLATE,
+      newschema_p(&A, 0,
+          "const", newjson_bool(&A, 1),
+          NULL),
+
+      NULL,
+
+      newcnode_bool(&A, JVST_CNODE_AND,
+        newcnode_switch(&A, 0,
+            SJP_TRUE, newcnode_valid(),
+            SJP_NONE),
+        newcnode_switch(&A, 1, SJP_NONE),
+        NULL
+      )
+    },
+
+    {
+      TRANSLATE,
+      newschema_p(&A, 0,
+          "const", newjson_bool(&A, 0),
+          NULL),
+
+      NULL,
+
+      newcnode_bool(&A, JVST_CNODE_AND,
+        newcnode_switch(&A, 0,
+            SJP_FALSE, newcnode_valid(),
+            SJP_NONE),
+        newcnode_switch(&A, 1, SJP_NONE),
+        NULL
+      )
+    },
+
+    {
+      TRANSLATE,
+      newschema_p(&A, 0,
+          "const", newjson_null(&A),
+          NULL),
+
+      NULL,
+
+      newcnode_bool(&A, JVST_CNODE_AND,
+        newcnode_switch(&A, 0,
+            SJP_NULL, newcnode_valid(),
+            SJP_NONE),
+        newcnode_switch(&A, 1, SJP_NONE),
+        NULL
+      )
+    },
+
+    {
+      TRANSLATE,
+      newschema_p(&A, 0,
+          "const", newjson_array(&A, 
+                     newjson_num(&A,1),
+                     newjson_num(&A,2),
+                     newjson_str(&A,"foo"),
+                     NULL
+                   ),
+          NULL),
+
+      NULL,
+
+      newcnode_bool(&A, JVST_CNODE_AND,
+        newcnode_switch(&A, 0,
+            SJP_ARRAY_BEG, newcnode_bool(&A, JVST_CNODE_AND,
+                             newcnode_additional_items(&A,
+                               newcnode_switch(&A, 0, SJP_NONE)
+                             ),
+
+                             newcnode_items(&A,
+                               newcnode_switch(&A, 0,
+                                 SJP_NUMBER, newcnode_range(&A,
+                                               JVST_CNODE_RANGE_MIN|JVST_CNODE_RANGE_MAX,
+                                               1.0, 1.0),
+                                 SJP_NONE),
+                               newcnode_switch(&A, 0,
+                                 SJP_NUMBER, newcnode_range(&A,
+                                               JVST_CNODE_RANGE_MIN|JVST_CNODE_RANGE_MAX,
+                                               2.0, 2.0),
+                                 SJP_NONE),
+                               newcnode_switch(&A, 0,
+                                 SJP_STRING, newcnode_strmatch(&A, RE_LITERAL, "foo"),
+                                 SJP_NONE),
+                               NULL),
+                             NULL),
+            SJP_NONE),
+        newcnode_switch(&A, 1, SJP_NONE),
+        NULL
+      )
+    },
+
+    {
+      TRANSLATE,
+      newschema_p(&A, 0,
+          "const", newjson_object(&A, 
+                     "foo", newjson_str(&A, "bar"),
+                     "baz", newjson_num(&A, 44.0),
+                     NULL
+                   ),
+          NULL),
+
+      NULL,
+
+      newcnode_bool(&A, JVST_CNODE_AND,
+        newcnode_switch(&A, 0,
+            SJP_OBJECT_BEG, newcnode_bool(&A, JVST_CNODE_AND,
+                              newcnode_prop_default(&A, newcnode_invalid()),
+                              newcnode_required(&A, stringset(&A, "foo", "baz", NULL)),
+                              newcnode_propset(&A,
+                                newcnode_prop_match(&A, RE_LITERAL, "foo",
+                                  newcnode_switch(&A, 0,
+                                    SJP_STRING, newcnode_strmatch(&A, RE_LITERAL, "bar"),
+                                    SJP_NONE)),
+                                newcnode_prop_match(&A, RE_LITERAL, "baz",
+                                  newcnode_switch(&A, 0,
+                                    SJP_NUMBER, newcnode_range(&A,
+                                                  JVST_CNODE_RANGE_MIN|JVST_CNODE_RANGE_MAX,
+                                                  44.0, 44.0),
+                                    SJP_NONE)),
+                                NULL),
+                              NULL),
+            SJP_NONE),
+        newcnode_switch(&A, 1, SJP_NONE),
+        NULL
+      )
+    },
+
+    { STOP },
+  };
+
+  RUNTESTS(tests);
+}
+
+static void test_xlate_enum(void)
+{
+  struct arena_info A = {0};
+
+  const struct cnode_test tests[] = {
+    {
+      TRANSLATE,
+      newschema_p(&A, 0,
+          "enum", newjson_num(&A,1),
+          "enum", newjson_num(&A,2),
+          "enum", newjson_str(&A,"zebra"),
+          "enum", newjson_array(&A, newjson_str(&A,"first"), newjson_str(&A,"second"), NULL),
+          "enum", newjson_object(&A, 
+                     "this", newjson_str(&A, "the quick brown fox jumps over the lazy dog"),
+                     "that", newjson_num(&A, 16.0),
+                     NULL
+                   ),
+          NULL),
+
+      NULL,
+
+      newcnode_bool(&A, JVST_CNODE_AND,
+        newcnode_bool(&A, JVST_CNODE_OR,
+          newcnode_switch(&A, 0,
+            SJP_NUMBER, newcnode_range(&A,
+                          JVST_CNODE_RANGE_MIN|JVST_CNODE_RANGE_MAX,
+                          1.0, 1.0),
+            SJP_NONE),
+          newcnode_switch(&A, 0,
+            SJP_NUMBER, newcnode_range(&A,
+                          JVST_CNODE_RANGE_MIN|JVST_CNODE_RANGE_MAX,
+                          2.0, 2.0),
+            SJP_NONE),
+          newcnode_switch(&A, 0,
+            SJP_STRING, newcnode_strmatch(&A, RE_LITERAL, "zebra"),
+            SJP_NONE),
+          newcnode_switch(&A, 0,
+            SJP_ARRAY_BEG, newcnode_bool(&A, JVST_CNODE_AND,
+                             newcnode_additional_items(&A,
+                               newcnode_switch(&A, 0, SJP_NONE)
+                             ),
+
+                             newcnode_items(&A,
+                               newcnode_switch(&A, 0,
+                                 SJP_STRING, newcnode_strmatch(&A, RE_LITERAL, "first"),
+                                 SJP_NONE),
+                               newcnode_switch(&A, 0,
+                                 SJP_STRING, newcnode_strmatch(&A, RE_LITERAL, "second"),
+                                 SJP_NONE),
+                               NULL),
+                             NULL),
+            SJP_NONE),
+          newcnode_switch(&A, 0,
+            SJP_OBJECT_BEG, newcnode_bool(&A, JVST_CNODE_AND,
+                              newcnode_prop_default(&A, newcnode_invalid()),
+                              newcnode_required(&A, stringset(&A, "this", "that", NULL)),
+                              newcnode_propset(&A,
+                                newcnode_prop_match(&A, RE_LITERAL, "this",
+                                  newcnode_switch(&A, 0,
+                                    SJP_STRING, newcnode_strmatch(&A, RE_LITERAL,
+                                      "the quick brown fox jumps over the lazy dog"),
+                                    SJP_NONE)),
+                                newcnode_prop_match(&A, RE_LITERAL, "that",
+                                  newcnode_switch(&A, 0,
+                                    SJP_NUMBER, newcnode_range(&A,
+                                                  JVST_CNODE_RANGE_MIN|JVST_CNODE_RANGE_MAX,
+                                                  16.0, 16.0),
+                                    SJP_NONE)),
+                                NULL),
+                              NULL),
+            SJP_NONE),
+          NULL
+        ),
+        newcnode_switch(&A, 1, SJP_NONE),
+        NULL
+      )
     },
 
     { STOP },
@@ -4069,6 +4330,9 @@ int main(void)
   test_xlate_items_1();
   test_xlate_minmax_items();
   test_xlate_contains();
+
+  test_xlate_const();
+  test_xlate_enum();
 
   test_simplify_ands();
   test_simplify_ored_schema();
