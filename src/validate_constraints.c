@@ -391,6 +391,8 @@ jvst_cnode_type_name(enum jvst_cnode_type type)
 		return "STR_MATCH";
 	case JVST_CNODE_NUM_RANGE:
 		return "NUM_RANGE";
+	case JVST_CNODE_NUM_MULTIPLE_OF:
+		return "NUM_MULTIPLE_OF";
 	case JVST_CNODE_NUM_INTEGER:
 		return "NUM_INTEGER";
 	case JVST_CNODE_OBJ_PROP_SET:
@@ -544,6 +546,10 @@ jvst_cnode_dump_inner(struct jvst_cnode *node, struct sbuf *buf, int indent)
 
 	case JVST_CNODE_NUM_INTEGER:
 		sbuf_snprintf(buf, "IS_INTEGER");
+		break;
+
+	case JVST_CNODE_NUM_MULTIPLE_OF:
+		sbuf_snprintf(buf, "MULTIPLE_OF(%g)", node->u.multiple_of);
 		break;
 
 	case JVST_CNODE_NUM_RANGE:
@@ -1202,6 +1208,16 @@ jvst_cnode_translate_ast(const struct ast_schema *ast)
 		add_ast_constraint(node, SJP_NUMBER, range);
 	}
 
+	if (ast->kws & KWS_MULTIPLE_OF) {
+		struct jvst_cnode *multiple_of;
+		assert(ast->multiple_of > 0.0);
+
+		multiple_of = jvst_cnode_alloc(JVST_CNODE_NUM_MULTIPLE_OF);
+		multiple_of->u.multiple_of = ast->multiple_of;
+
+		add_ast_constraint(node, SJP_NUMBER, multiple_of);
+	}
+
 	if (ast->pattern.str.s != NULL) {
 		struct jvst_cnode *strmatch, *topjxn;
 
@@ -1665,6 +1681,11 @@ cnode_deep_copy(struct jvst_cnode *node)
 	case JVST_CNODE_NUM_INTEGER:
 	case JVST_CNODE_ARR_UNIQUE:
 		return jvst_cnode_alloc(node->type);
+
+	case JVST_CNODE_NUM_MULTIPLE_OF:
+		tree = jvst_cnode_alloc(node->type);
+		tree->u.multiple_of = node->u.multiple_of;
+		return tree;
 
 	case JVST_CNODE_AND:
 	case JVST_CNODE_OR:
@@ -4125,6 +4146,7 @@ jvst_cnode_simplify(struct jvst_cnode *tree)
 	case JVST_CNODE_INVALID:
 	case JVST_CNODE_VALID:
 	case JVST_CNODE_NUM_INTEGER:
+	case JVST_CNODE_NUM_MULTIPLE_OF:
 	case JVST_CNODE_ARR_UNIQUE:
 		return tree;
 
@@ -4965,6 +4987,7 @@ cnode_canonify_pass1(struct jvst_cnode *tree)
 	case JVST_CNODE_INVALID:
 	case JVST_CNODE_VALID:
 	case JVST_CNODE_ARR_UNIQUE:
+	case JVST_CNODE_NUM_MULTIPLE_OF:
 	case JVST_CNODE_NUM_RANGE:
 	case JVST_CNODE_PROP_RANGE:
 	case JVST_CNODE_ITEM_RANGE:
@@ -5137,6 +5160,7 @@ cnode_canonify_pass2(struct jvst_cnode *tree)
 	case JVST_CNODE_INVALID:
 	case JVST_CNODE_VALID:
 	case JVST_CNODE_ARR_UNIQUE:
+	case JVST_CNODE_NUM_MULTIPLE_OF:
 	case JVST_CNODE_NUM_RANGE:
 	case JVST_CNODE_LENGTH_RANGE:
 	case JVST_CNODE_PROP_RANGE:

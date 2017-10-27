@@ -76,6 +76,7 @@ enum jvst_ir_expr_type {
 	// literal values
 	JVST_IR_EXPR_NUM,		// literal number
 	JVST_IR_EXPR_INT,		// literal integer
+	JVST_IR_EXPR_MULTIPLE_OF,	// integer multiple of given number
 	JVST_IR_EXPR_SIZE,		// literal size
 	JVST_IR_EXPR_BOOL,		// literal boolean
 
@@ -141,6 +142,8 @@ enum jvst_invalid_code {
 	JVST_INVALID_TOO_FEW_ITEMS    = 0x000E,
 	JVST_INVALID_TOO_MANY_ITEMS   = 0x000F,
 	JVST_INVALID_UNSATISFIED_CONTAINS = 0x0010,
+
+	JVST_INVALID_NOT_MULTIPLE     = 0x0011,
 
 	JVST_INVALID_JSON             = 0x0020,
 
@@ -358,6 +361,11 @@ struct jvst_ir_expr {
 		struct {
 			struct jvst_ir_expr *arg;
 		} isint;
+
+		struct {
+			struct jvst_ir_expr *arg;
+			double divisor;
+		} multiple_of;
 
 		struct {
 			struct jvst_ir_stmt *frames;

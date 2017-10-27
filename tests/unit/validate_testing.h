@@ -135,6 +135,9 @@ struct jvst_cnode *
 newcnode_range(struct arena_info *A, enum jvst_cnode_rangeflags flags, double min, double max);
 
 struct jvst_cnode *
+newcnode_multiple_of(struct arena_info *A, double divisor);
+
+struct jvst_cnode *
 newcnode_counts(struct arena_info *A, enum jvst_cnode_type type,
 	size_t min, size_t max, bool upper);
 
@@ -264,6 +267,9 @@ newir_istok(struct arena_info *A, enum SJP_EVENT tt);
 
 struct jvst_ir_expr *
 newir_isint(struct arena_info *A, struct jvst_ir_expr *arg);
+
+struct jvst_ir_expr *
+newir_multiple_of(struct arena_info *A, struct jvst_ir_expr *arg, double divisor);
 
 struct jvst_ir_expr *
 newir_op(struct arena_info *A, enum jvst_ir_expr_type op,
