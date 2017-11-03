@@ -592,11 +592,22 @@
         @};
 
         <append-list-of-props>:     (head: ast-prop-schema,entry: ast-prop-schema) -> () = @{
-                struct ast_property_schema tmp;
-                tmp = *(@head);
-                *(@head) = *(@entry);
-                *(@entry) = tmp;
-                @head->next = @entry;
+                struct ast_property_schema *ps, **pspp;
+
+		if (debug & DEBUG_ACT) {
+                        struct ast_property_schema *head, *entry;
+			head = @head;
+			entry = @entry;
+
+                        // XXX - make this useful!
+			fprintf(stderr, "<append-list-of-props>: %p %p\n", (void *)head, (void *)entry);
+		}
+
+                ps = @head;
+                for (pspp = &ps; *pspp != NULL; pspp = &(*pspp)->next) {
+                        continue;
+                }
+                *pspp = @entry;
         @};
 
         <parse-schema>: () -> (sch: ast-schema) = @{
@@ -641,8 +652,31 @@
                 ps = @ps;
 
 		if (debug & DEBUG_ACT) {
+                        struct ast_property_schema *itm;
+
                         // XXX - make this useful!
 			fprintf(stderr, "<set-properties>: %p\n", (void *) ps);
+                        for (itm = ps; itm != NULL; itm = itm->next) {
+                                int len;
+
+                                len = itm->pattern.str.len < INT_MAX ?  (int)itm->pattern.str.len : INT_MAX;
+
+                                fprintf(stderr, "  --> ");
+                                switch (itm->pattern.dialect) {
+                                case RE_LITERAL:
+                                        fprintf(stderr, "\"%.*s\"\n", len, itm->pattern.str.s);
+                                        break;
+
+                                case RE_NATIVE:
+                                        fprintf(stderr, "/%.*s/\n", len, itm->pattern.str.s);
+                                        break;
+
+                                default:
+                                        fprintf(stderr, "regexp(0x%02x,\"%.*s\")\n",
+                                                itm->pattern.dialect, len, itm->pattern.str.s);
+                                        break;
+                                }
+                        }
 		}
 
                 // search for end
