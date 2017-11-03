@@ -3586,6 +3586,66 @@ static void test_canonify_propertynames(void)
   RUNTESTS(tests);
 }
 
+static void test_canonify_length_constraints(void)
+{
+  struct arena_info A = {0};
+
+  const struct cnode_test tests[] = {
+    {
+      CANONIFY, NULL,
+        newcnode_switch(&A, 0,
+          SJP_OBJECT_BEG, newcnode_propset(&A,
+                            newcnode_prop_match(&A, RE_LITERAL, "description",
+                              newcnode_switch(&A, 0,
+                                SJP_STRING, newcnode_counts(&A, JVST_CNODE_LENGTH_RANGE, 3, 30, true),
+                                SJP_NONE)),
+                            newcnode_prop_match(&A, RE_LITERAL, "quantity",
+                              newcnode_switch(&A, 0,
+                                SJP_NUMBER, newcnode_bool(&A, JVST_CNODE_AND,
+                                              newcnode(&A,JVST_CNODE_NUM_INTEGER),
+                                              newcnode_range(&A, JVST_CNODE_RANGE_MIN|JVST_CNODE_RANGE_MAX, 0.0, 100.0),
+                                              NULL),
+                                SJP_NONE)),
+                            NULL),
+          SJP_NONE),
+
+        newcnode_switch(&A, 0,
+          SJP_OBJECT_BEG, newcnode_mswitch(&A,
+                            // default case
+                            newcnode_valid(),
+
+                            newcnode_mcase(&A,
+                              newmatchset(&A, RE_LITERAL, "description", -1),
+                              newcnode_switch(&A, 0,
+                                SJP_STRING, newcnode_mswitch(&A,
+                                              // default case
+                                              newcnode_mcase_namecons(&A,
+                                                NULL,
+                                                newcnode_counts(&A, JVST_CNODE_LENGTH_RANGE, 3, 30, true),
+                                                newcnode_valid()),
+                                              NULL),
+                                SJP_NONE)),
+
+                            newcnode_mcase(&A,
+                              newmatchset(&A, RE_LITERAL, "quantity", -1),
+                              newcnode_switch(&A, 0,
+                                SJP_NUMBER, newcnode_bool(&A, JVST_CNODE_AND,
+                                              newcnode_range(&A, JVST_CNODE_RANGE_MIN|JVST_CNODE_RANGE_MAX, 0.0, 100.0),
+                                              newcnode(&A,JVST_CNODE_NUM_INTEGER),
+                                              NULL),
+                                SJP_NONE)),
+
+                            NULL),
+
+          SJP_NONE),
+    },
+
+    { STOP },
+  };
+
+  RUNTESTS(tests);
+}
+
 void test_canonify_required(void)
 {
   struct arena_info A = {0};
@@ -4225,6 +4285,7 @@ static void test_xlate_ref(void)
 
   RUNTESTS(tests);
 }
+
 int main(void)
 {
   test_xlate_empty_schema();
@@ -4287,6 +4348,7 @@ int main(void)
   test_canonify_ored_schema();
   test_canonify_propsets();
   test_canonify_propertynames();
+  test_canonify_length_constraints();
   test_canonify_required();
   test_canonify_patterns();
 

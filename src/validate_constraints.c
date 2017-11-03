@@ -5271,11 +5271,11 @@ cnode_canonify_strmatch(struct jvst_cnode *top)
 }
 
 static struct jvst_cnode *
-cnode_canonify_pass1(struct jvst_cnode *tree);
+cnode_canonify_pass1(struct jvst_cnode *tree, int namecons);
 
 // canonifies a list of nodes
 static struct jvst_cnode *
-cnode_nodelist_canonify_pass1(struct jvst_cnode *nodes)
+cnode_nodelist_canonify_pass1(struct jvst_cnode *nodes, int namecons)
 {
 	struct jvst_cnode *result, **rpp, *n, *next;
 
@@ -5284,7 +5284,7 @@ cnode_nodelist_canonify_pass1(struct jvst_cnode *nodes)
 	for (n = nodes; n != NULL; n = next) {
 		next = n->next;
 		
-		*rpp = cnode_canonify_pass1(n);
+		*rpp = cnode_canonify_pass1(n, namecons);
 		rpp = &(*rpp)->next;
 		*rpp = NULL;
 	}
@@ -5294,7 +5294,7 @@ cnode_nodelist_canonify_pass1(struct jvst_cnode *nodes)
 
 // Initial canonification before DFAs are constructed
 static struct jvst_cnode *
-cnode_canonify_pass1(struct jvst_cnode *tree)
+cnode_canonify_pass1(struct jvst_cnode *tree, int namecons)
 {
 	struct jvst_cnode *node;
 
@@ -5316,14 +5316,14 @@ cnode_canonify_pass1(struct jvst_cnode *tree)
 	case JVST_CNODE_OR:
 	case JVST_CNODE_XOR:
 	case JVST_CNODE_NOT:
-		tree->u.ctrl = cnode_nodelist_canonify_pass1(tree->u.ctrl);
+		tree->u.ctrl = cnode_nodelist_canonify_pass1(tree->u.ctrl, namecons);
 		return tree;
 
 	case JVST_CNODE_SWITCH:
 		{
 			size_t i, n;
 			for (i = 0, n = ARRAYLEN(tree->u.sw); i < n; i++) {
-				tree->u.sw[i] = cnode_canonify_pass1(tree->u.sw[i]);
+				tree->u.sw[i] = cnode_canonify_pass1(tree->u.sw[i], namecons);
 			}
 		}
 		return tree;
@@ -5335,12 +5335,12 @@ cnode_canonify_pass1(struct jvst_cnode *tree)
 
 				switch (node->type) {
 				case JVST_CNODE_OBJ_PROP_MATCH:
-					cons = cnode_canonify_pass1(node->u.prop_match.constraint);
+					cons = cnode_canonify_pass1(node->u.prop_match.constraint, namecons);
 					node->u.prop_match.constraint = cons;
 					break;
 
 				case JVST_CNODE_OBJ_PROP_DEFAULT:
-					cons = cnode_canonify_pass1(node->u.prop_default);
+					cons = cnode_canonify_pass1(node->u.prop_default, namecons);
 					node->u.prop_default = cons;
 					break;
 
@@ -5367,6 +5367,10 @@ cnode_canonify_pass1(struct jvst_cnode *tree)
 		{
 			struct jvst_cnode *msw, *mc, *v;
 
+			if (namecons) {
+				return tree;
+			}
+
 			msw = jvst_cnode_alloc(JVST_CNODE_MATCH_SWITCH);
 			v = jvst_cnode_alloc(JVST_CNODE_VALID);
 			mc = cnode_new_mcase(NULL,v);
@@ -5378,11 +5382,11 @@ cnode_canonify_pass1(struct jvst_cnode *tree)
 
 	case JVST_CNODE_ARR_ITEM:
 	case JVST_CNODE_ARR_ADDITIONAL:
-		tree->u.items = cnode_nodelist_canonify_pass1(tree->u.items);
+		tree->u.items = cnode_nodelist_canonify_pass1(tree->u.items, namecons);
 		return tree;
 
 	case JVST_CNODE_ARR_CONTAINS:
-		tree->u.items = cnode_nodelist_canonify_pass1(tree->u.items);
+		tree->u.items = cnode_nodelist_canonify_pass1(tree->u.items, namecons);
 		return tree;
 
 	case JVST_CNODE_MATCH_SWITCH:
@@ -5390,16 +5394,16 @@ cnode_canonify_pass1(struct jvst_cnode *tree)
 			struct jvst_cnode *c;
 			for (c = tree->u.mswitch.cases; c != NULL; c = c->next) {
 				if (c->u.mcase.name_constraint != NULL) {
-					c->u.mcase.name_constraint = cnode_canonify_pass1(c->u.mcase.name_constraint);
+					c->u.mcase.name_constraint = cnode_canonify_pass1(c->u.mcase.name_constraint, 1);
 				}
-				c->u.mcase.value_constraint = cnode_canonify_pass1(c->u.mcase.value_constraint);
+				c->u.mcase.value_constraint = cnode_canonify_pass1(c->u.mcase.value_constraint, namecons);
 			}
 
 			c = tree->u.mswitch.dft_case;
 			if (c->u.mcase.name_constraint != NULL) {
-				c->u.mcase.name_constraint = cnode_canonify_pass1(c->u.mcase.name_constraint);
+				c->u.mcase.name_constraint = cnode_canonify_pass1(c->u.mcase.name_constraint, 1);
 			}
-			c->u.mcase.value_constraint = cnode_canonify_pass1(c->u.mcase.value_constraint);
+			c->u.mcase.value_constraint = cnode_canonify_pass1(c->u.mcase.value_constraint, namecons);
 		}
 		return tree;
 
@@ -5634,7 +5638,7 @@ cnode_canonify_pass2(struct jvst_cnode *tree)
 struct jvst_cnode *
 jvst_cnode_canonify(struct jvst_cnode *tree)
 {
-	tree = cnode_canonify_pass1(tree);
+	tree = cnode_canonify_pass1(tree, 0);
 	tree = jvst_cnode_simplify(tree);
 	tree = cnode_canonify_pass2(tree);
 	tree = jvst_cnode_simplify(tree);
