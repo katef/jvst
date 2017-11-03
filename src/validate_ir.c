@@ -5904,25 +5904,18 @@ ir_linearize_stmt(struct op_linearizer *oplin, struct jvst_ir_stmt *stmt)
 struct jvst_ir_stmt *
 jvst_ir_linearize(struct jvst_ir_stmt *ir)
 {
-	struct jvst_ir_stmt *prog, *fr;
-	struct op_linearizer oplin = { 0 };
-	size_t i;
+	struct jvst_ir_forest forest;
+	struct jvst_ir_stmt *result;
 
-	assert(ir->type == JVST_IR_STMT_FRAME);
-	oplin.frame = NULL;
-	oplin.fpp = &oplin.frame;
-	oplin.ipp = NULL;
-	oplin.callidpp = &oplin.callids;
+	forest.refs = jvst_ir_id_table_new();
+	forest.len = 1;
+	forest.trees = &ir;
 
-	ir_linearize_frame(&oplin, ir);
-	for (i=1,fr = oplin.frame; fr != NULL; i++,fr = fr->next) {
-		assert(fr->u.frame.frame_ind == i);
-	}
+	result = jvst_ir_linearize_forest(&forest);
 
-	prog = ir_stmt_new(JVST_IR_STMT_PROGRAM);
+	jvst_ir_id_table_delete(forest.refs);
 
-	prog->u.program.frames = oplin.frame;
-	return prog;
+	return result;
 }
 
 void
