@@ -10,3 +10,6 @@
 [submodule "share/git/xxHash"]
 	path = share/git/xxHash
 	url = git@github.com:Cyan4973/xxHash.git
+[submodule "share/git/uriparser"]
+	path = share/git/uriparser
+	url = git://git.code.sf.net/p/uriparser/git

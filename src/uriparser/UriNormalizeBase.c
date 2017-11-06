@@ -1,0 +1,1 @@
+../../share/git/uriparser/src/UriNormalizeBase.c
