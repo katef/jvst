@@ -1056,7 +1056,7 @@
 
 	<new-string-set>: () -> (ss :ast-string-set) = @{
 		struct string_set *ss;
-		ss = malloc(sizeof *ss);
+		ss = xmalloc(sizeof *ss);
 		ss->head = NULL;
 		ss->tail = &ss->head;
 		@ss = ss;
@@ -1066,7 +1066,7 @@
 		struct string_set *ss = @ss;
 		struct ast_string_set *item;
 
-		item = malloc(sizeof *item);
+		item = xmalloc(sizeof *item);
 		item->str = @s;
 		item->next = NULL;
 		*ss->tail = item;
@@ -1079,7 +1079,7 @@
 
 		ss = @ss;
 
-		pn = malloc(sizeof *pn);
+		pn = xmalloc(sizeof *pn);
 		pn->pattern.dialect = RE_LITERAL;
 		pn->pattern.str = @n;
 		pn->set = ss->head;
@@ -1094,7 +1094,7 @@
 
 		sch = @sch;
 
-		ps = malloc(sizeof *ps);
+		ps = xmalloc(sizeof *ps);
 		ps->pattern.dialect = RE_LITERAL;
 		ps->pattern.str = @n;
 		ps->schema = sch;
@@ -1106,7 +1106,7 @@
 	/* XXX - overlap with enum constraint... */
         <set-const>: (v :ast-json-value) -> () = @{
 		struct ast_value_set *v, **it;
-		v = malloc(sizeof *v);
+		v = xmalloc(sizeof *v);
 		v->value = @v;
 		v->next = NULL;
 
@@ -1120,7 +1120,7 @@
 	/* XXX - overlap with const constraint... */
         <add-enum>: (v :ast-json-value) -> () = @{
 		struct ast_value_set *v, **it;
-		v = malloc(sizeof *v);
+		v = xmalloc(sizeof *v);
 		v->value = @v;
 		v->next = NULL;
 
@@ -1138,7 +1138,7 @@
 
 	<ast-json-new-property-list>: () -> (l :ast-json-property-list) = @{
 		struct ast_json_plist *pl;
-		pl = malloc(sizeof *pl);
+		pl = xmalloc(sizeof *pl);
 		pl->head = NULL;
 		pl->tail = &pl->head;
 		@l = pl;
@@ -1151,7 +1151,7 @@
 	@};
 
 	<ast-json-free-property-list-and-properties>: (l :ast-json-property-list) -> () = @{
-		struct ast_json_plist *pl, *next;
+		struct ast_json_plist *pl;
 		pl = @l;
 		ast_json_free_properties(pl->head);
 		free(pl);
@@ -1165,7 +1165,7 @@
 		pn = @n;
 		pv = @v;
 
-		pp = malloc(sizeof *pp);
+		pp = xmalloc(sizeof *pp);
 		pp->name = json_strdup(pn);
 		pp->value = pv;
 
@@ -1196,7 +1196,7 @@
 
 	<ast-json-new-item-list>: () -> (l :ast-json-item-list) = @{
 		struct ast_json_ilist *l;
-		l = malloc(sizeof *l);
+		l = xmalloc(sizeof *l);
 		l->head = NULL;
 		l->tail = &l->head;
 		@l = l;
@@ -1224,7 +1224,7 @@
 		l = @l;
 		v = @v;
 
-		elt = malloc(sizeof *elt);
+		elt = xmalloc(sizeof *elt);
 		elt->value = v;
 		elt->next = NULL;
 
