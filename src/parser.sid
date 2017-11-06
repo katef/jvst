@@ -79,8 +79,9 @@
 	<new-string-set>: () -> (:ast-string-set);
 	<append-string-set>: (:ast-string-set, :string) -> ();
 
-
 	/* id helpers */
+        <path-set-baseuri>:     (:string) -> ();
+	<path-push-empty>:	() -> ();
 	<path-push-str>:	(:string) -> ();
 	<path-push-num-zero>:	() -> ();
 	<path-push-num-next>:	() -> ();
@@ -899,10 +900,13 @@
 		<err-expected-schema>;
 	};
 
-	file = {
+	file: (baseuri :string) -> () = {
+		<path-push-empty>;
+                <path-set-baseuri>(baseuri);
 		schema;
                 <set-path>;
 		EOS;
+		<path-pop>;
 	##
 		<err-syntax>;
 	};

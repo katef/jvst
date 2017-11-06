@@ -77,11 +77,21 @@ static int run_prototype_test(const struct validation_test *t)
 
 static int run_vm_test(const struct validation_test *t)
 {
+  static const struct ast_string_set zero;
   struct jvst_vm_program *prog;
   struct jvst_vm vm;
   char buf[4096];
   size_t n;
   int ret, failed;
+  struct ast_string_set sset;
+
+  if (t->schema->all_ids == NULL) {
+    sset = zero;
+
+    sset.str.s = BASE_URI;
+    sset.str.len = strlen(sset.str.s);
+    t->schema->all_ids = &sset;
+  }
 
   prog = jvst_compile_schema(t->schema);
 

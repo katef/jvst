@@ -415,14 +415,16 @@ newschema_p(struct arena_info *A, int types, ...)
 			divisor = va_arg(args, double);
 			s->multiple_of = divisor;
 			s->kws |= KWS_MULTIPLE_OF;
-		} else if (strcmp(pname, "id") == 0) {
+		} else if (strcmp(pname, "id") == 0 || strcmp(pname, "path") == 0) {
 			const char *id;
+			struct ast_string_set **sspp;
+
 			id = va_arg(args, const char *);
-			s->id = newstr(id);
-		} else if (strcmp(pname, "path") == 0) {
-			const char *id;
-			id = va_arg(args, const char *);
-			s->path = newstr(id);
+			for (sspp = &s->all_ids; *sspp != NULL; sspp = &(*sspp)->next) {
+				continue;
+			}
+
+			*sspp = stringset(A, id, NULL);
 		} else if (strcmp(pname, "$ref") == 0) {
 			const char *id;
 			id = va_arg(args, const char *);
@@ -1144,7 +1146,9 @@ new_idpairs(struct id_pair *first, ...)
 		}
 
 		*idpp = pair;
-		idpp = &pair->next;
+		while ((*idpp)->next != NULL) {
+			idpp = &(*idpp)->next;
+		}
 	}
 	va_end(args);
 
@@ -1170,6 +1174,32 @@ new_idpair(struct arena_info *A, const char *id, struct jvst_cnode *ctree)
 	pair->cnode = ctree;
 
 	return pair;
+}
+
+struct id_pair *
+new_idpair_manyids(struct arena_info *A, struct jvst_cnode *ctree, ...)
+{
+	struct id_pair *p, **pp;
+	va_list args;
+
+	p = NULL;
+	pp = &p;
+
+	va_start(args, ctree);
+	for (;;) {
+		const char *id;
+
+		id = va_arg(args, const char *);
+		if (id == NULL) {
+			break;
+		}
+
+		*pp = new_idpair(A, id, ctree);
+		pp = &(*pp)->next;
+	}
+	va_end(args);
+
+	return p;
 }
 
 struct jvst_ir_expr *

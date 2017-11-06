@@ -41,9 +41,13 @@ run_test(const char *fname, const struct id_test *t)
   struct sjp_lexer l = { 0 };
   struct ast_schema ast = { 0 };
   struct jvst_cnode_forest *forest;
+  struct json_string uribase;
   size_t i,len;
   int ret;
   char buf[65536] = { 0 };
+
+  uribase.s = URI_BASE;
+  uribase.len = strlen(uribase.s);
 
   sjp_lexer_init(&l);
   len = strlen(t->schema);
@@ -51,9 +55,10 @@ run_test(const char *fname, const struct id_test *t)
 
   memcpy(buf, t->schema, len);
   sjp_lexer_more(&l, buf, len);
-  parse(&l, &ast);
+  parse(&l, &ast, uribase);
 
   forest = jvst_cnode_translate_ast_with_ids(&ast);
+  // jvst_cnode_debug_forest(forest);
   assert(forest != NULL);
 
   // jvst_cnode_id_table_dump_ids(forest->all_ids);
@@ -224,7 +229,7 @@ static void test_path_root(void)
       IDS,
       "{}",
       new_idpairs(
-          new_idpair(&A, "#", newcnode_switch(&A, 1, SJP_NONE)),
+          new_idpair(&A, URI_BASE "#", newcnode_switch(&A, 1, SJP_NONE)),
           NULL
       ),
     },
@@ -244,8 +249,8 @@ static void test_definitions(void)
       IDS,
       "{ \"definitions\" : { \"foo\" : { \"type\" : \"number\" } } }",
       new_idpairs(
-          new_idpair(&A, "#", newcnode_switch(&A, 1, SJP_NONE)),
-          new_idpair(&A, "#/definitions/foo", newcnode_switch(&A, 0, SJP_NUMBER, newcnode_valid(), SJP_NONE)),
+          new_idpair(&A, URI_BASE "#", newcnode_switch(&A, 1, SJP_NONE)),
+          new_idpair(&A, URI_BASE "#/definitions/foo", newcnode_switch(&A, 0, SJP_NUMBER, newcnode_valid(), SJP_NONE)),
           NULL
       ),
     },
@@ -265,8 +270,9 @@ static void test_path_properties(void)
     {
       IDS,
       "{ \"properties\" : { \"foo\" : { \"type\" : \"integer\" } } }",
+
       new_idpairs(
-          new_idpair(&A, "#",
+          new_idpair(&A, URI_BASE "#",
             newcnode_switch(&A, 1,
               SJP_OBJECT_BEG, newcnode_bool(&A,JVST_CNODE_AND,
                                 newcnode_propset(&A,
@@ -277,7 +283,7 @@ static void test_path_properties(void)
                                 NULL),
               SJP_NONE)),
 
-          new_idpair(&A, "#/properties/foo",
+          new_idpair(&A, URI_BASE "#/properties/foo",
             newcnode_switch(&A, 0, SJP_NUMBER, newcnode(&A,JVST_CNODE_NUM_INTEGER), SJP_NONE)),
           NULL
       ),
@@ -318,23 +324,23 @@ static void test_path_dependencies(void)
       "}",
 
       new_idpairs(
-          new_idpair(&A, "#/dependencies/bar",
+          new_idpair(&A, URI_BASE "#/dependencies/bar",
             newcnode_switch(&A, 1,
             SJP_OBJECT_BEG, newcnode_bool(&A,JVST_CNODE_AND,
                               newcnode_propset(&A,
-                                newcnode_prop_match(&A, RE_LITERAL, "bar",
-                                  newcnode_switch(&A, 0, SJP_STRING, newcnode_valid(), SJP_NONE)),
                                 newcnode_prop_match(&A, RE_LITERAL, "foo",
                                   newcnode_switch(&A, 0, SJP_NUMBER, newcnode_valid(), SJP_NONE)),
+                                newcnode_prop_match(&A, RE_LITERAL, "bar",
+                                  newcnode_switch(&A, 0, SJP_STRING, newcnode_valid(), SJP_NONE)),
                                 NULL),
                               newcnode_valid(),
                               NULL),
               SJP_NONE)),
 
-          new_idpair(&A, "#/dependencies/bar/properties/foo",
+          new_idpair(&A, URI_BASE "#/dependencies/bar/properties/foo",
             newcnode_switch(&A, 0, SJP_NUMBER, newcnode_valid(), SJP_NONE)),
 
-          new_idpair(&A, "#/dependencies/bar/properties/bar",
+          new_idpair(&A, URI_BASE "#/dependencies/bar/properties/bar",
             newcnode_switch(&A, 0, SJP_STRING, newcnode_valid(), SJP_NONE)),
           NULL
       ),
@@ -357,7 +363,7 @@ static void test_ids(void)
       IDS,
       "{ \"properties\" : { \"foo\" : { \"id\" : \"foo-thing\", \"type\" : \"integer\" } } }",
       new_idpairs(
-          new_idpair(&A, "#",
+          new_idpair(&A, URI_BASE "#",
             newcnode_switch(&A, 1,
               SJP_OBJECT_BEG, newcnode_bool(&A,JVST_CNODE_AND,
                                 newcnode_propset(&A,
@@ -368,11 +374,115 @@ static void test_ids(void)
                                 NULL),
               SJP_NONE)),
 
-          new_idpair(&A, "#/properties/foo",
+          new_idpair(&A, URI_BASE "#/properties/foo",
             newcnode_switch(&A, 0, SJP_NUMBER, newcnode(&A,JVST_CNODE_NUM_INTEGER), SJP_NONE)),
 
-          new_idpair(&A, "foo-thing",
+          new_idpair(&A, URI_BASE "/foo-thing",
             newcnode_switch(&A, 0, SJP_NUMBER, newcnode(&A,JVST_CNODE_NUM_INTEGER), SJP_NONE)),
+
+          NULL
+      ),
+    },
+
+    { STOP },
+  };
+
+  RUNTESTS(tests);
+}
+
+static void test_uri_ids(void)
+{
+  struct arena_info A = {0};
+
+  // FIXME - id requires handling URIs correctly, which we don't
+  // currently do.  Thus, this test isn't quite right.
+  const struct id_test tests[] = {
+    {
+      IDS,
+      "{ \"$id\" : \"http://example.com/root.json\", "                                  "\n"
+      "  \"properties\" : {"                                                            "\n"
+      "    \"foo\" : {"                                                                 "\n"
+      "      \"$id\" : \"foo\","                                                        "\n"
+      "      \"type\" : \"integer\""                                                    "\n"
+      "    },"                                                                          "\n"
+      "    \"bar\" : {"                                                                 "\n"
+      "      \"$id\" : \"#bar\","                                                       "\n"
+      "      \"type\" : \"string\""                                                     "\n"
+      "    },"                                                                          "\n"
+      "    \"baz\" : {"                                                                 "\n"
+      "      \"$id\" : \"baz.json\","                                                   "\n"
+      "      \"type\" : \"object\","                                                    "\n"
+      "      \"properties\" : {"                                                        "\n"
+      "        \"quux\" : {"                                                            "\n"
+      "          \"$id\" : \"http://z1.example.com/\","                                 "\n"
+      "          \"type\" : \"integer\""                                                "\n"
+      "        }"                                                                       "\n"
+      "      }"                                                                         "\n"
+      "    }"                                                                           "\n"
+      "  }"                                                                             "\n"
+      "}",
+      new_idpairs(
+          new_idpair_manyids(&A,
+            newcnode_switch(&A, 1,
+              SJP_OBJECT_BEG, newcnode_bool(&A,JVST_CNODE_AND,
+                                newcnode_propset(&A,
+                                  newcnode_prop_match(&A, RE_LITERAL, "foo",
+                                    newcnode_switch(&A, 0, SJP_NUMBER, newcnode(&A,JVST_CNODE_NUM_INTEGER), SJP_NONE)),
+                                  newcnode_prop_match(&A, RE_LITERAL, "bar",
+                                    newcnode_switch(&A, 0, SJP_STRING, newcnode_valid(), SJP_NONE)),
+                                  newcnode_prop_match(&A, RE_LITERAL, "baz",
+                                    newcnode_switch(&A, 0,
+                                      SJP_OBJECT_BEG, newcnode_bool(&A,JVST_CNODE_AND,
+                                        newcnode_propset(&A,
+                                          newcnode_prop_match(&A, RE_LITERAL, "quux",
+                                            newcnode_switch(&A, 0, SJP_NUMBER, newcnode(&A,JVST_CNODE_NUM_INTEGER), SJP_NONE)),
+                                          NULL),
+                                        newcnode_valid(),
+                                        NULL),
+                                      SJP_NONE)),
+                                  NULL),
+                                newcnode_valid(),
+                                NULL),
+              SJP_NONE),
+            "http://example.com/root.json",
+            "http://example.com/root.json#",
+            NULL),
+
+          new_idpair_manyids(&A,
+            newcnode_switch(&A, 0, SJP_NUMBER, newcnode(&A,JVST_CNODE_NUM_INTEGER), SJP_NONE),
+            "http://example.com/root.json#/properties/foo",
+            "http://example.com/foo",
+            "http://example.com/foo#",
+            NULL),
+
+          new_idpair_manyids(&A,
+            newcnode_switch(&A, 0, SJP_STRING, newcnode_valid(), SJP_NONE),
+            "http://example.com/root.json#/properties/bar",
+            "http://example.com/root.json#bar",
+            NULL),
+
+          new_idpair_manyids(&A,
+            newcnode_switch(&A, 0,
+              SJP_OBJECT_BEG, newcnode_bool(&A,JVST_CNODE_AND,
+                newcnode_propset(&A,
+                  newcnode_prop_match(&A, RE_LITERAL, "quux",
+                    newcnode_switch(&A, 0, SJP_NUMBER, newcnode(&A,JVST_CNODE_NUM_INTEGER), SJP_NONE)),
+                  NULL),
+                newcnode_valid(),
+                NULL),
+              SJP_NONE),
+            "http://example.com/root.json#/properties/baz",
+            "http://example.com/baz.json",
+            "http://example.com/baz.json#",
+            NULL),
+
+          new_idpair_manyids(&A,
+              newcnode_switch(&A, 0, SJP_NUMBER, newcnode(&A,JVST_CNODE_NUM_INTEGER), SJP_NONE),
+            "http://example.com/root.json#/properties/baz/properties/quux",
+            "http://example.com/baz.json#/properties/quux",
+            "http://z1.example.com/",
+            "http://z1.example.com/#",
+            NULL),
 
           NULL
       ),
@@ -400,7 +510,7 @@ static void test_rerooted_refs(void)
               SJP_OBJECT_BEG, newcnode_bool(&A, JVST_CNODE_AND,
                                 newcnode_propset(&A,
                                   newcnode_prop_match(&A, RE_LITERAL, "foo",
-                                    newcnode_ref(&A, "#")),
+                                    newcnode_ref(&A, URI_BASE "#")),
                                   NULL),
                                 newcnode_valid(),
                                 NULL),
@@ -418,10 +528,10 @@ static void test_rerooted_refs(void)
             newcnode_switch(&A, 1,
               SJP_OBJECT_BEG, newcnode_bool(&A, JVST_CNODE_AND,
                                 newcnode_propset(&A,
-                                  newcnode_prop_match(&A, RE_LITERAL, "bar",
-                                    newcnode_ref(&A, "#/properties/foo")),
                                   newcnode_prop_match(&A, RE_LITERAL, "foo",
-                                    newcnode_ref(&A, "#/properties/foo")),
+                                    newcnode_ref(&A, URI_BASE "#/properties/foo")),
+                                  newcnode_prop_match(&A, RE_LITERAL, "bar",
+                                    newcnode_ref(&A, URI_BASE "#/properties/foo")),
                                   NULL),
                                 newcnode_valid(),
                                 NULL),
@@ -452,55 +562,57 @@ static void test_ir_translation(void)
       IR_TRANSLATE,
       "{ \"properties\" : { \"foo\" : { \"$ref\" : \"#\" } } }",
       NULL,
+
       new_irpairs(&A,
-          "#", newir_frame(&A,
-                 newir_matcher(&A, 0, "dfa"),
-                 newir_stmt(&A, JVST_IR_STMT_TOKEN),
-                 newir_if(&A, newir_istok(&A, SJP_OBJECT_BEG),
-                   newir_seq(&A,
-                     newir_loop(&A, "L_OBJ", 0,
-                       newir_stmt(&A, JVST_IR_STMT_TOKEN),
-                       newir_if(&A, newir_istok(&A, SJP_OBJECT_END),
-                         newir_break(&A, "L_OBJ", 0),
-                         newir_seq(&A,                                 // unnecessary SEQ should be removed in the future
-                           newir_match(&A, 0,
-                             // no match
-                             newir_case(&A, 0, 
-                               NULL,
-                               newir_stmt(&A, JVST_IR_STMT_CONSUME)
-                             ),
+          URI_BASE "#",
+          newir_frame(&A,
+            newir_matcher(&A, 0, "dfa"),
+            newir_stmt(&A, JVST_IR_STMT_TOKEN),
+            newir_if(&A, newir_istok(&A, SJP_OBJECT_BEG),
+              newir_seq(&A,
+                newir_loop(&A, "L_OBJ", 0,
+                  newir_stmt(&A, JVST_IR_STMT_TOKEN),
+                  newir_if(&A, newir_istok(&A, SJP_OBJECT_END),
+                    newir_break(&A, "L_OBJ", 0),
+                    newir_seq(&A,                                 // unnecessary SEQ should be removed in the future
+                      newir_match(&A, 0,
+                        // no match
+                        newir_case(&A, 0, 
+                          NULL,
+                          newir_stmt(&A, JVST_IR_STMT_CONSUME)
+                        ),
 
-                             // match "foo"
-                             newir_case(&A, 1,
-                               newmatchset(&A, RE_LITERAL,  "foo", -1),
-                               newir_callid(&A, "#")
-                             ),
+                        // match "foo"
+                        newir_case(&A, 1,
+                          newmatchset(&A, RE_LITERAL,  "foo", -1),
+                          newir_callid(&A, URI_BASE "#")
+                        ),
 
-                             NULL
-                           ),
-                           NULL
-                         )
-                       ),
-                       NULL
-                     ),
-                     newir_stmt(&A, JVST_IR_STMT_VALID),
-                     NULL
-                   ),
+                        NULL
+                      ),
+                      NULL
+                    )
+                  ),
+                  NULL
+                ),
+                newir_stmt(&A, JVST_IR_STMT_VALID),
+                NULL
+              ),
 
-                   newir_if(&A, newir_istok(&A, SJP_OBJECT_END),
-                     newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token"),
-                     newir_if(&A, newir_istok(&A, SJP_ARRAY_END),
-                       newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token"),
-                       newir_seq(&A,
-                         newir_stmt(&A, JVST_IR_STMT_CONSUME),
-                         newir_stmt(&A, JVST_IR_STMT_VALID),
-                         NULL
-                       )
-                     )
-                   )
-                 ),
-                 NULL
-               ),
+              newir_if(&A, newir_istok(&A, SJP_OBJECT_END),
+                newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token"),
+                newir_if(&A, newir_istok(&A, SJP_ARRAY_END),
+                  newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token"),
+                  newir_seq(&A,
+                    newir_stmt(&A, JVST_IR_STMT_CONSUME),
+                    newir_stmt(&A, JVST_IR_STMT_VALID),
+                    NULL
+                  )
+                )
+              )
+            ),
+            NULL
+          ),
           NULL
         ),
     },
@@ -511,7 +623,7 @@ static void test_ir_translation(void)
         "\"bar\" : { \"$ref\" : \"#/properties/foo\" } } }",
       NULL,
       new_irpairs(&A,
-          "#",
+          URI_BASE "#",
           newir_frame(&A,
             newir_matcher(&A, 0, "dfa"),
             newir_stmt(&A, JVST_IR_STMT_TOKEN),
@@ -532,13 +644,13 @@ static void test_ir_translation(void)
                         // match "foo"
                         newir_case(&A, 1,
                           newmatchset(&A, RE_LITERAL,  "bar", -1),
-                          newir_callid(&A, "#/properties/foo")
+                          newir_callid(&A, URI_BASE "#/properties/foo")
                         ),
-                 
+
                         // match "foo"
                         newir_case(&A, 2,
                           newmatchset(&A, RE_LITERAL,  "foo", -1),
-                          newir_callid(&A, "#/properties/foo")
+                          newir_callid(&A, URI_BASE "#/properties/foo")
                         ),
                  
                         NULL
@@ -568,7 +680,7 @@ static void test_ir_translation(void)
             NULL
           ),
 
-          "#/properties/foo",
+          URI_BASE "#/properties/foo",
           newir_frame(&A,
             newir_stmt(&A, JVST_IR_STMT_TOKEN),
             newir_if(&A, newir_istok(&A, SJP_NUMBER),
@@ -881,6 +993,8 @@ int main(void)
   test_path_dependencies();
   test_ids();
   test_definitions();
+
+  test_uri_ids();
 
   test_rerooted_refs();
 

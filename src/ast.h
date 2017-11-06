@@ -214,8 +214,7 @@ struct ast_schema {
 	struct ast_schema_set *definitions;
 
 	struct json_string schema;
-	struct json_string id;
-	struct json_string path;	/* for json pointer */
+	struct ast_string_set *all_ids;
 	struct json_string title;
 	struct json_string description;
 

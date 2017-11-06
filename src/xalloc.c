@@ -46,6 +46,21 @@ xstrndup(const char *s, size_t n)
 	return new;
 }
 
+char *
+xstrdup(const char *s)
+{
+	char *new;
+	size_t len;
+
+	assert(s != NULL);
+
+	len = strlen(s);
+	new = xmalloc(len+1);
+	memcpy(new, s, len+1);
+
+	return new;
+}
+
 void *
 xmalloc(size_t n)
 {
@@ -95,3 +110,4 @@ xenlargevec(void *orig, size_t *np, size_t incr, size_t width)
 	return xrealloc(orig, newmax * width);
 }
 
+/* vim: set tabstop=8 shiftwidth=8 noexpandtab: */

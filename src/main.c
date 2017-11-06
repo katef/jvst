@@ -15,6 +15,8 @@
 #include <stdio.h>
 #include <string.h>
 
+#include <uriparser/Uri.h>
+
 #include "sjp_lexer.h"
 #include "sjp_testing.h"
 
@@ -28,6 +30,8 @@
 #include "validate_ir.h"
 #include "validate_op.h"
 #include "validate_vm.h"
+
+#define DEFAULT_BASE_URI "http://example.com"
 
 unsigned debug;
 
@@ -135,12 +139,21 @@ main(int argc, char *argv[])
 	struct jvst_vm_program *prog = NULL;
 	struct jvst_ir_forest *ir_forest;
 	enum jvst_lang lang = JVST_LANG_VM;
+	struct json_string base_uri;
+
+	base_uri.s = DEFAULT_BASE_URI;
+	base_uri.len = strlen(base_uri.s);
 
 	{
 		int c;
 
-		while (c = getopt(argc, argv, "l:rcd:"), c != -1) {
+		while (c = getopt(argc, argv, "b:l:rcd:"), c != -1) {
 			switch (c) {
+			case 'b':
+				base_uri.s = xstrdup(optarg);
+				base_uri.len = strlen(base_uri.s);
+				break;
+
 			case 'c':
 				compile = 1;
 				break;
@@ -179,6 +192,7 @@ main(int argc, char *argv[])
 		/* Prepare IR tree (all output languages) */
 
 		FILE *f_schema;
+		const char *schema_filename;
 		char *p;
 		size_t n;
 
@@ -189,14 +203,16 @@ main(int argc, char *argv[])
 			goto usage;
 		}
 
-		f_schema = fopen(argv[0], "r");
+		schema_filename = argv[0];
+		argc--;
+		argv++;
+
+		f_schema = fopen(schema_filename, "r");
 		if (f_schema == NULL) {
 			fprintf(stderr, "error opening schema '%s': %s\n",
 					argv[0], strerror(errno));
 			exit(EXIT_FAILURE);
 		}
-		argc--;
-		argv++;
 
 		struct sjp_lexer l;
 		struct ast_schema ast = ast_default;
@@ -215,8 +231,7 @@ main(int argc, char *argv[])
 		}
 
 		sjp_lexer_more(&l, p, n);
-
-		parse(&l, &ast);
+		parse(&l, &ast, base_uri);
 
 		if (debug & DEBUG_PARSED_SCHEMA) {
 			ast_dump(stdout, &ast);
@@ -373,6 +388,9 @@ usage:
 			"           current options:\n"
 			"             jvst        generates jvst VM bytecode (default)\n"
 			"             c           generates C\n"
+			"\n"
+			"  -b       sets the base URI for the json schema:\n"
+			"           default: " DEFAULT_BASE_URI "\n"
 			"\n"
 			"  -c       compile schema to jvst VM code\n"
 			"\n"

@@ -50,10 +50,13 @@
 	#include <string.h>
 	#include <limits.h>
 
+        #include <uriparser/Uri.h>
+
 	#include "sjp_lexer.h"
 
 	#include "debug.h"
 	#include "parser.h"
+        #include "parserutils.h"
 	#include "jdom.h"
 	#include "ast.h"
 	#include "kw.h"
@@ -64,91 +67,12 @@
 		enum SJP_TOKEN save;
 	};
 
-	typedef struct json_string string;
 	typedef json_number number;
 	typedef enum kw kw;
 	typedef enum json_valuetype type;
 
 	typedef enum re_dialect re_dialect_t;
 	typedef struct ast_regexp ast_regexp_t;
-
-	struct path_element {
-		int isnum;
-		union {
-			size_t num;
-			struct json_string str;
-		} u;
-	};
-
-	struct path {
-		size_t len;
-		size_t cap;
-
-		struct path_element *items;
-	};
-
-	static struct path_element *push_element(struct path *p)
-	{
-		if (p->len >= p->cap) {
-			size_t newcap;
-			newcap = p->cap;
-			if (newcap < 8) {
-				newcap = 8;
-			}
-			newcap *= 2;
-
-			p->items = xrealloc(p->items, newcap * sizeof p->items[0]);
-			p->cap = newcap;
-		}
-
-		assert(p->len < p->cap);
-		return &p->items[p->len++];
-	}
-
-	static struct path_element *peek_element(struct path *p)
-	{
-		if (p->len == 0) {
-			return NULL;
-		}
-
-		assert(p->len <= p->cap);
-		return &p->items[p->len-1];
-	}
-
-	static void path_push_str(struct path *p, struct json_string s)
-	{
-		struct path_element *elt;
-		elt = push_element(p);
-
-		elt->isnum = 0;
-		elt->u.str = json_strdup(s);
-	}
-
-	static void path_push_num_zero(struct path *p)
-	{
-		struct path_element *elt;
-		elt = push_element(p);
-
-		elt->isnum = 1;
-		elt->u.num = 0;
-	}
-
-	static void path_push_num_next(struct path *p)
-	{
-		struct path_element *elt;
-		elt = peek_element(p);
-
-		assert(elt != NULL);
-		assert(elt->isnum != 0);
-
-		elt->u.num++;
-	}
-
-	static void path_pop(struct path *p)
-	{
-		assert(p->len > 0);
-		p->len--;
-	}
 
 	typedef struct path *path_t;
 
@@ -296,6 +220,12 @@
 		result.s = xstrndup(path, result.len);
 		return result;
 	}
+
+	static void add_all_ids(struct ast_schema *ast, struct path *p)
+        {
+		/* ast->path = current_path(p); */
+                path_add_all_ids(p, ast);
+        }
 
 	#define CURRENT_TERMINAL act_state->t.type
 	#define ERROR_TERMINAL   SJP_TOK_NONE /* XXX: NONE is not an error */
@@ -459,6 +389,7 @@
 	typedef struct act_state * act_state;
 	typedef struct sjp_lexer * lex_state;
 	typedef struct path * path;
+	typedef struct json_string string;
 
 @};
 
@@ -486,6 +417,14 @@
 	@};
 
 %actions%
+
+        <path-set-baseuri>:     (s :string) -> () = @{
+                path_set_baseid(&path->items[0], &path->items[0], @s);
+        @};
+
+	<path-push-empty>:	() -> () = @{
+                path_push_empty(path);
+        @};
 
 	<path-push-str>: (s :string) -> () = @{
 		path_push_str(path, @s);
@@ -615,18 +554,18 @@
 		struct ast_schema *sch;
                 sch = xmalloc(sizeof *sch);
                 *sch = zero;
-		sch->path = current_path(path);
                 p_schema(lex_state, act_state, sch, path);
+                add_all_ids(sch, path);
 		@sch = sch;
         @};
 
         <set-path>:             () -> () = @{
-                ast->path = current_path(path);
+                add_all_ids(ast, path);
         @};
 
         <set-ref>:              (s :string) -> () = @{
 		struct json_string s = @s;
-		ast->ref = json_strdup(s);
+		ast->ref = path_ref(path,s);
                 ast->kws |= KWS_HAS_REF;
 		if (debug & DEBUG_ACT) {
                         // XXX - make this useful!
@@ -870,7 +809,15 @@
 			fprintf(stderr, "<set-id>: \"%.*s\"\n", (int) @s.len, @s.s);
 		}
 
-		ast->id = @s;
+                /* set the id of the parent */
+                {
+                        struct path_element *ptop, *pparent;
+                        assert(path->len > 1);
+                        ptop = &path->items[0];
+                        pparent = &path->items[path->len-2]; /* -1 for current, -2 for parent */
+                        path_set_baseid(ptop,pparent, @s);
+                }
+		/* ast->id = @s; */
 	@};
 
 	<set-multiple-of>: (n :number) -> () = @{
@@ -1317,7 +1264,7 @@
 %trailer% @{
 
 	void
-	parse(struct sjp_lexer *lex_state, struct ast_schema *ast)
+	parse(struct sjp_lexer *lex_state, struct ast_schema *ast, struct json_string base_uri)
 	{
 		struct act_state a, *act_state = &a;
 		struct path p = { 0 };
@@ -1327,13 +1274,13 @@
 
 		ADVANCE_LEXER;
 
-		p_file(lex_state, act_state, ast, &p);
+		p_file(lex_state, act_state, ast, &p, base_uri);
 	}
 
 @}, @{
 
 	void
-	parse(struct sjp_lexer *lex_state, struct ast_schema *ast);
+	parse(struct sjp_lexer *lex_state, struct ast_schema *ast, struct json_string base_uri);
 
 @};
 

@@ -1206,16 +1206,19 @@ cnode_enum_translate(struct json_value *v)
 static
 void add_cnode_ids(struct jvst_cnode_id_table *tbl, const struct ast_schema *ast, struct jvst_cnode *n)
 {
+	struct ast_string_set *ss;
+
 	// XXX - better error messages!
 	// XXX - better error handling!
-	if (!jvst_cnode_id_table_add(tbl, ast->path, n)) {
-		fprintf(stderr, "error adding path -> cnode entry to id table\n");
-		abort();
-	}
+	// fprintf(stderr, "ADDING: ids for %p\n", (void *)n);
+	// jvst_cnode_debug(n);
+	for (ss = ast->all_ids; ss != NULL; ss = ss->next) {
+		// fprintf(stderr, "  >> %.*s\n", (int)ss->str.len, ss->str.s);
+		if (!jvst_cnode_id_table_add(tbl, ss->str, n)) {
+			int len = (ss->str.len < INT_MAX) ? ss->str.len : INT_MAX;
 
-	if (ast->id.len > 0) {
-		if (!jvst_cnode_id_table_add(tbl, ast->id, n)) {
-			fprintf(stderr, "error adding id -> cnode entry to id table\n");
+			// fprintf(stderr, "error adding path '%.*s' -> cnode entry to id table\n",
+			// 	len, ss->str.s);
 			abort();
 		}
 	}
@@ -1759,6 +1762,7 @@ cnode_reroot_referred_ids(void *opaque, struct json_string *id, struct jvst_cnod
 
 	// if it's already a root, we're good
 	if (xlator_has_root(xl, orig)) {
+		*ctreep = orig;
 		return 1;
 	}
 
@@ -1812,8 +1816,10 @@ jvst_cnode_translate_ast_with_ids(const struct ast_schema *ast)
 
 	// finally, add the root as a ref
 	{
-		struct json_string root_id = { .s = "#", .len = 1 };
-		jvst_cnode_id_table_add(xl.forest.ref_ids, root_id, ctree);
+		assert(ast->all_ids != NULL);
+		jvst_cnode_id_table_add(xl.forest.ref_ids, ast->all_ids->str, ctree);
+		// struct json_string root_id = { .s = "#", .len = 1 };
+		// jvst_cnode_id_table_add(xl.forest.ref_ids, root_id, ctree);
 	}
 
 	forest = malloc(sizeof *forest);

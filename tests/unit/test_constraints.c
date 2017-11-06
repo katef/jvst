@@ -7,6 +7,8 @@
 
 #include "jvst_macros.h"
 
+#define BASE_URI "http://example.com"
+
 enum TEST_OP {
   STOP = 0,
   TRANSLATE,
@@ -27,7 +29,17 @@ struct cnode_test {
 
 static int run_test(const char *fname, const struct cnode_test *t)
 {
+  static const struct ast_string_set zero;
+
   struct jvst_cnode *result;
+  struct json_string base_uri;
+  struct ast_string_set sset;
+
+  base_uri.s = BASE_URI;
+  base_uri.len = strlen(base_uri.s);
+
+  sset = zero;
+  sset.str = base_uri;
 
   assert(t->expected != NULL);
 
@@ -41,6 +53,10 @@ static int run_test(const char *fname, const struct cnode_test *t)
     case TRANSLATE:
       assert(t->ast != NULL);
       assert(t->expected != NULL);
+      if (t->ast->all_ids == NULL) {
+        t->ast->all_ids = &sset;
+      }
+
       result = jvst_cnode_translate_ast(t->ast);
       break;
 

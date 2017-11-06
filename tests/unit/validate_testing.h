@@ -213,6 +213,9 @@ struct id_pair *
 new_idpair(struct arena_info *A, const char *id, struct jvst_cnode *ctree);
 
 struct id_pair *
+new_idpair_manyids(struct arena_info *A, struct jvst_cnode *ctree, ...);
+
+struct id_pair *
 new_idpairs(struct id_pair *first, ...);
 
 
