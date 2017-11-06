@@ -71,13 +71,13 @@ struct ir_pair {
 /** AST related **/
 
 struct ast_schema *
-empty_schema(void);
+empty_schema(struct arena_info *A);
 
 struct ast_schema *
-true_schema(void);
+true_schema(struct arena_info *A);
 
 struct ast_schema *
-false_schema(void);
+false_schema(struct arena_info *A);
 
 struct ast_schema *
 newschema(struct arena_info *A, int types);

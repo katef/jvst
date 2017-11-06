@@ -90,7 +90,7 @@ static void test_xlate_empty_schema(void)
   struct arena_info A = {0};
 
   const struct cnode_test tests[] = {
-    { TRANSLATE, empty_schema(), NULL, newcnode_switch(&A, 1, SJP_NONE) },
+    { TRANSLATE, empty_schema(&A), NULL, newcnode_switch(&A, 1, SJP_NONE) },
     { STOP },
   };
 
@@ -102,8 +102,8 @@ static void test_xlate_true_false_schemas(void)
   struct arena_info A = {0};
 
   const struct cnode_test tests[] = {
-    { TRANSLATE, true_schema(), NULL, newcnode_switch(&A, 1, SJP_NONE) },
-    { TRANSLATE, false_schema(), NULL, newcnode_switch(&A, 0, SJP_NONE) },
+    { TRANSLATE, true_schema(&A), NULL, newcnode_switch(&A, 1, SJP_NONE) },
+    { TRANSLATE, false_schema(&A), NULL, newcnode_switch(&A, 0, SJP_NONE) },
     { STOP },
   };
 
@@ -659,8 +659,8 @@ void test_xlate_required(void)
   struct arena_info A = {0};
   struct ast_schema *schema = newschema_p(&A, 0,
       "properties", newprops(&A,
-        "foo", empty_schema(),
-        "bar", empty_schema(),
+        "foo", empty_schema(&A),
+        "bar", empty_schema(&A),
         NULL),
       "required", stringset(&A, "foo", NULL),
       NULL);
@@ -4260,7 +4260,7 @@ static void test_xlate_ref(void)
         "properties", newprops(&A, 
           "foo", newschema_p(&A, 0, "$ref", "#", NULL),
           NULL),
-        "additionalProperties", false_schema(),
+        "additionalProperties", false_schema(&A),
         NULL),
 
       NULL,

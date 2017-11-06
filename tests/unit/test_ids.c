@@ -18,6 +18,8 @@
 // provided in ir_testing.c
 int ir_trees_equal(const char *fname, struct jvst_ir_stmt *n1, struct jvst_ir_stmt *n2);
 
+#define URI_BASE "http://example.com"
+
 enum id_test_type {
   IDS,
   ROOTS,

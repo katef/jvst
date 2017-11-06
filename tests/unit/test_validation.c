@@ -13,6 +13,8 @@
 
 #define PROTOTYPE 0
 
+#define BASE_URI "http://example.com"
+
 struct validation_test {
   bool succeeds;
   const char *json;
@@ -140,16 +142,18 @@ static void runtests(const char *testname, const struct validation_test tests[])
 /* test to get us off the ground */
 void test_empty_schema(void)
 {
+  struct arena_info A = { 0 };
+
   const struct validation_test tests[] = {
-    { true, "{}", empty_schema() },
-    { true, "[]", empty_schema() },
-    { true, "{ \"foo\" : \"bar\" }", empty_schema() },
+    { true, "{}", empty_schema(&A) },
+    { true, "[]", empty_schema(&A) },
+    { true, "{ \"foo\" : \"bar\" }", empty_schema(&A) },
 
     // lots of embedded stuff
-    { true, "{ \"foo\" : { \"bar\" : { \"quux\" : [ 1, 2, 3, {}, { \"this\" : [] } ], \"foo\" : [ {}, {}, [ {} ] ] } } }", empty_schema() },
+    { true, "{ \"foo\" : { \"bar\" : { \"quux\" : [ 1, 2, 3, {}, { \"this\" : [] } ], \"foo\" : [ {}, {}, [ {} ] ] } } }", empty_schema(&A) },
 
     // one to make sure that we're checking for valid json
-    { false, "{ 12 : \"bar\" }", empty_schema() },
+    { false, "{ 12 : \"bar\" }", empty_schema(&A) },
 
     { false, NULL, NULL },
   };
@@ -561,8 +565,8 @@ void test_required(void)
   struct arena_info A = {0};
   struct ast_schema *schema = newschema_p(&A, 0,
       "properties", newprops(&A,
-        "foo", empty_schema(),
-        "bar", empty_schema(),
+        "foo", empty_schema(&A),
+        "bar", empty_schema(&A),
         NULL),
       "required", stringset(&A, "foo", NULL),
       NULL);

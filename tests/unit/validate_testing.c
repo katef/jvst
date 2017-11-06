@@ -70,36 +70,35 @@ static uint32_t ar_vm_code[NUM_TEST_THINGS];
 
 // Returns a constant empty schema
 struct ast_schema *
-empty_schema(void)
+empty_schema(struct arena_info *A)
 {
-	static struct ast_schema empty = {0};
-	return &empty;
+	return newschema(A, 0);
 }
 
 struct ast_schema *
-true_schema(void)
+true_schema(struct arena_info *A)
 {
-	static struct ast_schema true_schema= {
-		.kws = KWS_VALUE,
-		.value = {
-			.type = JSON_VALUE_BOOL,
-			.u = { .v = true },
-		},
-	};
-	return &true_schema;
+	struct ast_schema *sch;
+
+	sch = newschema(A, 0);
+	sch->kws = KWS_VALUE;
+	sch->value.type = JSON_VALUE_BOOL;
+	sch->value.u.v = true;
+
+	return sch;
 }
 
 struct ast_schema *
-false_schema(void)
+false_schema(struct arena_info *A)
 {
-	static struct ast_schema false_schema= {
-		.kws = KWS_VALUE,
-		.value = {
-			.type = JSON_VALUE_BOOL,
-			.u = { .v = false },
-		},
-	};
-	return &false_schema;
+	struct ast_schema *sch;
+
+	sch = newschema(A, 0);
+	sch->kws = KWS_VALUE;
+	sch->value.type = JSON_VALUE_BOOL;
+	sch->value.u.v = false;
+
+	return sch;
 }
 
 struct json_string
