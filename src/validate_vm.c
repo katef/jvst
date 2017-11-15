@@ -16,10 +16,10 @@
 #include "debug.h"
 
 #define DEBUG_OPCODES (debug & DEBUG_VMOP)	// displays opcodes and the current frame's stack
-#define DEBUG_STEP    0		// instruction-by-instruction execution of the VM
-#define DEBUG_TOKENS  0		// displays tokens as they're read
-#define DEBUG_BSEARCH 0		// debugs DFA binary search
-#define DEBUG_SPLITV  0		// debugs how SPLITV sets its result masks
+#define DEBUG_STEP    0				// instruction-by-instruction execution of the VM
+#define DEBUG_TOKENS  (debug & DEBUG_VMTOK)	// displays tokens as they're read
+#define DEBUG_BSEARCH 0				// debugs DFA binary search
+#define DEBUG_SPLITV  0				// debugs how SPLITV sets its result masks
 
 // XXX - replace with something better at some point
 //       (maybe a longjmp to an error handler?)
@@ -675,21 +675,35 @@ load_slots_from_token(struct jvst_vm *vm, uint32_t fp)
 	}
 }
 
+static void
+unget_token(struct jvst_vm *vm)
+{
+	if (vm->tokstate == JVST_VM_TOKEN_BUFFERED) {
+		PANIC(vm, -1, "unget TOKEN while token already buffered");
+	}
+
+	vm->tokstate = JVST_VM_TOKEN_BUFFERED;
+}
+
 static int
 next_token(struct jvst_vm *vm, uint32_t fp)
 {
-	if (vm->nexttok == 0) {
-		vm->nexttok = 1;
+	switch (vm->tokstate) {
+	case JVST_VM_TOKEN_BUFFERED:
+	case JVST_VM_TOKEN_FETCH:
+		vm->tokstate = JVST_VM_TOKEN_READY;
+		load_slots_from_token(vm,fp);
+		return 0;
+
+	case JVST_VM_TOKEN_READY:
+	case JVST_VM_TOKEN_CONSUMED:
+		vm->tokstate = JVST_VM_TOKEN_FETCH;
 		setup_next_token(vm, fp);
 		return 1;
+
+	default:
+		PANIC(vm, -1, "invalid VM token state");
 	}
-
-	vm->nexttok = 0;
-
-	load_slots_from_token(vm,fp);
-	vm->consumed = 0;
-
-	return 0;
 }
 
 static int
@@ -729,28 +743,39 @@ consume_current_value(struct jvst_vm *vm)
 	//
 	//   4. otherwise return JVST_NEXT
 
-	if (vm->consumed) {
-		vm->consumed = 0;
-		return JVST_NEXT;
-	}
+	switch (vm->tokstate) {
+	case JVST_VM_TOKEN_BUFFERED:
+		// mark buffered value as consumed
+		vm->tokstate = JVST_VM_TOKEN_READY;
 
-	if (has_partial_token(vm)) {
-		return JVST_MORE;
-	}
+		/* fallthrough */
 
-	if (vm->evt.type == SJP_OBJECT_BEG) {
-		vm->nobj++;
-		return JVST_NEXT;
-	} else if (vm->evt.type == SJP_ARRAY_BEG) {
-		vm->narr++;
-		return JVST_NEXT;
-	}
+	case JVST_VM_TOKEN_READY:
+		if (has_partial_token(vm)) {
+			return JVST_MORE;
+		}
 
-	vm->consumed = 1;
-	return JVST_VALID;
+		if (vm->evt.type == SJP_OBJECT_BEG) {
+			vm->nobj++;
+			return JVST_NEXT;
+		} else if (vm->evt.type == SJP_ARRAY_BEG) {
+			vm->narr++;
+			return JVST_NEXT;
+		}
+
+		vm->tokstate = JVST_VM_TOKEN_CONSUMED;
+		return JVST_VALID;
+
+	case JVST_VM_TOKEN_CONSUMED:
+	case JVST_VM_TOKEN_FETCH:
+		vm->tokstate = JVST_VM_TOKEN_READY;
+		return JVST_NEXT;
+
+	default:
+		PANIC(vm, -1, "invalid VM token state");
+	}
 
 eating_object_or_array:
-
 	if (has_partial_token(vm)) {
 		return JVST_MORE;
 	}
@@ -770,6 +795,7 @@ eating_object_or_array:
 	}
 
 	if (vm->nobj == 0 && vm->narr == 0) {
+		vm->tokstate = JVST_VM_TOKEN_CONSUMED;
 		return JVST_VALID;
 	}
 
@@ -799,6 +825,27 @@ vm_dumpevt(struct sbuf *buf, const struct jvst_vm *vm)
 	}
 }
 
+static const char *
+tokstate_name(enum jvst_vm_tokstate st)
+{
+	switch (st) {
+	case JVST_VM_TOKEN_BUFFERED:
+		return "BUFFERED";
+
+	case JVST_VM_TOKEN_FETCH:
+		return "FETCH";
+
+	case JVST_VM_TOKEN_READY:
+		return "READY";
+
+	case JVST_VM_TOKEN_CONSUMED:
+		return "CONSUMED";
+
+	default:
+		return "UNKNOWN!!!";
+	}
+}
+
 static void
 debug_state(struct jvst_vm *vm)
 {
@@ -811,8 +858,8 @@ debug_state(struct jvst_vm *vm)
 	buf.len = 0;
 	buf.np = 0;
 	vm_dumpregs(&buf, vm);
-	fprintf(stderr, "STATE> vm=%p nobj=%zu, narr=%zu, consumed=%d, nexttok=%d, error=%d, dfa_st=%d\n",
-		(void *)vm, vm->nobj, vm->narr, vm->consumed, vm->nexttok, vm->error, vm->dfa_st);
+	fprintf(stderr, "STATE> vm=%p nobj=%zu, narr=%zu, tokstate=%s, error=%d, dfa_st=%d\n",
+		(void *)vm, vm->nobj, vm->narr, tokstate_name(vm->tokstate), vm->error, vm->dfa_st);
 	fprintf(stderr, "REGS > %s", buf.buf);
 	vm_dumpstack(stderr, vm);
 }
@@ -845,12 +892,12 @@ vm_match(struct jvst_vm *vm, const struct jvst_vm_dfa *dfa)
 {
 	int ret, st, result;
 
-	if (vm->evt.type != SJP_STRING) {
-		PANIC(vm, -1, "MATCH op on a non-string token");
+	if (vm->tokstate != JVST_VM_TOKEN_READY) {
+		PANIC(vm, -1, "MATCH op, but token is not READY");
 	}
 
-	if (vm->consumed) {
-		PANIC(vm, -1, "MATCH op on a consumed token");
+	if (vm->evt.type != SJP_STRING) {
+		PANIC(vm, -1, "MATCH op on a non-string token");
 	}
 
 	ret = SJP_OK;
@@ -872,7 +919,7 @@ vm_match(struct jvst_vm *vm, const struct jvst_vm_dfa *dfa)
 
 	// reset state for next MATCH instruction
 	vm->dfa_st = 0;
-	vm->consumed = 1;
+	vm->tokstate = JVST_VM_TOKEN_CONSUMED;
 
 	vm->stack[vm->r_fp + JVST_VM_M].i = result;
 	return SJP_OK;
@@ -904,6 +951,15 @@ vm_split(struct jvst_vm *vm, int split, union jvst_vm_stackval *slot, int splitv
 		for (i=0; i < nproc; i++) {
 			jvst_vm_init_defaults(&vm->splits[i], vm->prog);
 			vm->splits[i].r_pc = vm->prog->sdata[off + i];
+		}
+
+		if (vm->tokstate == JVST_VM_TOKEN_BUFFERED) {
+			for (i=0; i < nproc; i++) {
+				vm->splits[i].evt = vm->evt;
+				vm->splits[i].pret = vm->pret;
+				vm->splits[i].tokstate = vm->tokstate;
+			}
+			vm->tokstate = JVST_VM_TOKEN_CONSUMED;
 		}
 
 		vm->nsplit = nproc;
@@ -1233,22 +1289,28 @@ loop:
 		}
 
 	case JVST_OP_TOKEN:
-		// read next token, set the various token values
+		{
+			uint32_t arg1;
+			int i1;
 
-		if (next_token(vm,fp)) {
-			return JVST_NEXT;
+			arg1 = jvst_vm_decode_arg1(opcode);
+			i1 = jvst_vm_arg_tolit(arg1);
+
+			// read next token, set the various token values
+			if (i1 == -1) {
+				unget_token(vm);
+				NEXT;
+			}
+
+			if (next_token(vm,fp)) {
+				return JVST_NEXT;
+			}
+			NEXT;
 		}
-		NEXT;
 
 	case JVST_OP_CONSUME:
 		{
 			int ret;
-
-			if (vm->consumed) {
-				if (next_token(vm, fp)) {
-					return JVST_NEXT;
-				}
-			}
 
 			ret = consume_current_value(vm);
 			if (ret != JVST_VALID) {
@@ -1520,8 +1582,7 @@ jvst_vm_more(struct jvst_vm *vm, char *data, size_t n)
 		enum jvst_result ret;
 
 		pret = sjp_parser_next(&vm->parser, &evt);
-#if DEBUG_TOKENS
-		{
+		if (DEBUG_TOKENS) {
 			char txt[256];
 			size_t n = evt.n;
 			if (n < sizeof txt) {
@@ -1536,7 +1597,6 @@ jvst_vm_more(struct jvst_vm *vm, char *data, size_t n)
 			fprintf(stderr, "<TOKEN> ret=%s event=%s %s\n",
 				ret2name(pret), evt2name(evt.type), txt);
 		}
-#endif /* DEBUG_TOKENS */
 
 		if (SJP_ERROR(pret)) {
 			vm->error = pret;

@@ -107,6 +107,7 @@ debug_flags(const char *s)
 		case 'o': e = DEBUG_OPCODES;          break;
 		case 'p': e = DEBUG_VMPROG;           break;
 		case 'v': e = DEBUG_VMOP;             break;
+		case 'T': e = DEBUG_VMTOK;            break;
 
 		default:
 			fprintf(stderr, "-d: unrecognised flag '%c'\n", *s);
@@ -452,6 +453,7 @@ usage:
 			"           o   print opcodes\n"
 			"           p   print final VM program\n"
 			"           v   print VM instructions while executing\n"
+			"           T   print tokens as read (during VM run)\n"
 			"\n");
 
 	return 1;

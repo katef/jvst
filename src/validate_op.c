@@ -313,6 +313,13 @@ op_instr_dump(struct sbuf *buf, struct jvst_op_instr *instr)
 		return;
 
 	case JVST_OP_TOKEN:
+		sbuf_snprintf(buf, "%s", jvst_op_name(instr->op));
+		if (instr->args[1].type != JVST_VM_ARG_NONE) {
+			sbuf_snprintf(buf, " ");
+			op_arg_dump(buf, instr->args[1]);
+		}
+		return;
+
 	case JVST_OP_CONSUME:
 	case JVST_OP_VALID:
 		sbuf_snprintf(buf, "%s", jvst_op_name(instr->op));
@@ -1684,6 +1691,15 @@ op_assemble(struct op_assembler *opasm, struct jvst_ir_stmt *stmt)
 		emit_instr(opasm, op_instr_new(JVST_OP_TOKEN));
 		return;
 
+	case JVST_IR_STMT_UNTOKEN:
+		{
+			instr = op_instr_new(JVST_OP_TOKEN);
+			instr->args[1] = arg_const(-1);
+			instr->args[0] = arg_none();
+			emit_instr(opasm, instr);
+		}
+		return;
+
 	case JVST_IR_STMT_CONSUME:
 		emit_instr(opasm, op_instr_new(JVST_OP_CONSUME));
 		return;
@@ -1826,6 +1842,7 @@ op_assemble(struct op_assembler *opasm, struct jvst_ir_stmt *stmt)
 	case JVST_IR_STMT_SEQ:
 	case JVST_IR_STMT_IF:
 	case JVST_IR_STMT_FRAME:
+	case JVST_IR_STMT_CALL_ID:
 
 	case JVST_IR_STMT_COUNTER:
 	case JVST_IR_STMT_MATCHER:

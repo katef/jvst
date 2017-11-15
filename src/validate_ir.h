@@ -26,6 +26,7 @@ enum jvst_ir_stmt_type {
 	JVST_IR_STMT_BREAK,		// BREAK(name). Exits named loop.
 
 	JVST_IR_STMT_TOKEN,		// requests the next token
+	JVST_IR_STMT_UNTOKEN,		// "ungets" the current token
 	JVST_IR_STMT_CONSUME,		// consumes the next value, including whole objects and arrays
 
 	/*

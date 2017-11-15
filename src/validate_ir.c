@@ -807,6 +807,8 @@ jvst_ir_stmt_type_name(enum jvst_ir_stmt_type type)
 		return "BREAK";
 	case JVST_IR_STMT_TOKEN:
 		return "TOKEN";    	
+	case JVST_IR_STMT_UNTOKEN:
+		return "UNTOKEN";    	
 	case JVST_IR_STMT_CONSUME:
 		return "CONSUME";
 	case JVST_IR_STMT_FRAME:
@@ -1202,6 +1204,7 @@ jvst_ir_dump_inner(struct sbuf *buf, struct jvst_ir_stmt *ir, int indent)
 	case JVST_IR_STMT_NOP:
 	case JVST_IR_STMT_VALID:
 	case JVST_IR_STMT_TOKEN:
+	case JVST_IR_STMT_UNTOKEN:
 	case JVST_IR_STMT_CONSUME:
 		sbuf_snprintf(buf, "%s", jvst_ir_stmt_type_name(ir->type));
 		return;
@@ -3544,6 +3547,9 @@ ir_translate_array(struct jvst_cnode *top, struct jvst_ir_stmt *frame)
 		*spp = seq;
 		spp = &seq->u.stmt_list;
 
+		*spp = ir_stmt_new(JVST_IR_STMT_UNTOKEN);
+		spp = &(*spp)->next;
+
 		if (builder.each) {
 			each = jvst_ir_stmt_copy(builder.each);
 			assert(each->next == NULL);
@@ -3597,13 +3603,16 @@ ir_translate_array(struct jvst_cnode *top, struct jvst_ir_stmt *frame)
 		}
 
 		assert(stmts != NULL);
-		if (stmts->next != NULL) {
-			struct jvst_ir_stmt *seq;
+		{
+			struct jvst_ir_stmt *seq, **seqpp;
 
 			// wrap stmts in a SEQ
 			seq = ir_stmt_new(JVST_IR_STMT_SEQ);
-			seq->u.stmt_list = stmts;
-			
+			seqpp = &seq->u.stmt_list;
+			*seqpp = ir_stmt_new(JVST_IR_STMT_UNTOKEN);
+			seqpp = &(*seqpp)->next;
+			*seqpp = stmts;
+
 			stmts = seq;
 		}
 
@@ -3632,7 +3641,8 @@ ir_translate_array_inner(struct jvst_cnode *top, struct ir_arr_builder *builder)
 			assert(top->u.items != NULL);
 			assert(top->u.items->next == NULL);  // only one additional items
 
-			additional = ir_translate_notoken(top->u.items);
+			// additional = ir_translate_notoken(top->u.items);
+			additional = jvst_ir_translate(top->u.items);
 			builder->additional = additional;
 
 			return NULL;
@@ -3646,7 +3656,8 @@ ir_translate_array_inner(struct jvst_cnode *top, struct ir_arr_builder *builder)
 			for (it = top->u.items; it != NULL; it = it->next) {
 				struct jvst_ir_stmt *item;
 
-				item = ir_translate_notoken(it);
+				// item = ir_translate_notoken(it);
+				item = jvst_ir_translate(it);
 				*builder->itemspp = item;
 				builder->itemspp = &item->next;
 			}
@@ -3661,7 +3672,8 @@ ir_translate_array_inner(struct jvst_cnode *top, struct ir_arr_builder *builder)
 			assert(top->u.contains != NULL);
 			assert(top->u.contains->next == NULL);  // only one contains constraint
 
-			contains = ir_translate_notoken(top->u.contains);
+			// contains = ir_translate_notoken(top->u.contains);
+			contains = jvst_ir_translate(top->u.contains);
 			*builder->containspp = contains;
 			builder->containspp = &contains->next;
 
@@ -4192,6 +4204,7 @@ jvst_ir_stmt_copy_inner(struct jvst_ir_stmt *ir, struct addr_fixup_list *fixups,
 	case JVST_IR_STMT_NOP:
 	case JVST_IR_STMT_VALID:
 	case JVST_IR_STMT_TOKEN:
+	case JVST_IR_STMT_UNTOKEN:
 	case JVST_IR_STMT_CONSUME:
 		return copy;
 
@@ -5641,6 +5654,7 @@ ir_linearize_stmt(struct op_linearizer *oplin, struct jvst_ir_stmt *stmt)
 	switch (stmt->type) {
 	case JVST_IR_STMT_NOP:
 	case JVST_IR_STMT_TOKEN:
+	case JVST_IR_STMT_UNTOKEN:
 	case JVST_IR_STMT_CONSUME:
 	case JVST_IR_STMT_INCR:
 	case JVST_IR_STMT_BSET:

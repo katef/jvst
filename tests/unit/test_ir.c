@@ -5096,17 +5096,21 @@ static void test_ir_items_1(void)
                   newir_stmt(&A, JVST_IR_STMT_TOKEN),
                   newir_if(&A, newir_istok(&A, SJP_ARRAY_END),
                     newir_break(&A, "ARR_OUTER", 0),
-                    newir_frame(&A,
-                      // don't request a token!
-                      newir_if(&A, newir_istok(&A, SJP_NUMBER),
-                        newir_if(&A, newir_isint(&A, newir_expr(&A, JVST_IR_EXPR_TOK_NUM)),
-                          newir_seq(&A,
-                            newir_stmt(&A, JVST_IR_STMT_CONSUME),
-                            newir_stmt(&A, JVST_IR_STMT_VALID),
-                            NULL
-                          ),
-                          newir_invalid(&A, JVST_INVALID_NOT_INTEGER, "number is not an integer")),
-                        newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token")
+                    newir_seq(&A,
+                      newir_stmt(&A, JVST_IR_STMT_UNTOKEN),
+                      newir_frame(&A,
+                        newir_stmt(&A, JVST_IR_STMT_TOKEN),
+                        newir_if(&A, newir_istok(&A, SJP_NUMBER),
+                          newir_if(&A, newir_isint(&A, newir_expr(&A, JVST_IR_EXPR_TOK_NUM)),
+                            newir_seq(&A,
+                              newir_stmt(&A, JVST_IR_STMT_CONSUME),
+                              newir_stmt(&A, JVST_IR_STMT_VALID),
+                              NULL
+                            ),
+                            newir_invalid(&A, JVST_INVALID_NOT_INTEGER, "number is not an integer")),
+                          newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token")
+                        ),
+                        NULL
                       ),
                       NULL
                     )
@@ -5161,8 +5165,9 @@ static void test_ir_items_1(void)
                 newir_if(&A, newir_istok(&A, SJP_ARRAY_END),
                   newir_break(&A, "ARR_OUTER", 0),
                   newir_seq(&A,
+                    newir_stmt(&A, JVST_IR_STMT_UNTOKEN),
                     newir_frame(&A,
-                      // don't request a token!
+                      newir_stmt(&A, JVST_IR_STMT_TOKEN),
                       newir_if(&A, newir_istok(&A, SJP_STRING),
                         newir_seq(&A,
                           newir_stmt(&A, JVST_IR_STMT_CONSUME),
@@ -5177,8 +5182,9 @@ static void test_ir_items_1(void)
                     newir_if(&A, newir_istok(&A, SJP_ARRAY_END),
                       newir_break(&A, "ARR_OUTER", 0),
                       newir_seq(&A,
+                        newir_stmt(&A, JVST_IR_STMT_UNTOKEN),
                         newir_frame(&A,
-                          // don't request a token!
+                          newir_stmt(&A, JVST_IR_STMT_TOKEN),
                           newir_if(&A, newir_istok(&A, SJP_STRING),
                             newir_seq(&A,
                               newir_stmt(&A, JVST_IR_STMT_CONSUME),
@@ -5193,7 +5199,11 @@ static void test_ir_items_1(void)
                           newir_stmt(&A, JVST_IR_STMT_TOKEN),
                           newir_if(&A, newir_istok(&A, SJP_ARRAY_END),
                             newir_break(&A, "ARR_OUTER", 0),
-                            newir_stmt(&A, JVST_IR_STMT_CONSUME)
+                            newir_seq(&A,
+                              newir_stmt(&A, JVST_IR_STMT_UNTOKEN),
+                              newir_stmt(&A, JVST_IR_STMT_CONSUME),
+                              NULL
+                            )
                           ),
                           NULL
                         ),
@@ -5257,8 +5267,9 @@ static void test_ir_items_1(void)
                 newir_if(&A, newir_istok(&A, SJP_ARRAY_END),
                   newir_break(&A, "ARR_OUTER", 0),
                   newir_seq(&A,
+                    newir_stmt(&A, JVST_IR_STMT_UNTOKEN),
                     newir_frame(&A,
-                      // don't request a token!
+                      newir_stmt(&A, JVST_IR_STMT_TOKEN),
                       newir_if(&A, newir_istok(&A, SJP_STRING),
                         newir_seq(&A,
                           newir_stmt(&A, JVST_IR_STMT_CONSUME),
@@ -5273,8 +5284,9 @@ static void test_ir_items_1(void)
                     newir_if(&A, newir_istok(&A, SJP_ARRAY_END),
                       newir_break(&A, "ARR_OUTER", 0),
                       newir_seq(&A,
+                        newir_stmt(&A, JVST_IR_STMT_UNTOKEN),
                         newir_frame(&A,
-                          // don't request a token!
+                          newir_stmt(&A, JVST_IR_STMT_TOKEN),
                           newir_if(&A, newir_istok(&A, SJP_STRING),
                             newir_seq(&A,
                               newir_stmt(&A, JVST_IR_STMT_CONSUME),
@@ -5289,17 +5301,21 @@ static void test_ir_items_1(void)
                           newir_stmt(&A, JVST_IR_STMT_TOKEN),
                           newir_if(&A, newir_istok(&A, SJP_ARRAY_END),
                             newir_break(&A, "ARR_OUTER", 0),
-                            newir_frame(&A,
-                              // don't request a token!
-                              newir_if(&A, newir_istok(&A, SJP_NUMBER),
-                                newir_if(&A, newir_isint(&A, newir_expr(&A, JVST_IR_EXPR_TOK_NUM)),
-                                  newir_seq(&A,
-                                    newir_stmt(&A, JVST_IR_STMT_CONSUME),
-                                    newir_stmt(&A, JVST_IR_STMT_VALID),
-                                    NULL
-                                  ),
-                                  newir_invalid(&A, JVST_INVALID_NOT_INTEGER, "number is not an integer")),
-                                newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token")
+                            newir_seq(&A,
+                              newir_stmt(&A, JVST_IR_STMT_UNTOKEN),
+                              newir_frame(&A,
+                                newir_stmt(&A, JVST_IR_STMT_TOKEN),
+                                newir_if(&A, newir_istok(&A, SJP_NUMBER),
+                                  newir_if(&A, newir_isint(&A, newir_expr(&A, JVST_IR_EXPR_TOK_NUM)),
+                                    newir_seq(&A,
+                                      newir_stmt(&A, JVST_IR_STMT_CONSUME),
+                                      newir_stmt(&A, JVST_IR_STMT_VALID),
+                                      NULL
+                                    ),
+                                    newir_invalid(&A, JVST_INVALID_NOT_INTEGER, "number is not an integer")),
+                                  newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token")
+                                ),
+                                NULL
                               ),
                               NULL
                             )
@@ -5366,6 +5382,7 @@ static void test_ir_minmax_items(void)
                   newir_if(&A, newir_istok(&A, SJP_ARRAY_END),
                     newir_break(&A, "ARR_OUTER", 0),
                     newir_seq(&A,
+                      newir_stmt(&A, JVST_IR_STMT_UNTOKEN),
                       newir_incr(&A, 0, "num_items"),
                       newir_stmt(&A, JVST_IR_STMT_CONSUME),
                       NULL
@@ -5425,6 +5442,7 @@ static void test_ir_minmax_items(void)
                   newir_if(&A, newir_istok(&A, SJP_ARRAY_END),
                     newir_break(&A, "ARR_OUTER", 0),
                     newir_seq(&A,
+                      newir_stmt(&A, JVST_IR_STMT_UNTOKEN),
                       newir_incr(&A, 0, "num_items"),
                       newir_stmt(&A, JVST_IR_STMT_CONSUME),
                       NULL
@@ -5489,6 +5507,7 @@ static void test_ir_minmax_items(void)
                   newir_if(&A, newir_istok(&A, SJP_ARRAY_END),
                     newir_break(&A, "ARR_OUTER", 0),
                     newir_seq(&A,
+                      newir_stmt(&A, JVST_IR_STMT_UNTOKEN),
                       newir_incr(&A, 0, "num_items"),
                       newir_stmt(&A, JVST_IR_STMT_CONSUME),
                       NULL
@@ -5567,9 +5586,10 @@ static void test_ir_minmax_items(void)
                   newir_if(&A, newir_istok(&A, SJP_ARRAY_END),
                     newir_break(&A, "ARR_OUTER", 0),
                     newir_seq(&A,
+                      newir_stmt(&A, JVST_IR_STMT_UNTOKEN),
                       newir_incr(&A, 0, "num_items"),
                       newir_frame(&A,
-                        // don't request a token!
+                        newir_stmt(&A, JVST_IR_STMT_TOKEN),
                         newir_if(&A, newir_istok(&A, SJP_NUMBER),
                           newir_if(&A, newir_isint(&A, newir_expr(&A, JVST_IR_EXPR_TOK_NUM)),
                             newir_seq(&A,
@@ -5666,9 +5686,10 @@ static void test_ir_minmax_items(void)
                 newir_if(&A, newir_istok(&A, SJP_ARRAY_END),
                   newir_break(&A, "ARR_OUTER", 0),
                   newir_seq(&A,
+                    newir_stmt(&A, JVST_IR_STMT_UNTOKEN),
                     newir_incr(&A, 0, "num_items"),
                     newir_frame(&A,
-                      // don't request a token!
+                      newir_stmt(&A, JVST_IR_STMT_TOKEN),
                       newir_if(&A, newir_istok(&A, SJP_STRING),
                         newir_seq(&A,
                           newir_stmt(&A, JVST_IR_STMT_CONSUME),
@@ -5683,9 +5704,10 @@ static void test_ir_minmax_items(void)
                     newir_if(&A, newir_istok(&A, SJP_ARRAY_END),
                       newir_break(&A, "ARR_OUTER", 0),
                       newir_seq(&A,
+                        newir_stmt(&A, JVST_IR_STMT_UNTOKEN),
                         newir_incr(&A, 0, "num_items"),
                         newir_frame(&A,
-                          // don't request a token!
+                          newir_stmt(&A, JVST_IR_STMT_TOKEN),
                           newir_if(&A, newir_istok(&A, SJP_STRING),
                             newir_seq(&A,
                               newir_stmt(&A, JVST_IR_STMT_CONSUME),
@@ -5701,9 +5723,10 @@ static void test_ir_minmax_items(void)
                           newir_if(&A, newir_istok(&A, SJP_ARRAY_END),
                             newir_break(&A, "ARR_OUTER", 0),
                             newir_seq(&A,
+                              newir_stmt(&A, JVST_IR_STMT_UNTOKEN),
                               newir_incr(&A, 0, "num_items"),
                               newir_frame(&A,
-                                // don't request a token!
+                                newir_stmt(&A, JVST_IR_STMT_TOKEN),
                                 newir_if(&A, newir_istok(&A, SJP_NUMBER),
                                   newir_if(&A, newir_isint(&A, newir_expr(&A, JVST_IR_EXPR_TOK_NUM)),
                                     newir_seq(&A,
@@ -5801,9 +5824,10 @@ void test_ir_contains_1(void)
                   newir_if(&A, newir_istok(&A, SJP_ARRAY_END),
                     newir_break(&A, "ARR_OUTER", 0),
                     newir_seq(&A,
+                      newir_stmt(&A, JVST_IR_STMT_UNTOKEN),
                       newir_splitvec(&A, 1, "contains_split",
                         newir_frame(&A,
-                          // don't request a token!
+                          newir_stmt(&A, JVST_IR_STMT_TOKEN),
                           newir_if(&A, newir_istok(&A, SJP_NUMBER),
                             newir_if(&A, 
                               newir_op(&A, JVST_IR_EXPR_GE, 
@@ -5831,7 +5855,6 @@ void test_ir_contains_1(void)
                         ),
 
                         newir_frame(&A,
-                          // don't request a token!
                           newir_stmt(&A, JVST_IR_STMT_CONSUME),
                           newir_stmt(&A, JVST_IR_STMT_VALID),
                           NULL
@@ -5920,9 +5943,10 @@ void test_ir_contains_1(void)
                 newir_if(&A, newir_istok(&A, SJP_ARRAY_END),
                   newir_break(&A, "ARR_OUTER", 0),
                   newir_seq(&A,
+                    newir_stmt(&A, JVST_IR_STMT_UNTOKEN),
                     newir_splitvec(&A, 1, "contains_split",
                       newir_frame(&A,
-                        // don't request a token!
+                        newir_stmt(&A, JVST_IR_STMT_TOKEN),
                         newir_if(&A, newir_istok(&A, SJP_NUMBER),
                           newir_if(&A, 
                             newir_op(&A, JVST_IR_EXPR_GE, 
@@ -5950,6 +5974,7 @@ void test_ir_contains_1(void)
                       ),
 
                       newir_frame(&A,
+                        newir_stmt(&A, JVST_IR_STMT_TOKEN),
                         newir_if(&A, newir_istok(&A, SJP_STRING),
                           newir_seq(&A,
                             newir_stmt(&A, JVST_IR_STMT_CONSUME),
@@ -5978,9 +6003,10 @@ void test_ir_contains_1(void)
                           newir_if(&A, newir_istok(&A, SJP_ARRAY_END),
                             newir_break(&A, "ARR_OUTER", 0),
                             newir_seq(&A,
+                              newir_stmt(&A, JVST_IR_STMT_UNTOKEN),
                               newir_splitvec(&A, 1, "contains_split",
                                 newir_frame(&A,
-                                  // don't request a token!
+                                  newir_stmt(&A, JVST_IR_STMT_TOKEN),
                                   newir_if(&A, newir_istok(&A, SJP_NUMBER),
                                     newir_if(&A, 
                                       newir_op(&A, JVST_IR_EXPR_GE, 
@@ -6008,7 +6034,6 @@ void test_ir_contains_1(void)
                                 ),
 
                                 newir_frame(&A,
-                                  // don't request a token!
                                   newir_stmt(&A, JVST_IR_STMT_CONSUME),
                                   newir_stmt(&A, JVST_IR_STMT_VALID),
                                   NULL
