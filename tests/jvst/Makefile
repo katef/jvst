@@ -63,6 +63,7 @@ JSON_SUITES += enum.json
 
 EXTRACT_SUITE = ${.CURDIR}/tests/jvst/extract.sh
 RUN_SUITE     = ${.CURDIR}/tests/jvst/runtests.sh
+REPORT_SUITE  = ${.CURDIR}/tests/jvst/reporttests.sh
 
 SUITES = ${.CURDIR}/share/git/json-schema-test-suite/tests/draft6
 
@@ -71,6 +72,8 @@ TEST_OUTDIR.tests/jvst = ${BUILD}/tests/jvst
 SUBTEST += empty
 
 mkjsonsuite:: mkdir
+	rm -f ${.CURDIR}/${TEST_OUTDIR.tests/jvst}/results
+
 jsonsuite:: mkjsonsuite ${JVST}
 
 .for _s in ${JSON_SUITES}
@@ -82,10 +85,18 @@ ${TEST_OUTDIR.tests/jvst}/${_s:S/.json//}: ${SUITES}/${_s}
 mkjsonsuite:: ${TEST_OUTDIR.tests/jvst}/${_s:S/.json//}
 
 jsonsuite:: ${TEST_OUTDIR.tests/jvst}/${_s:S/.json//}
-	( cd ${TEST_OUTDIR.tests/jvst} ; \
-	  JVST=${.CURDIR}/${JVST} OUTDIR=${TEST_OUTDIR.tests/jvst} ${RUN_SUITE} ${.ALLSRC:T}/* )
+	(							\
+	  cd ${TEST_OUTDIR.tests/jvst} ; 			\
+	  JVST=${.CURDIR}/${JVST} 				\
+	  OUTFILE=${.CURDIR}/${TEST_OUTDIR.tests/jvst}/results	\
+	    ${RUN_SUITE} ${.ALLSRC:T}/* ; 			\
+	)
 
 .endfor
+
+jsonsuite:: 
+	@echo Reporting results in ${TEST_OUTDIR.tests/jvst}/results
+	${REPORT_SUITE} ${TEST_OUTDIR.tests/jvst}/results
 
 .else  # !defined(JVST)
 
