@@ -368,9 +368,12 @@
         static void
         set_schema_list(struct ast_schema_set **varp, ast_schema_list_t list, const char *name)
         {
-                
+                assert(varp != NULL);
                 assert(list->head != NULL);
 
+		while (*varp != NULL) {
+			varp = &(*varp)->next;
+		}
                 *varp = list->head;
 
 		if (debug & DEBUG_ACT) {
@@ -448,10 +451,14 @@
 		}
 
 		@k = kw_lookup(&@s);
+
+		/* schema are allowed to have anything ... */
+		/*
 		if (@k == 0) {
 			xerr(lex_state, 0, "Unrecognised keyword: \"%s\"", @s.s);
 			@!;
 		}
+		*/
 	@};
 
 	<type-lookup>: (s :string) -> (t :type) = @{
@@ -724,6 +731,10 @@
                 ast->kws &= ~KWS_SINGLETON_ITEMS;
                 set_schema_list(&ast->items, items, "set-items-list");
         @};
+
+	<add-to-definitions>:	(sch :ast-schema) -> () = @{
+		ast_add_definitions(ast, @sch);
+	@};
 
         <set-definitions>:          (lst :ast-schema-list) -> () = @{
 		ast_schema_list_t defs;

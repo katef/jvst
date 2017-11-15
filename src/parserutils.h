@@ -40,6 +40,8 @@ void path_set_baseid(struct path_element *ptop, struct path_element *pnode, stru
 void path_add_all_ids(struct path *path, struct ast_schema *ast);
 char *build_fragment(size_t *lenp, struct path_element *pbeg, struct path_element *pend);
 
+void ast_add_definitions(struct ast_schema *ast, struct ast_schema *def);
+
 #endif /* PARSERUTILS_H */
 
 /* vim: set tabstop=8 shiftwidth=8 noexpandtab: */

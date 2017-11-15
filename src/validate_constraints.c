@@ -1313,8 +1313,24 @@ cnode_translate_ast_with_ids(const struct ast_schema *ast, struct ast_translator
 		return node;
 	}
 
+	/* definitions can be referred to by their json pointer,
+	 * so we translate them even if the node is a reference
+	 */
+	if (ast->definitions != NULL) {
+		const struct ast_schema_set *def;
+		// add definitions to the all_ids table
+		for (def = ast->definitions; def != NULL; def = def->next) {
+			assert(def->schema != NULL);
+			cnode_translate_ast_with_ids(def->schema, xl);
+		}
+	}
+
 	// if an object has a "$ref", then all other properties must be
 	// ignored
+	//
+	// XXX - should we translate the properties so they can still be referred to by their json
+	//       pointers?  This would involve moving this check to the end and replacing the
+	//       node with the ref node.
 	if (ast->kws & KWS_HAS_REF) {
 		assert(ast->ref.len > 0);
 		assert(ast->ref.s != NULL);
@@ -1330,15 +1346,6 @@ cnode_translate_ast_with_ids(const struct ast_schema *ast, struct ast_translator
 		xlator_add_ref(xl, node);
 
 		return node;
-	}
-
-	if (ast->definitions != NULL) {
-		const struct ast_schema_set *def;
-		// add definitions to the all_ids table
-		for (def = ast->definitions; def != NULL; def = def->next) {
-			assert(def->schema != NULL);
-			cnode_translate_ast_with_ids(def->schema, xl);
-		}
 	}
 
 	types = ast->types;

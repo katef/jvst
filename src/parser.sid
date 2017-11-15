@@ -169,6 +169,7 @@
         <set-any-of>:               (:ast-schema-list) -> ();
         <set-one-of>:               (:ast-schema-list) -> ();
 
+	<add-to-definitions>:	    (:ast-schema) -> ();
         <set-definitions>:          (:ast-schema-list) -> ();
 
         <new-regexp>:               (:re-dialect, :string) -> (:regexp);
@@ -847,6 +848,12 @@
 	||
 		? = <kw-examples>(k);
 		placeholder;
+	||
+		{
+			/* non-directives function like 'definitions' */
+			sch = <parse-schema>;
+			<add-to-definitions>(sch);
+		};
 	##
 		<err-expected-directive>;
 	};

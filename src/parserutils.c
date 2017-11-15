@@ -582,5 +582,17 @@ static void print_uri_error(int err)
 	abort();
 }
 
+void
+ast_add_definitions(struct ast_schema *ast, struct ast_schema *def)
+{
+	struct ast_schema_set *sset;
+
+	sset = xmalloc(sizeof *sset);
+	sset->schema = def;
+	sset->next = ast->definitions;
+
+	ast->definitions = sset;
+}
+
 /* vim: set tabstop=8 shiftwidth=8 noexpandtab: */
 
