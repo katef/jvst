@@ -55,6 +55,50 @@ path_push_empty(struct path *p)
 	elt->u.str = zero;
 }
 
+static struct json_string
+escape_json_pointer(struct json_string s)
+{
+	struct json_string ret;
+	char *b, *p;
+	size_t i,n;
+
+	n=0;
+	for (i=0; i < s.len; i++) {
+		n++;
+		if (s.s[i] == '/' || s.s[i] == '~') {
+			n++;
+		}
+	}
+
+	if (n == s.len) {
+		return json_strdup(s);
+	}
+
+	b = xmalloc(n);
+	p = b;
+	for (i=0; i < s.len; i++) {
+		switch (s.s[i]) {
+		case '/':
+			*p++ = '~';
+			*p++ = '1';
+			break;
+
+		case '~':
+			*p++ = '~';
+			*p++ = '0';
+			break;
+
+		default:
+			*p++ = s.s[i];
+		}
+	}
+
+	ret.s = b;
+	ret.len = n;
+
+	return ret;
+}
+
 void
 path_push_str(struct path *p, struct json_string s)
 {
@@ -62,7 +106,7 @@ path_push_str(struct path *p, struct json_string s)
 	elt = push_element(p);
 
 	elt->isnum = 0;
-	elt->u.str = json_strdup(s);
+	elt->u.str = escape_json_pointer(s);
 }
 
 void
@@ -101,6 +145,9 @@ build_fragment(size_t *lenp, struct path_element *pbeg, struct path_element *pen
 	size_t plen, plen0;
 	char *frag, *frag_end;
 
+	char *escbuf;
+	size_t eblen;
+
 	// build out path
 	plen0 = 0;
 	frag = frag_end = NULL;
@@ -108,6 +155,9 @@ build_fragment(size_t *lenp, struct path_element *pbeg, struct path_element *pen
 	if (!pbeg->isnum && pbeg->u.str.len == 0) {
 		pbeg++;
 	}
+
+	escbuf = NULL;
+	eblen = 0;
 
 build_path:
 	if (frag != NULL) {
@@ -126,21 +176,29 @@ build_path:
 			plen += snprintf(s, l, "/%zu", p->u.num);
 		} else {
 			const char *str;
-			size_t len;
+			size_t len, esclen;
 
 			/* XXX - escape JSON pointer things! */
 			len = p->u.str.len;
 			str = p->u.str.s;
 
-			if (len > INT_MAX) {
+			if (eblen < 6*(len+1)) {
+				eblen = 6*(len+1);
+				escbuf = xrealloc(escbuf, eblen);
+			}
+
+			uriEscapeExA(str, str+len, escbuf, URI_TRUE, URI_TRUE);
+			esclen = strlen(escbuf);
+
+			if (esclen > INT_MAX) {
 				// XXX - handle error more gracefully?
-				fprintf(stderr, "path element is too long:");
-				fwrite(str, 1, len, stderr);
+				fprintf(stderr, "escaped path element is too long:");
+				fwrite(escbuf, 1, esclen, stderr);
 				fprintf(stderr, "\n");
 				abort();
 			}
 
-			plen += snprintf(s, l, "/%.*s", (int)len, str);
+			plen += snprintf(s, l, "/%.*s", (int)esclen, escbuf);
 		}
 
 		assert(frag == NULL || frag + plen < frag_end);
@@ -148,6 +206,9 @@ build_path:
 
 	if (frag != NULL) {
 		assert(plen0 == plen);
+
+		free(escbuf);
+
 		*lenp = plen;
 		return frag;
 	}
