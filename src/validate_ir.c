@@ -6048,6 +6048,15 @@ jvst_ir_translate_forest(struct jvst_cnode_forest *forest)
 		cnode = forest->trees[i];
 		ir = jvst_ir_translate(cnode);
 
+		// if it's a CALL_ID statement, wrap it in a FRAME so
+		// all forest trees are FRAMEs
+		if (ir->type == JVST_IR_STMT_CALL_ID) {
+			struct jvst_ir_stmt *fr;
+			fr = ir_stmt_frame();
+			fr->u.frame.stmts = ir;
+			ir = fr;
+		}
+
 		if (!hmap_setptr(xl_tbl, cnode, ir)) {
 			fprintf(stderr, "could not add entry to cnode->IR translation table\n");
 			abort();
