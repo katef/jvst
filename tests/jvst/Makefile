@@ -86,21 +86,21 @@ SUITES = ${.CURDIR}/share/git/json-schema-test-suite/tests/draft6
 cleansuite:
 	rm -f ${.CURDIR}/${TEST_OUTDIR.tests/jvst}/results
 
-mkjsonsuite:: mkdir cleansuite
+mkjsonsuite:: cleansuite
 
-jsonsuite:: mkjsonsuite ${JVST}
+jsonsuite.only:: mkjsonsuite
 
 TEST_RESULTS.tests/jvst = ${TEST_OUTDIR.tests/jvst}/results
 
 .for _s in ${JSON_SUITES}
 
-${TEST_OUTDIR.tests/jvst}/${_s:S/.json//}: ${SUITES}/${_s}
+${TEST_OUTDIR.tests/jvst}/${_s:S/.json//}: mkdir ${SUITES}/${_s}
 	(cd ${TEST_OUTDIR.tests/jvst} && \
 	 ${EXTRACT_SUITE} ${SUITES}/${_s} ${_s:S/.json//})
 
 mkjsonsuite:: ${TEST_OUTDIR.tests/jvst}/${_s:S/.json//}
 
-jsonsuite.${_s:S/.json//}:: ${TEST_OUTDIR.tests/jvst}/${_s:S/.json//}
+jsonsuite.${_s:S/.json//}:: ${JVST} ${TEST_OUTDIR.tests/jvst}/${_s:S/.json//}
 	(						\
 	  cd ${TEST_OUTDIR.tests/jvst} ; 		\
 	  JVST=${.CURDIR}/${JVST} 			\
@@ -108,16 +108,16 @@ jsonsuite.${_s:S/.json//}:: ${TEST_OUTDIR.tests/jvst}/${_s:S/.json//}
 	    ${RUN_SUITE} ${.ALLSRC:T}/* ; 		\
 	)
 
-jsonsuite:: jsonsuite.${_s:S/.json//}
+jsonsuite.only:: jsonsuite.${_s:S/.json//}
 
 .endfor
 
 # default in case no custom suites are defined
-customsuite:: mkdir cleansuite
+customsuite.only:: mkdir cleansuite
 
 .for _s in ${CUSTOM_SUITES}
 
-customsuite.${_s}:: ${CUSTOM_SUITES.dir}/${_s}
+jsonsuite.${_s}:: ${JVST} ${CUSTOM_SUITES.dir}/${_s}
 	(						\
 	  cd ${CUSTOM_SUITES.dir} ; 			\
 	  JVST=${.CURDIR}/${JVST} 			\
@@ -125,15 +125,19 @@ customsuite.${_s}:: ${CUSTOM_SUITES.dir}/${_s}
 	    ${RUN_SUITE} ${_s}/*  			\
 	)
 
-customsuite:: customsuite.${_s}
+customsuite.only:: jsonsuite.${_s}
 
 .endfor
 
-jsonsuite:: customsuite
-
-jsonsuite:: 
+reporttests:: 
 	@echo Reporting results from ${TEST_RESULTS.tests/jvst}
 	${REPORT_SUITE} ${TEST_RESULTS.tests/jvst}
+
+jsonsuite:: jsonsuite.only reporttests
+
+customsuite:: customsuite.only reporttests
+
+allsuites: jsonsuite.only customsuite.only reporttests
 
 .else  # !defined(JVST)
 
