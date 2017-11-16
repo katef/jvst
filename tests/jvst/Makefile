@@ -4,6 +4,8 @@
 # tests into a format we can use to run
 JQ ?= jq 
 
+## JSON_SUITES are tests from the JSON schema test suite
+
 JSON_SUITES = 
 JSON_SUITES += type.json
 JSON_SUITES += boolean_schema.json
@@ -59,6 +61,20 @@ JSON_SUITES += enum.json
 # JSON_SUITES += optional/format.json
 # JSON_SUITES += optional/zeroTerminatedFloats.json
 
+
+## CUSTOM_SUITES are tests from our customized test suite
+## in tests/jvst/custom
+
+CUSTOM_SUITES.dir = tests/jvst
+
+CUSTOM_SUITES  =
+CUSTOM_SUITES += custom/anyOf
+
+
+# Where to place the output...
+TEST_OUTDIR.tests/jvst = ${BUILD}/tests/jvst
+
+
 .if defined(JVST)
 
 EXTRACT_SUITE = ${.CURDIR}/tests/jvst/extract.sh
@@ -67,14 +83,14 @@ REPORT_SUITE  = ${.CURDIR}/tests/jvst/reporttests.sh
 
 SUITES = ${.CURDIR}/share/git/json-schema-test-suite/tests/draft6
 
-TEST_OUTDIR.tests/jvst = ${BUILD}/tests/jvst
-
-SUBTEST += empty
-
-mkjsonsuite:: mkdir
+cleansuite:
 	rm -f ${.CURDIR}/${TEST_OUTDIR.tests/jvst}/results
 
+mkjsonsuite:: mkdir cleansuite
+
 jsonsuite:: mkjsonsuite ${JVST}
+
+TEST_RESULTS.tests/jvst = ${TEST_OUTDIR.tests/jvst}/results
 
 .for _s in ${JSON_SUITES}
 
@@ -84,19 +100,40 @@ ${TEST_OUTDIR.tests/jvst}/${_s:S/.json//}: ${SUITES}/${_s}
 
 mkjsonsuite:: ${TEST_OUTDIR.tests/jvst}/${_s:S/.json//}
 
-jsonsuite:: ${TEST_OUTDIR.tests/jvst}/${_s:S/.json//}
-	(							\
-	  cd ${TEST_OUTDIR.tests/jvst} ; 			\
-	  JVST=${.CURDIR}/${JVST} 				\
-	  OUTFILE=${.CURDIR}/${TEST_OUTDIR.tests/jvst}/results	\
-	    ${RUN_SUITE} ${.ALLSRC:T}/* ; 			\
+jsonsuite.${_s:S/.json//}:: ${TEST_OUTDIR.tests/jvst}/${_s:S/.json//}
+	(						\
+	  cd ${TEST_OUTDIR.tests/jvst} ; 		\
+	  JVST=${.CURDIR}/${JVST} 			\
+	  OUTFILE=${.CURDIR}/${TEST_RESULTS.tests/jvst}	\
+	    ${RUN_SUITE} ${.ALLSRC:T}/* ; 		\
 	)
+
+jsonsuite:: jsonsuite.${_s:S/.json//}
 
 .endfor
 
+# default in case no custom suites are defined
+customsuite:: mkdir cleansuite
+
+.for _s in ${CUSTOM_SUITES}
+
+customsuite.${_s}:: ${CUSTOM_SUITES.dir}/${_s}
+	(						\
+	  cd ${CUSTOM_SUITES.dir} ; 			\
+	  JVST=${.CURDIR}/${JVST} 			\
+	  OUTFILE=${.CURDIR}/${TEST_RESULTS.tests/jvst}	\
+	    ${RUN_SUITE} ${_s}/*  			\
+	)
+
+customsuite:: customsuite.${_s}
+
+.endfor
+
+jsonsuite:: customsuite
+
 jsonsuite:: 
-	@echo Reporting results in ${TEST_OUTDIR.tests/jvst}/results
-	${REPORT_SUITE} ${TEST_OUTDIR.tests/jvst}/results
+	@echo Reporting results from ${TEST_RESULTS.tests/jvst}
+	${REPORT_SUITE} ${TEST_RESULTS.tests/jvst}
 
 .else  # !defined(JVST)
 
