@@ -951,17 +951,13 @@ vm_split(struct jvst_vm *vm, int split, union jvst_vm_stackval *slot, int splitv
 		for (i=0; i < nproc; i++) {
 			jvst_vm_init_defaults(&vm->splits[i], vm->prog);
 			vm->splits[i].r_pc = vm->prog->sdata[off + i];
+
+			// split vms inherit the current token state
+			vm->splits[i].tokstate = vm->tokstate;
 		}
 
-		if (vm->tokstate == JVST_VM_TOKEN_BUFFERED) {
-			for (i=0; i < nproc; i++) {
-				vm->splits[i].evt = vm->evt;
-				vm->splits[i].pret = vm->pret;
-				vm->splits[i].tokstate = vm->tokstate;
-			}
-			vm->tokstate = JVST_VM_TOKEN_CONSUMED;
-		}
-
+		// SPLIT should leave the current token, if any, consumed
+		vm->tokstate = JVST_VM_TOKEN_CONSUMED;
 		vm->nsplit = nproc;
 	}
 
