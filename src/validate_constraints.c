@@ -1704,6 +1704,19 @@ cnode_translate_ast_with_ids(const struct ast_schema *ast, struct ast_translator
 		node = top_jxn;
 	}
 
+	if (ast->not != NULL) {
+		struct jvst_cnode *top_jxn, *not_jxn, **conds;
+		struct ast_schema_set *sset;
+
+		not_jxn = jvst_cnode_alloc(JVST_CNODE_NOT);
+		not_jxn->u.ctrl = cnode_translate_ast_with_ids(ast->not, xl);
+
+		top_jxn = jvst_cnode_alloc(JVST_CNODE_AND);
+		top_jxn->u.ctrl = not_jxn;
+		not_jxn->next = node;
+		node = top_jxn;
+	}
+
 	if (ast->xenum != NULL) {
 		struct ast_value_set *v;
 		struct jvst_cnode *top_jxn, *cons, **jpp;
@@ -4405,6 +4418,15 @@ cnode_simplify_not(struct jvst_cnode *top)
 			/* nop */
 			break;
 		}
+	}
+
+	if (top->type == JVST_CNODE_NOT) {
+		struct jvst_cnode *simplified;
+
+		simplified = jvst_cnode_alloc(JVST_CNODE_NOT);
+		simplified->u.ctrl = jvst_cnode_simplify(top->u.ctrl);
+
+		return simplified;
 	}
 
 	return top;

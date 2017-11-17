@@ -222,7 +222,7 @@ ir_stmt_valid(void)
 	return ir_stmt_new(JVST_IR_STMT_VALID);
 }
 
-static inline struct jvst_ir_stmt *
+static struct jvst_ir_stmt *
 ir_consume_and_valid(void)
 {
 	struct jvst_ir_stmt *seq, **spp;
@@ -235,6 +235,58 @@ ir_consume_and_valid(void)
 	*spp = ir_stmt_valid();
 	spp = &(*spp)->next;
 	return seq;
+}
+
+static inline struct jvst_ir_stmt *
+ir_stmt_frame(void)
+{
+	struct jvst_ir_stmt *frame;
+	frame = ir_stmt_new(JVST_IR_STMT_FRAME);
+	frame->u.frame.nloops    = 0;
+	frame->u.frame.ncounters = 0;
+	frame->u.frame.nbitvecs  = 0;
+
+	frame->u.frame.blockind = 0;
+	frame->u.frame.ntemps  = 0;
+
+	frame->u.frame.blocks = NULL;
+	frame->u.frame.stmts = NULL;
+	return frame;
+}
+
+/* constructs a frame of two statements: CONSUME, VALID.  This is used
+ * in a few places to keep the token stream in sync on a SPLIT
+ */
+static struct jvst_ir_stmt *
+ir_consume_and_valid_frame(void)
+{
+	struct jvst_ir_stmt *fr, **spp;
+	fr = ir_stmt_frame();
+	spp = &fr->u.frame.stmts;
+
+	*spp = ir_stmt_new(JVST_IR_STMT_CONSUME);
+	spp = &(*spp)->next;
+
+	*spp = ir_stmt_valid();
+	spp = &(*spp)->next;
+
+	return fr;
+}
+
+static struct jvst_ir_stmt *
+ir_consume_and_invalid_frame(enum jvst_invalid_code errcode)
+{
+	struct jvst_ir_stmt *fr, **spp;
+	fr = ir_stmt_frame();
+	spp = &fr->u.frame.stmts;
+
+	*spp = ir_stmt_new(JVST_IR_STMT_CONSUME);
+	spp = &(*spp)->next;
+
+	*spp = ir_stmt_invalid(errcode);
+	spp = &(*spp)->next;
+
+	return fr;
 }
 
 static inline struct jvst_ir_stmt *
@@ -256,23 +308,6 @@ ir_stmt_callid(struct json_string id)
 
 	call->u.call_id.id = json_strdup(id);
 	return call;
-}
-
-static inline struct jvst_ir_stmt *
-ir_stmt_frame(void)
-{
-	struct jvst_ir_stmt *frame;
-	frame = ir_stmt_new(JVST_IR_STMT_FRAME);
-	frame->u.frame.nloops    = 0;
-	frame->u.frame.ncounters = 0;
-	frame->u.frame.nbitvecs  = 0;
-
-	frame->u.frame.blockind = 0;
-	frame->u.frame.ntemps  = 0;
-
-	frame->u.frame.blocks = NULL;
-	frame->u.frame.stmts = NULL;
-	return frame;
 }
 
 static inline struct jvst_ir_stmt *
@@ -1724,6 +1759,26 @@ ir_translate_number(struct jvst_cnode *top, struct jvst_ir_stmt *frame)
 		*spp = ir_stmt_invalid(JVST_INVALID_UNEXPECTED_TOKEN);
 		break;
 
+	case JVST_CNODE_NOT:
+		{
+			struct jvst_ir_stmt *br;
+			struct jvst_ir_expr *cond;
+			enum jvst_invalid_code ecode;
+
+			assert(top->u.ctrl != NULL);
+			assert(top->u.ctrl->next == NULL);
+
+			cond = ir_translate_number_expr(top->u.ctrl);
+			ecode = JVST_INVALID_NUMBER;
+
+			br = ir_stmt_if(cond,
+				// ir_stmt_valid(),
+				ir_stmt_invalid(ecode),
+				ir_consume_and_valid());
+			*spp = br;
+		}
+		break;
+
 	case JVST_CNODE_AND:
 	case JVST_CNODE_OR:
 	case JVST_CNODE_NUM_INTEGER:
@@ -1790,12 +1845,6 @@ ir_translate_number(struct jvst_cnode *top, struct jvst_ir_stmt *frame)
 
 		}
 		break;
-
-	case JVST_CNODE_NOT:
-		fprintf(stderr, "[%s:%d] cnode %s not yet implemented\n",
-				__FILE__, __LINE__, 
-				jvst_cnode_type_name(top->type));
-		abort();
 
 	default:
 		fprintf(stderr, "[%s:%d] invalid cnode type %s for $NUMBER\n",
@@ -2690,6 +2739,59 @@ split_gather_and_or(struct jvst_cnode *top, struct split_gather_data *data,
 }
 
 static struct jvst_ir_expr *
+split_gather_not(struct jvst_cnode *top, struct split_gather_data *data,
+	struct jvst_ir_stmt *(*xlatefunc)(struct jvst_cnode *, struct jvst_ir_stmt *))
+{
+	struct jvst_cnode *node;
+	struct jvst_ir_expr *e_not, *expr;
+
+	assert(top->type == JVST_CNODE_NOT);
+
+	data->nctrl++;
+	node = top->u.ctrl;
+
+	assert(node != NULL);
+	assert(node->next == NULL);
+
+	// NOT requires that the JSON value be invalid wrt to the NOT
+	// schema.  This requires some care; the schema may not consume
+	// the whole value before returning INVALID.
+	//
+	// To ensure that the whole JSON value is consumed, we construct
+	// an additional split frame that consumes the input (and then
+	// returns invalid).
+	//
+	// The frame returns INVALID so we can test for NOT by comparing
+	// the number of valid SPLITs to 0.
+	data->nframe++;
+	*data->fpp = ir_consume_and_invalid_frame(JVST_INVALID_JSON);
+	data->fpp = &(*data->fpp)->next;
+
+	switch (node->type) {
+	case JVST_CNODE_AND:
+	case JVST_CNODE_OR:
+	case JVST_CNODE_XOR:
+		expr = split_gather(node, data, xlatefunc);
+		break;
+
+	case JVST_CNODE_NOT:
+		// fail if the node type isn't handled in the switch
+		fprintf(stderr, "%s:%d (%s) unsimplified NOT(NOT(...)) encountered\n",
+			__FILE__, __LINE__, __func__);
+		abort();
+
+	default:
+		expr = split_gather_and_noncontrol_children(node, data, xlatefunc);
+		break;
+	}
+
+	e_not = ir_expr_new(JVST_IR_EXPR_NOT);
+	e_not->u.not_ = expr;
+
+	return e_not;
+}
+
+static struct jvst_ir_expr *
 split_gather(struct jvst_cnode *top, struct split_gather_data *data,
 	struct jvst_ir_stmt *(*xlatefunc)(struct jvst_cnode *, struct jvst_ir_stmt *))
 {
@@ -2708,6 +2810,7 @@ split_gather(struct jvst_cnode *top, struct split_gather_data *data,
 		return split_gather_and_or(top,data,xlatefunc);
 
 	case JVST_CNODE_NOT:
+		return split_gather_not(top,data,xlatefunc);
 
 	case JVST_CNODE_XOR:
 		// fail if the node type isn't handled in the switch
@@ -3406,20 +3509,10 @@ arr_translate_contains(struct jvst_ir_stmt *arr_item, struct ir_arr_builder *bui
 	if (arr_item != NULL) {
 		*frp = arr_item;
 	} else {
-		struct jvst_ir_stmt *vfr, **spp;
 		// need to construct a frame that returns valid to ensure
 		// that the split will be correctly synchronized, even if
 		// 'contains' constraint is invalid for an item
-		vfr = ir_stmt_frame();
-		spp = &vfr->u.frame.stmts;
-
-		*spp = ir_stmt_new(JVST_IR_STMT_CONSUME);
-		spp = &(*spp)->next;
-
-		*spp = ir_stmt_valid();
-		spp = &(*spp)->next;
-
-		*frp = vfr;
+		*frp = ir_consume_and_valid_frame();
 	}
 
 	*ilpp = splv;

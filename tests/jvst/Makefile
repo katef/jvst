@@ -13,7 +13,7 @@ JSON_SUITES += boolean_schema.json
 JSON_SUITES += allOf.json
 JSON_SUITES += anyOf.json
 JSON_SUITES += oneOf.json
-# JSON_SUITES += not.json
+JSON_SUITES += not.json
 
 JSON_SUITES += items.json
 JSON_SUITES += additionalItems.json

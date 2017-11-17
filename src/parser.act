@@ -801,6 +801,18 @@
                 set_schema_list(&ast->some_of.set, items, "set-any-of");
                 ast->some_of.min = 1;
                 ast->some_of.max = 1;
+		if (debug & DEBUG_ACT) {
+                        // XXX - print out schemas
+			fprintf(stderr, "<set-one-of>: %p\n", (void *)items);
+		}
+        @};
+
+        <set-not>:  (sch :ast-schema) -> () = @{
+                ast->not = @sch;
+		if (debug & DEBUG_ACT) {
+                        // XXX - print out schema
+			fprintf(stderr, "<set-not>: %p\n", (void *)ast->not);
+		}
         @};
 
 	<set-schema>: (s :string) -> () = @{
