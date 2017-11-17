@@ -218,15 +218,8 @@ struct ast_schema {
 	struct json_string title;
 	struct json_string description;
 
-	struct {
-		int dummy;
-		/* TODO: no restrictions */
-	} xdefault;
-
-	struct {
-		int dummy;
-		/* TODO: heterogenous array of no restrictions */
-	} examples;
+	struct json_value *xdefault;
+	struct ast_value_set *examples;
 
 	struct ast_schema *next;
 };

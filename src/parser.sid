@@ -135,6 +135,7 @@
 
 	<set-const>:		    (:ast-json-value) -> ();
 	<add-enum>:		    (:ast-json-value) -> ();
+	<add-example>:		    (:ast-json-value) -> ();
 	<set-schema>:               (:string) -> ();
 	<set-id>:                   (:string) -> ();
 	<set-multiple-of>:          (:number) -> ();
@@ -714,6 +715,27 @@
 		<set-const>(v);
 	};
 
+	directive-examples [
+		single-value = {
+			v = json-value;
+			<add-example>(v);
+		};
+
+		list-of-values = {
+			single-value;
+			{
+				comma;
+				list-of-values;
+			||
+				$;
+			};
+		};
+	] = {
+		OBRACKET;
+		list-of-values;
+		CBRACKET;
+	};
+
 	directive-enum [
 		single-value = {
 			v = json-value;
@@ -847,7 +869,7 @@
 		placeholder;
 	||
 		? = <kw-examples>(k);
-		placeholder;
+                directive-examples;
 	||
 		{
 			/* non-directives function like 'definitions' */

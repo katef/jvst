@@ -1089,6 +1089,19 @@
 		*it = v;
         @};
 
+        <add-example>: (v :ast-json-value) -> () = @{
+		struct ast_value_set *v, **it;
+		v = xmalloc(sizeof *v);
+		v->value = @v;
+		v->next = NULL;
+
+		for (it = &ast->examples; *it != NULL; it = &(*it)->next) {
+			continue;
+		}
+
+		*it = v;
+        @};
+
 	<ast-json-empty-value>: () -> (v :ast-json-value) = @{;
 		static const struct json_value zero_value;
 		@v = zero_value;
