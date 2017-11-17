@@ -46,6 +46,11 @@
 		__FILE__, __LINE__, __func__, jvst_cnode_type_name((node)->type));    \
 	abort(); } while(0)
 
+#define INVALID_CNODE(node) do { \
+	fprintf(stderr, "%s:%d (%s) invalid cnode type %s\n", \
+		__FILE__, __LINE__, __func__, jvst_cnode_type_name((node)->type));    \
+	abort(); } while(0)
+
 #define UNKNOWN_STMT(type) do { \
 	fprintf(stderr, "%s:%d (%s) unknown statement type %d\n", \
 		__FILE__, __LINE__, __func__, (type)); 	   \
@@ -2433,7 +2438,7 @@ struct split_gather_data {
 // Separates children of a control node into two separate linked lists:
 // one control and one non-control. Returns opp when finished so the
 // linked lists can be easily merged
-struct jvst_cnode **
+static struct jvst_cnode **
 separate_control_nodes(struct jvst_cnode *top, struct jvst_cnode **cpp, struct jvst_cnode **opp)
 {
 	struct jvst_cnode *node, *next;
@@ -2497,6 +2502,195 @@ separate_control_nodes(struct jvst_cnode *top, struct jvst_cnode **cpp, struct j
 
 static struct jvst_ir_expr *
 split_gather(struct jvst_cnode *top, struct split_gather_data *data,
+	struct jvst_ir_stmt *(*xlatefunc)(struct jvst_cnode *, struct jvst_ir_stmt *));
+
+static struct jvst_ir_expr *
+split_gather_and_noncontrol_children(struct jvst_cnode *other, struct split_gather_data *data,
+	struct jvst_ir_stmt *(*xlatefunc)(struct jvst_cnode *, struct jvst_ir_stmt *))
+{
+	struct jvst_ir_stmt *fr;
+	struct jvst_ir_expr *e_btest;
+	size_t b0;
+	struct jvst_cnode *tmp_top;
+
+	assert(other != NULL);
+	assert(data != NULL);
+	assert(xlatefunc != NULL);
+
+	b0 = data->boff++;
+	data->nframe++;
+
+	// translate the list of nodes in 'other'.  If 'other' has more
+	// than one node, create a temporary AND on top.  Otherwise,
+	// just translate 'other'
+
+	if (other->next != NULL) {
+		tmp_top = jvst_cnode_alloc(JVST_CNODE_AND);
+		// XXX - GC: register tmp_top as root
+		tmp_top->u.ctrl = other;
+	} else {
+		tmp_top = other;
+	}
+
+	fr = ir_stmt_frame();
+	fr->u.frame.stmts = xlatefunc(tmp_top, fr);
+	*data->fpp = fr;
+	data->fpp = &fr->next;
+
+	e_btest = ir_expr_new(JVST_IR_EXPR_BTEST);
+	e_btest->u.btest.frame = data->bvec->u.bitvec.frame;
+	e_btest->u.btest.bitvec = data->bvec;
+	e_btest->u.btest.b0 = b0;
+	e_btest->u.btest.b1 = b0;
+
+	if (tmp_top != other) {
+		// XXX - GC: unregister tmp_top as root
+	}
+
+	return e_btest;
+}
+
+static struct jvst_ir_expr *
+split_gather_or_noncontrol_children(struct jvst_cnode *other, struct split_gather_data *data,
+	struct jvst_ir_stmt *(*xlatefunc)(struct jvst_cnode *, struct jvst_ir_stmt *))
+{
+	struct jvst_cnode *node;
+	struct jvst_ir_expr *e_btest;
+	size_t b0;
+
+	b0 = data->boff;
+
+	// 2. Create frames for all non-control nodes.
+	for (node = other; node != NULL; node = node->next) {
+		struct jvst_ir_stmt *fr;
+
+		data->boff++;
+		data->nframe++;
+
+		fr = ir_stmt_frame();
+		fr->u.frame.stmts = xlatefunc(node, fr);
+		*data->fpp = fr;
+		data->fpp = &fr->next;
+
+	}
+
+	e_btest = ir_expr_new(JVST_IR_EXPR_BTESTANY);
+	e_btest->u.btest.frame = data->bvec->u.bitvec.frame;
+	e_btest->u.btest.bitvec = data->bvec;
+	e_btest->u.btest.b0 = b0;
+	e_btest->u.btest.b1 = data->boff-1;
+
+	return e_btest;
+}
+
+static struct jvst_ir_expr **
+split_gather_control_children(struct jvst_cnode *ctrl, struct split_gather_data *data,
+		enum jvst_ir_expr_type jxntype,
+		struct jvst_ir_expr **epp)
+{
+	struct jvst_cnode *node;
+
+	for (node = ctrl; node != NULL; node = node->next) {
+		struct jvst_ir_expr *e_ctrl;
+		e_ctrl = split_gather(node, data, ir_translate_object_inner);
+		if (node->next == NULL) {
+			*epp = e_ctrl;
+		} else {
+			struct jvst_ir_expr *e_jxn;
+			e_jxn = ir_expr_new(jxntype);
+			e_jxn->u.and_or.left = e_ctrl;
+			*epp = e_jxn;
+			epp = &e_jxn->u.and_or.right;
+		}
+	}
+
+	return epp;
+}
+
+static struct jvst_ir_expr *
+split_gather_and_or(struct jvst_cnode *top, struct split_gather_data *data,
+	struct jvst_ir_stmt *(*xlatefunc)(struct jvst_cnode *, struct jvst_ir_stmt *))
+{
+	struct jvst_cnode *ctrl, *other, **opp;
+	struct jvst_ir_expr *expr, **epp;
+	enum jvst_ir_expr_type jxntype;
+
+	switch (top->type) {
+	case JVST_CNODE_OR:
+		jxntype = JVST_IR_EXPR_OR;
+		break;
+
+	case JVST_CNODE_AND:
+		jxntype = JVST_IR_EXPR_AND;
+		break;
+
+	default:
+		INVALID_CNODE(top);
+	}
+
+	// 1. Separate nodes into control and non-control nodes.
+	ctrl = NULL;
+	other = NULL;
+	opp = separate_control_nodes(top, &ctrl, &other);
+
+	// AND subnodes that are not control nodes (OR, XOR,
+	// NOT) can be evaluated simultaneously in the same
+	// validator and do not require a split.
+	//
+	// OR subnodes must all be evaluated
+	// separately, but we can use BTESTANY to
+	// evaluate children that are not control nodes.
+	if (top->type == JVST_CNODE_OR || ctrl != NULL) {
+		data->nctrl++;
+	}
+
+	expr = NULL;
+	epp = &expr;
+
+	top->u.ctrl = other;
+
+	// 2. Create a single frame for all non-control nodes.
+	//    - Create a temporary AND junction for the IR frame
+	//    - Create the IR frame
+	if (other != NULL) {
+		struct jvst_ir_expr *e_btest;
+
+		switch (top->type) {
+		case JVST_CNODE_OR:
+			e_btest = split_gather_or_noncontrol_children(other, data, xlatefunc);
+			break;
+
+		case JVST_CNODE_AND:
+			e_btest = split_gather_and_noncontrol_children(other, data, xlatefunc);
+			break;
+
+		default:
+			INVALID_CNODE(top);
+		}
+
+		if (ctrl != NULL) {
+			struct jvst_ir_expr *e_jxn;
+			e_jxn = ir_expr_new(jxntype);
+			e_jxn->u.and_or.left = e_btest;
+			*epp = e_jxn;
+			epp = &e_jxn->u.and_or.right;
+		} else {
+			*epp = e_btest;
+		}
+	}
+
+	// don't lose children of AND node
+	*opp = ctrl;
+
+	// 3. Create separate frames for all control nodes.
+	epp = split_gather_control_children(ctrl, data, jxntype, epp);
+
+	assert(expr != NULL);
+	return expr;
+}
+
+static struct jvst_ir_expr *
+split_gather(struct jvst_cnode *top, struct split_gather_data *data,
 	struct jvst_ir_stmt *(*xlatefunc)(struct jvst_cnode *, struct jvst_ir_stmt *))
 {
 	struct jvst_cnode *node;
@@ -2510,163 +2704,12 @@ split_gather(struct jvst_cnode *top, struct split_gather_data *data,
 
 	switch (top->type) {
 	case JVST_CNODE_AND:
-		{
-			struct jvst_cnode *next, *ctrl, *other, **opp;
-			struct jvst_ir_expr *expr, **epp;
-			size_t b0;
-
-			// AND subnodes that are not control nodes (OR, XOR,
-			// NOT) can be evaluated simultaneously in the same
-			// validator and do not require a split.
-			//
-			// 1. Separate nodes into control and non-control nodes.
-			ctrl = NULL;
-			other = NULL;
-			opp = separate_control_nodes(top, &ctrl, &other);
-
-			expr = NULL;
-			epp = &expr;
-
-			top->u.ctrl = other;
-
-			// 2. Create a single frame for all non-control nodes.
-			//    - Create a temporary AND junction for the IR frame
-			//    - Create the IR frame
-			if (other != NULL) {
-				struct jvst_ir_stmt *fr;
-				struct jvst_ir_expr *e_and, *e_btest;
-
-				b0 = data->boff++;
-				data->nframe++;
-
-				fr = ir_stmt_frame();
-				fr->u.frame.stmts = xlatefunc(top, fr);
-				*data->fpp = fr;
-				data->fpp = &fr->next;
-
-				e_btest = ir_expr_new(JVST_IR_EXPR_BTEST);
-				e_btest->u.btest.frame = data->bvec->u.bitvec.frame;
-				e_btest->u.btest.bitvec = data->bvec;
-				e_btest->u.btest.b0 = b0;
-				e_btest->u.btest.b1 = b0;
-
-				if (ctrl != NULL) {
-					e_and = ir_expr_new(JVST_IR_EXPR_AND);
-					e_and->u.and_or.left = e_btest;
-					*epp = e_and;
-					epp = &e_and->u.and_or.right;
-				} else {
-					*epp = e_btest;
-				}
-			}
-
-			// don't lose children of AND node
-			*opp = ctrl;
-
-			if (ctrl != NULL) {
-				data->nctrl++;
-			}
-
-			// 3. Create separate frames for all control nodes.
-			for (node = ctrl; node != NULL; node = node->next) {
-				struct jvst_ir_expr *e_ctrl;
-				e_ctrl = split_gather(node, data, ir_translate_object_inner);
-				if (node->next == NULL) {
-					*epp = e_ctrl;
-				} else {
-					struct jvst_ir_expr *e_and;
-					e_and = ir_expr_new(JVST_IR_EXPR_AND);
-					e_and->u.and_or.left = e_ctrl;
-					*epp = e_and;
-					epp = &e_and->u.and_or.right;
-				}
-			}
-			assert(expr != NULL);
-			return expr;
-		}
-
 	case JVST_CNODE_OR:
-		{
-			struct jvst_cnode *next, *ctrl, *other, **opp;
-			struct jvst_ir_expr *expr, **epp;
+		return split_gather_and_or(top,data,xlatefunc);
 
-			// OR and XOR subnodes must all be evaluated
-			// separately, but we can use BTESTANY to
-			// evaluate children that are not control nodes.
-
-			data->nctrl++;
-
-			// 1. Separate nodes into control and non-control nodes.
-			ctrl = NULL;
-			other = NULL;
-			opp = separate_control_nodes(top, &ctrl, &other);
-
-			expr = NULL;
-			epp = &expr;
-
-			top->u.ctrl = other;
-
-			if (other != NULL) {
-				struct jvst_ir_expr *e_btest;
-				size_t b0;
-
-				b0 = data->boff;
-
-				// 2. Create frames for all non-control nodes.
-				for (node = other; node != NULL; node = node->next) {
-					struct jvst_ir_stmt *fr;
-
-					data->boff++;
-					data->nframe++;
-
-					fr = ir_stmt_frame();
-					fr->u.frame.stmts = xlatefunc(node, fr);
-					*data->fpp = fr;
-					data->fpp = &fr->next;
-
-				}
-
-				e_btest = ir_expr_new(JVST_IR_EXPR_BTESTANY);
-				e_btest->u.btest.frame = data->bvec->u.bitvec.frame;
-				e_btest->u.btest.bitvec = data->bvec;
-				e_btest->u.btest.b0 = b0;
-				e_btest->u.btest.b1 = data->boff-1;
-
-				if (ctrl != NULL) {
-					struct jvst_ir_expr *e_or;
-					e_or = ir_expr_new(JVST_IR_EXPR_OR);
-					e_or->u.and_or.left = e_btest;
-					*epp = e_or;
-					epp = &e_or->u.and_or.right;
-				} else {
-					*epp = e_btest;
-				}
-			}
-
-			// don't lose children of OR/XOR node
-			*opp = ctrl;
-
-			// 3. Create separate frames for all control nodes.
-			for (node = ctrl; node != NULL; node = node->next) {
-				struct jvst_ir_expr *e_ctrl;
-				e_ctrl = split_gather(node, data, ir_translate_object_inner);
-				if (node->next == NULL) {
-					*epp = e_ctrl;
-				} else {
-					struct jvst_ir_expr *e_or;
-					e_or = ir_expr_new(JVST_IR_EXPR_OR);
-					e_or->u.and_or.left = e_ctrl;
-					*epp = e_or;
-					epp = &e_or->u.and_or.right;
-				}
-			}
-
-			assert(expr != NULL);
-			return expr;
-		}
+	case JVST_CNODE_NOT:
 
 	case JVST_CNODE_XOR:
-	case JVST_CNODE_NOT:
 		// fail if the node type isn't handled in the switch
 		fprintf(stderr, "%s:%d cnode %s not yet implemented in %s\n",
 			__FILE__, __LINE__, jvst_cnode_type_name(top->type), __func__);
