@@ -1,0 +1,7 @@
+test NOT on strings
+0	not 'foo', 'bar', or 'baz'
+1	'foo' is invalid
+2	'bar' is invalid
+3	'baz' is invalid
+4	'foobar' is valid
+

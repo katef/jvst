@@ -1081,9 +1081,8 @@ jvst_ir_dump_expr(struct sbuf *buf, const struct jvst_ir_expr *expr, int indent)
 	case JVST_IR_EXPR_NOT:
 		{
 			sbuf_snprintf(buf, "NOT(\n");
-			jvst_ir_dump_expr(buf,expr->u.and_or.left,indent+2);
-			sbuf_snprintf(buf, ",\n");
-			jvst_ir_dump_expr(buf,expr->u.and_or.right,indent+2);
+			jvst_ir_dump_expr(buf,expr->u.not_,indent+2);
+			sbuf_snprintf(buf, "\n");
 			sbuf_indent(buf, indent);
 			sbuf_snprintf(buf, ")");
 		}
@@ -2763,6 +2762,7 @@ split_gather_not(struct jvst_cnode *top, struct split_gather_data *data,
 	//
 	// The frame returns INVALID so we can test for NOT by comparing
 	// the number of valid SPLITs to 0.
+	data->boff++;   // split uses one bit for NOT sync frame, although we don't check it
 	data->nframe++;
 	*data->fpp = ir_consume_and_invalid_frame(JVST_INVALID_JSON);
 	data->fpp = &(*data->fpp)->next;
@@ -2775,7 +2775,8 @@ split_gather_not(struct jvst_cnode *top, struct split_gather_data *data,
 		break;
 
 	case JVST_CNODE_NOT:
-		// fail if the node type isn't handled in the switch
+		// NOT(NOT(cond)) cases should be simplified in the
+		// cnode tree
 		fprintf(stderr, "%s:%d (%s) unsimplified NOT(NOT(...)) encountered\n",
 			__FILE__, __LINE__, __func__);
 		abort();
@@ -3397,8 +3398,16 @@ ir_translate_string_inner(struct jvst_cnode *top, struct ir_str_builder *builder
 		}
 		return;
 
-	case JVST_CNODE_XOR:
 	case JVST_CNODE_NOT:
+		{
+			struct jvst_ir_stmt *stmt;
+
+			stmt = ir_translate_split(top, builder->frame, ir_translate_string);
+			*builder->ipp = stmt;
+		}
+		return;
+
+	case JVST_CNODE_XOR:
 		fprintf(stderr, "[%s:%d] string translation for cnode %s not yet implemented\n",
 				__FILE__, __LINE__, 
 				jvst_cnode_type_name(top->type));
@@ -5496,6 +5505,9 @@ ir_linearize_cond(struct op_linearizer *oplin, struct jvst_ir_expr *cond, struct
 		}
 
 	case JVST_IR_EXPR_NOT:
+		// for NOT(cond), we flip true/false branch and linearize cond
+		return ir_linearize_cond(oplin, cond->u.not_, bfalse, btrue);
+
 	case JVST_IR_EXPR_SEQ:
 		fprintf(stderr, "%s:%d (%s) complex condition %s not yet implemented\n",
 				__FILE__, __LINE__, __func__,

@@ -4394,6 +4394,15 @@ cnode_simplify_not(struct jvst_cnode *top)
 	assert(top->u.ctrl != NULL);
 	assert(top->u.ctrl->next == NULL);
 
+	// Eliminate double negatives: NOT(NOT(cond)) --> cond
+	if (top->u.ctrl->type == JVST_CNODE_NOT) {
+		struct jvst_cnode *not_not_cond;
+		not_not_cond = top->u.ctrl->u.ctrl;
+		assert(not_not_cond != NULL);
+		assert(not_not_cond->next == NULL);
+		return jvst_cnode_simplify(not_not_cond);
+	}
+
 	if (top->u.ctrl->type == JVST_CNODE_SWITCH) {
 		// fast exit if then child node is a SWITCH node: the NOT is pushed into
 		// each case of the switch, so there's no further simplification to be

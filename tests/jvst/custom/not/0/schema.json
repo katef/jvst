@@ -1,0 +1,6 @@
+{
+  "type" : "string",
+  "not" : {
+    "enum" : [ "foo", "bar", "baz" ]
+  }
+}
