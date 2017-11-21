@@ -5,11 +5,6 @@ if [ -z "${JVST}" ]; then
   exit 1
 fi
 
-if [ -z "${OUTDIR}" ]; then
-  echo "OUTDIR must be set"
-  exit 1
-fi
-
 declare -a failures
 succ=0
 skip=0
@@ -28,9 +23,6 @@ while [ $# -gt 0 ]; do
     continue
   fi
 
-  outcase=${OUTDIR}/${testdir}
-  mkdir -p ${outcase}
-
   ncase=0
   succ_case=0
   fail_case=0
@@ -44,16 +36,13 @@ while [ $# -gt 0 ]; do
     testbase=`basename ${testfile}`
     testbase=${testbase%.json}
 
-    # XXX - direct this to ${BUILD} somehow...
-    outfile=${OUTDIR}/${testdir}/${testbase}.out
-
     casenum=${testbase#test_}
     casenum=${casenum%_invalid}
     casenum=${casenum%_valid}
 
     casedesc=`awk -v CN=$casenum -- '$1 == CN { print }' < ${desc_file} | sed -e 's/^[0-9]\{1,\}[ 	]\{1,\}//'`
 
-    ${JVST} -l jvst -c -r ${schema} ${testfile} > ${outfile} 2>&1
+    ${JVST} -l jvst -c -r ${schema} ${testfile} > /dev/null 2>&1
     valid=$?
     if [ $valid != 0 ]; then
       # standardize valid to be 0 (success) or 1 (failure)
@@ -113,12 +102,23 @@ while [ $# -gt 0 ]; do
 done
 
 nfail=$(( $ntotcase - $succ ))
-echo "SUMMARY: ${succ} successes, ${nfail} failures, ${ntotcase} cases"
-if [ $nfail -gt 0 ]; then
-  echo "Failed tests:"
-  for f in "${failures[@]}"; do
-    setname=${f% ::*}
-    testname=${f#*:: }
-    printf "%-20.20s\t%s\n" "$setname" "$testname"
-  done
+
+print_results() {
+  echo "SUMMARY: ${succ} successes, ${nfail} failures, ${ntotcase} cases"
+  if [ $nfail -gt 0 ]; then
+    echo "Failed tests:"
+    for f in "${failures[@]}"; do
+      setname=${f% ::*}
+      testname=${f#*:: }
+      printf "%-20.20s\t%s\n" "$setname" "$testname"
+    done
+  fi
+}
+
+# print to stdout
+print_results
+
+if [ ! -z "${OUTFILE}" ] ; then
+  ( echo "---" ; print_results ) >> ${OUTFILE}
 fi
+

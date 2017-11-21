@@ -38,6 +38,8 @@ LFLAGS.${prog} += ${LIBS.libre} ${LIBS.libfsm}
 LFLAGS.${prog} += -lm
 .endfor
 
+unittests:: test
+
 .for prog in ${TEST_PROG}
 
 test::	${BUILD}/tests/unit/${prog}
@@ -45,6 +47,9 @@ CLEAN += ${BUILD}/tests/unit/${prog}
 
 ${BUILD}/tests/unit/${prog}: ${BUILD}/tests/unit/${prog:R}.o ${TEST_DEP_OBJS}
 	${CC} -o $@ ${LFLAGS} ${.ALLSRC:M*.o} ${.ALLSRC:M*.a} ${LFLAGS.${prog}}
+
+unittests::	${BUILD}/tests/unit/${prog}
+	$(>)
 
 MODE.test/${prog} = 755
 
