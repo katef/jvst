@@ -1,0 +1,6 @@
+tests contains with other constraints
+0       [string,integer] array is valid
+1       [string,string,integer] array is valid
+2       [integer,string] array is invalid
+3       [string] array is invalid
+4       [string,string] array is invalid

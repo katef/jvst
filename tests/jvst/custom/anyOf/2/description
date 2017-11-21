@@ -1,0 +1,6 @@
+anyOf with arrays
+0       Matches first
+1       Matches second
+2       Matches third
+3       Two strings is invalid
+4       Two integers is invalid

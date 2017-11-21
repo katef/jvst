@@ -1,4 +1,4 @@
-anyOf
+anyOf with strings, length constraints
 0       Matches first, not second
 1       Matches second, not first
 2       Matches both

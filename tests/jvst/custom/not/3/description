@@ -1,0 +1,12 @@
+test NOT on array
+0	empty array is valid
+1       one-element array is valid
+2       two-element array is valid
+3       (integer,string,true) is invalid
+4       string is invalid
+5       (integer,string,true,23) is valid
+6       (integer,string,false) is valid
+7       (string,string,false) is valid
+8       (integer,integer,false) is valid
+9       (integer,string,integer) is valid
+10      (non-integer,string,true) is valid

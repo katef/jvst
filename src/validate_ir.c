@@ -596,12 +596,6 @@ ir_expr_tmp(struct jvst_ir_stmt *frame, struct jvst_ir_expr *expr)
 	case JVST_IR_EXPR_SEQ:
 		return ir_expr_tmp(frame, expr->u.seq.expr);
 
-		/*
-		fprintf(stderr, "%s:%d (%s) condition %s not yet implemented\n",
-			__FILE__, __LINE__, __func__, jvst_ir_expr_type_name(expr->type));
-		abort();
-		*/
-
 	case JVST_IR_EXPR_NONE:
 		fprintf(stderr, "%s:%d (%s) cannot assign temporary to expression %s\n",
 			__FILE__, __LINE__, __func__, jvst_ir_expr_type_name(expr->type));
@@ -2633,14 +2627,15 @@ split_gather_or_noncontrol_children(struct jvst_cnode *other, struct split_gathe
 
 static struct jvst_ir_expr **
 split_gather_control_children(struct jvst_cnode *ctrl, struct split_gather_data *data,
-		enum jvst_ir_expr_type jxntype,
-		struct jvst_ir_expr **epp)
+	enum jvst_ir_expr_type jxntype,
+	struct jvst_ir_expr **epp,
+	struct jvst_ir_stmt *(*xlatefunc)(struct jvst_cnode *, struct jvst_ir_stmt *))
 {
 	struct jvst_cnode *node;
 
 	for (node = ctrl; node != NULL; node = node->next) {
 		struct jvst_ir_expr *e_ctrl;
-		e_ctrl = split_gather(node, data, ir_translate_object_inner);
+		e_ctrl = split_gather(node, data, xlatefunc);
 		if (node->next == NULL) {
 			*epp = e_ctrl;
 		} else {
@@ -2731,7 +2726,7 @@ split_gather_and_or(struct jvst_cnode *top, struct split_gather_data *data,
 	*opp = ctrl;
 
 	// 3. Create separate frames for all control nodes.
-	epp = split_gather_control_children(ctrl, data, jxntype, epp);
+	epp = split_gather_control_children(ctrl, data, jxntype, epp, xlatefunc);
 
 	assert(expr != NULL);
 	return expr;
@@ -3378,7 +3373,7 @@ ir_translate_string_inner(struct jvst_cnode *top, struct ir_str_builder *builder
 			struct jvst_cnode *n;
 			struct jvst_ir_stmt *stmt;
 			int all_length_range;
-			
+
 			all_length_range = 1;
 			for (n = top->u.ctrl; n != NULL; n = n->next) {
 				if (n->type != JVST_CNODE_LENGTH_RANGE) {
@@ -3584,6 +3579,11 @@ ir_translate_array(struct jvst_cnode *top, struct jvst_ir_stmt *frame)
 {
 	struct ir_arr_builder builder = { 0 };
 	struct jvst_ir_stmt *stmt, **spp, *it, *next, *outer_loop, *ctmp, *cres;
+	size_t nc;
+
+	if (nc = 0, cnode_count_splits(top, &nc) > 0) {
+		return ir_translate_split(top, frame, ir_translate_array);
+	}
 
 	builder.frame = frame;
 
