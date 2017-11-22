@@ -68,7 +68,6 @@ enum jvst_cnode_type {
 	JVST_CNODE_OBJ_REQUIRED,
 
 	JVST_CNODE_ARR_ITEM,
-	JVST_CNODE_ARR_ADDITIONAL,
 	JVST_CNODE_ARR_UNIQUE,
 	JVST_CNODE_ARR_CONTAINS,
 
@@ -183,7 +182,10 @@ struct jvst_cnode {
 		} reqbit;
 
 		// for array item and additional_item constraints
-		struct jvst_cnode *items;
+		struct {
+			struct jvst_cnode *items;
+			struct jvst_cnode *additional;
+		} items;
 
 		// for array contains constraint
 		struct jvst_cnode *contains;

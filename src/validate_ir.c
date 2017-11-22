@@ -2305,7 +2305,6 @@ ir_translate_obj_inner(struct jvst_cnode *top, struct ir_object_builder *builder
 		abort();
 
 	case JVST_CNODE_ARR_ITEM:
-	case JVST_CNODE_ARR_ADDITIONAL:
 	case JVST_CNODE_ARR_CONTAINS:
 	case JVST_CNODE_ARR_UNIQUE:
 	case JVST_CNODE_STR_MATCH:
@@ -2369,7 +2368,6 @@ cnode_and_requires_split(struct jvst_cnode *and_node)
 		case JVST_CNODE_OBJ_PROP_NAMES:
 		case JVST_CNODE_OBJ_REQUIRED:
 		case JVST_CNODE_ARR_ITEM:
-		case JVST_CNODE_ARR_ADDITIONAL:
 		case JVST_CNODE_ARR_CONTAINS:
 		case JVST_CNODE_ARR_UNIQUE:
 		case JVST_CNODE_OBJ_REQMASK:
@@ -2449,7 +2447,6 @@ cnode_count_splits(struct jvst_cnode *top, size_t *np)
 	case JVST_CNODE_OBJ_PROP_NAMES:
 	case JVST_CNODE_OBJ_REQUIRED:
 	case JVST_CNODE_ARR_ITEM:
-	case JVST_CNODE_ARR_ADDITIONAL:
 	case JVST_CNODE_ARR_CONTAINS:
 	case JVST_CNODE_ARR_UNIQUE:
 	case JVST_CNODE_OBJ_REQMASK:
@@ -2523,7 +2520,6 @@ separate_control_nodes(struct jvst_cnode *top, struct jvst_cnode **cpp, struct j
 		case JVST_CNODE_OBJ_PROP_NAMES:
 		case JVST_CNODE_OBJ_REQUIRED:
 		case JVST_CNODE_ARR_ITEM:
-		case JVST_CNODE_ARR_ADDITIONAL:
 		case JVST_CNODE_ARR_CONTAINS:
 		case JVST_CNODE_ARR_UNIQUE:
 		case JVST_CNODE_OBJ_REQMASK:
@@ -2831,7 +2827,6 @@ split_gather(struct jvst_cnode *top, struct split_gather_data *data,
 	case JVST_CNODE_OBJ_PROP_NAMES:
 	case JVST_CNODE_OBJ_REQUIRED:
 	case JVST_CNODE_ARR_ITEM:
-	case JVST_CNODE_ARR_ADDITIONAL:
 	case JVST_CNODE_ARR_CONTAINS:
 	case JVST_CNODE_ARR_UNIQUE:
 	case JVST_CNODE_OBJ_REQMASK:
@@ -3427,7 +3422,6 @@ ir_translate_string_inner(struct jvst_cnode *top, struct ir_str_builder *builder
 	case JVST_CNODE_OBJ_PROP_NAMES:
 	case JVST_CNODE_OBJ_REQUIRED:
 	case JVST_CNODE_ARR_ITEM:
-	case JVST_CNODE_ARR_ADDITIONAL:
 	case JVST_CNODE_ARR_CONTAINS:
 	case JVST_CNODE_ARR_UNIQUE:
 	case JVST_CNODE_OBJ_REQMASK:
@@ -3779,29 +3773,24 @@ ir_translate_array_inner(struct jvst_cnode *top, struct ir_arr_builder *builder)
 	case JVST_CNODE_VALID:
 		return ir_stmt_valid();
 
-	case JVST_CNODE_ARR_ADDITIONAL:
-		{
-			struct jvst_ir_stmt *additional;
-
-			assert(top->u.items != NULL);
-			assert(top->u.items->next == NULL);  // only one additional items
-
-			// additional = ir_translate_notoken(top->u.items);
-			additional = jvst_ir_translate(top->u.items);
-			builder->additional = additional;
-
-			return NULL;
-		}
-
 	case JVST_CNODE_ARR_ITEM:
 		{
 			struct jvst_cnode *it;
-			assert(top->u.items != NULL);
+			assert(top->u.items.items != NULL || top->u.items.additional != NULL);
 
-			for (it = top->u.items; it != NULL; it = it->next) {
+			if (top->u.items.additional != NULL) {
+				struct jvst_ir_stmt *additional;
+
+				assert(top->u.items.additional->next == NULL);  // only one additional items
+
+				// additional = ir_translate_notoken(top->u.items);
+				additional = jvst_ir_translate(top->u.items.additional);
+				builder->additional = additional;
+			}
+
+			for (it = top->u.items.items; it != NULL; it = it->next) {
 				struct jvst_ir_stmt *item;
 
-				// item = ir_translate_notoken(it);
 				item = jvst_ir_translate(it);
 				*builder->itemspp = item;
 				builder->itemspp = &item->next;

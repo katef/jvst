@@ -360,9 +360,11 @@ jvst_cnode_free_tree(struct jvst_cnode *root)
 			break;
 
 		case JVST_CNODE_ARR_ITEM:
-		case JVST_CNODE_ARR_ADDITIONAL:
-			if (node->u.items != NULL) {
-				jvst_cnode_free_tree(node->u.items);
+			if (node->u.items.items != NULL) {
+				jvst_cnode_free_tree(node->u.items.items);
+			}
+			if (node->u.items.additional != NULL) {
+				jvst_cnode_free_tree(node->u.items.additional);
 			}
 			break;
 
@@ -419,8 +421,6 @@ jvst_cnode_type_name(enum jvst_cnode_type type)
 		return "OBJ_REQUIRED";
 	case JVST_CNODE_ARR_ITEM:
 		return "ARR_ITEM";
-	case JVST_CNODE_ARR_ADDITIONAL:
-		return "ARR_ADDITIONAL";
 	case JVST_CNODE_ARR_CONTAINS:
 		return "ARR_CONTAINS";
 	case JVST_CNODE_ARR_UNIQUE:
@@ -848,7 +848,7 @@ and_or_xor:
 
 			sbuf_snprintf(buf, "ITEMS(\n");
 			i=0;
-			for (it = node->u.items; it != NULL; it = it->next) {
+			for (it = node->u.items.items; it != NULL; it = it->next) {
 				sbuf_indent(buf, indent+2);
 				sbuf_snprintf(buf, "[ITEM %3zu]\n", i++);
 				sbuf_indent(buf, indent+2);
@@ -859,24 +859,13 @@ and_or_xor:
 					sbuf_snprintf(buf, "\n");
 				}
 			}
-			sbuf_indent(buf, indent);
-			sbuf_snprintf(buf, ")");
-		}
-		break;
-
-	case JVST_CNODE_ARR_ADDITIONAL:
-		{
-			struct jvst_cnode *it;
-
-			sbuf_snprintf(buf, "ADDITIONAL(\n");
-
-			it = node->u.items;
-			assert(it->next == NULL);
-
-			sbuf_indent(buf, indent+2);
-			jvst_cnode_dump_inner(it, buf, indent+2);
-			sbuf_snprintf(buf, "\n");
-
+			if (it = node->u.items.additional, it != NULL) {
+				sbuf_indent(buf, indent+2);
+				sbuf_snprintf(buf, "[ADDITIONAL]\n");
+				sbuf_indent(buf, indent+2);
+				jvst_cnode_dump_inner(it, buf, indent+2);
+				sbuf_snprintf(buf, "\n");
+			}
 			sbuf_indent(buf, indent);
 			sbuf_snprintf(buf, ")");
 		}
@@ -1105,44 +1094,28 @@ cnode_enum_translate_obj(struct json_value *v)
 static struct jvst_cnode *
 cnode_enum_translate_arr(struct json_value *v)
 {
-	struct jvst_cnode *jxn, **jpp;
+	struct jvst_cnode *cons;
 	struct json_element *elt;
 	struct jvst_cnode *items, **ipp;
 
 	assert(v != NULL);
 	assert(v->type == JSON_VALUE_ARRAY);
 
-	// Need to build two constraints: items and additional
-	// items
-	//
+	// Need to build items constraint:
 	// All items of the array are given const schemas.
 	// Any additional item is invalid.
 
-	jxn = jvst_cnode_alloc(JVST_CNODE_AND);
-	jpp = &jxn->u.ctrl;
+	cons = jvst_cnode_alloc(JVST_CNODE_ARR_ITEM);
+	cons->u.items.additional = cnode_new_switch(0);
 
-	*jpp = jvst_cnode_alloc(JVST_CNODE_ARR_ADDITIONAL);
-	(*jpp)->u.items = cnode_new_switch(0);
-	jpp = &(*jpp)->next;
-
-	items = NULL;
-	ipp = &items;
+	ipp = &cons->u.items.items;
 
 	for (elt = v->u.arr; elt != NULL; elt = elt->next) {
 		*ipp = cnode_enum_translate(&elt->value);
 		ipp = &(*ipp)->next;
 	}
 
-	if (items != NULL) {
-		struct jvst_cnode *cons;
-		cons = jvst_cnode_alloc(JVST_CNODE_ARR_ITEM);
-		cons->u.items = items;
-
-		*jpp = cons;
-		jpp = &(*jpp)->next;
-	}
-
-	return jxn;
+	return cons;
 }
 
 static struct jvst_cnode *
@@ -1452,6 +1425,8 @@ cnode_translate_ast_with_ids(const struct ast_schema *ast, struct ast_translator
 
 		assert(ast->items != NULL);
 
+		items_constraint = jvst_cnode_alloc(JVST_CNODE_ARR_ITEM);
+
 		if (ast->kws & KWS_SINGLETON_ITEMS) {
 			struct jvst_cnode *constraint;
 
@@ -1459,14 +1434,12 @@ cnode_translate_ast_with_ids(const struct ast_schema *ast, struct ast_translator
 			assert(ast->items->next == NULL);
 
 			constraint = cnode_translate_ast_with_ids(ast->items->schema, xl);
-			items_constraint = jvst_cnode_alloc(JVST_CNODE_ARR_ADDITIONAL);
-			items_constraint->u.items = constraint;
+			items_constraint->u.items.additional = constraint;
 		} else {
 			struct jvst_cnode *itemlist, **ilpp;
 			struct ast_schema_set *sl;
 
-			itemlist = NULL;
-			ilpp = &itemlist;
+			ilpp = &items_constraint->u.items.items;
 			for (sl = ast->items; sl != NULL; sl = sl->next) {
 				struct jvst_cnode *constraint;
 
@@ -1477,21 +1450,14 @@ cnode_translate_ast_with_ids(const struct ast_schema *ast, struct ast_translator
 				ilpp = &constraint->next;
 			}
 
-			items_constraint = jvst_cnode_alloc(JVST_CNODE_ARR_ITEM);
-			items_constraint->u.items = itemlist;
+			if (ast->additional_items != NULL) {
+				items_constraint->u.items.additional = cnode_translate_ast_with_ids(ast->additional_items, xl);
+			}
 		}
 
+		assert(items_constraint != NULL);
+		assert(items_constraint->u.items.items != NULL || items_constraint->u.items.additional != NULL);
 		add_ast_constraint(node, SJP_ARRAY_BEG, items_constraint);
-	}
-
-	if (ast->additional_items != NULL && ast->items != NULL && (ast->kws & KWS_SINGLETON_ITEMS) == 0) {
-		struct jvst_cnode *constraint, *additional;
-
-		constraint = cnode_translate_ast_with_ids(ast->additional_items, xl);
-		additional = jvst_cnode_alloc(JVST_CNODE_ARR_ADDITIONAL);
-		additional->u.items = constraint;
-
-		add_ast_constraint(node, SJP_ARRAY_BEG, additional);
 	}
 
 	if (ast->contains != NULL) {
@@ -2111,19 +2077,20 @@ cnode_deep_copy(struct jvst_cnode *node)
 	case JVST_CNODE_ARR_ITEM:
 		{
 			struct jvst_cnode *item, **ip;
+
 			tree = jvst_cnode_alloc(node->type);
-			ip = &tree->u.items;
-			for (item = node->u.items; item != NULL; item = item->next) {
+			ip = &tree->u.items.items;
+			for (item = node->u.items.items; item != NULL; item = item->next) {
 				*ip = cnode_deep_copy(item);
 				ip  = &(*ip)->next;
 			}
+
+			if (node->u.items.additional != NULL) {
+				tree->u.items.additional = cnode_deep_copy(node->u.items.additional);
+			}
+
 			return tree;
 		}
-
-	case JVST_CNODE_ARR_ADDITIONAL:
-		tree = jvst_cnode_alloc(node->type);
-		tree->u.items = cnode_deep_copy(node->u.items);
-		return tree;
 
 	case JVST_CNODE_ARR_CONTAINS:
 		tree = jvst_cnode_alloc(node->type);
@@ -4559,14 +4526,16 @@ jvst_cnode_simplify(struct jvst_cnode *tree)
 		}
 
 	case JVST_CNODE_ARR_ITEM:
-		assert(tree->u.items != NULL);
-		tree->u.items = cnode_simplify_list(tree->u.items);
-		return tree;
+		assert(tree->u.items.items != NULL || tree->u.items.additional != NULL);
 
-	case JVST_CNODE_ARR_ADDITIONAL:
-		assert(tree->u.items != NULL);
-		assert(tree->u.items->next == NULL);
-		tree->u.items = cnode_simplify_list(tree->u.items);
+		if (tree->u.items.items != NULL) {
+			tree->u.items.items = cnode_simplify_list(tree->u.items.items);
+		}
+
+		if (tree->u.items.additional != NULL) {
+			tree->u.items.additional = jvst_cnode_simplify(tree->u.items.additional);
+		}
+
 		return tree;
 
 	case JVST_CNODE_ARR_CONTAINS:
@@ -5425,12 +5394,18 @@ cnode_canonify_pass1(struct jvst_cnode *tree, int namecons)
 		}
 
 	case JVST_CNODE_ARR_ITEM:
-	case JVST_CNODE_ARR_ADDITIONAL:
-		tree->u.items = cnode_nodelist_canonify_pass1(tree->u.items, namecons);
+		if (tree->u.items.items != NULL) {
+			tree->u.items.items = cnode_nodelist_canonify_pass1(tree->u.items.items, namecons);
+		}
+
+		if (tree->u.items.additional != NULL) {
+			tree->u.items.additional = cnode_nodelist_canonify_pass1(tree->u.items.additional, namecons);
+		}
+
 		return tree;
 
 	case JVST_CNODE_ARR_CONTAINS:
-		tree->u.items = cnode_nodelist_canonify_pass1(tree->u.items, namecons);
+		tree->u.contains = cnode_nodelist_canonify_pass1(tree->u.contains, namecons);
 		return tree;
 
 	case JVST_CNODE_MATCH_SWITCH:
@@ -5652,8 +5627,14 @@ cnode_canonify_pass2(struct jvst_cnode *tree)
 		return tree;
 
 	case JVST_CNODE_ARR_ITEM:
-	case JVST_CNODE_ARR_ADDITIONAL:
-		tree->u.items = cnode_nodelist_canonify_pass2(tree->u.items);
+		if (tree->u.items.items != NULL) {
+			tree->u.items.items = cnode_nodelist_canonify_pass2(tree->u.items.items);
+		}
+
+		if (tree->u.items.additional != NULL) {
+			tree->u.items.additional = cnode_nodelist_canonify_pass2(tree->u.items.additional);
+		}
+
 		return tree;
 
 	case JVST_CNODE_ARR_CONTAINS:
