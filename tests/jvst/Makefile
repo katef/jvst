@@ -68,6 +68,7 @@ JSON_SUITES += ref.json
 CUSTOM_SUITES.dir = tests/jvst
 
 CUSTOM_SUITES  =
+CUSTOM_SUITES += custom/allOf
 CUSTOM_SUITES += custom/anyOf
 CUSTOM_SUITES += custom/not
 CUSTOM_SUITES += custom/contains

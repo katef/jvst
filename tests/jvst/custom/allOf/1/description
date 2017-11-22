@@ -1,0 +1,11 @@
+Tests allOf for arrays
+0       [ "quick fox", 34 ] is valid
+1       [ "quick fox", 95 ] is valid
+2       [ "brown fox", 34 ] is invalid
+3       [ "quick fox", 12 ] is invalid
+4       [ "quick fox", 105 ] is invalid
+5       [ "quick fox", 50.5 ] is invalid
+6       [ "quick", 95 ] is invalid
+7       [ "the quick brown fox", 95 ] is invalid
+8       [ "quick fox", 34, true ] is invalid
+9       [ "quick fox", 34, [] ] is invalid

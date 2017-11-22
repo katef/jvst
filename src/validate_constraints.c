@@ -3970,6 +3970,170 @@ cnode_simplify_bool_ranges(struct jvst_cnode *top)
 }
 
 static struct jvst_cnode *
+cnode_simplify_and_items(struct jvst_cnode *top)
+{
+	struct jvst_cnode *items, *it, *item_comb;
+	struct jvst_cnode **ipp, **npp;
+	struct jvst_cnode ***consp, **consbuf[8], **addpp;
+	size_t maxitems;
+
+	assert(top->type == JVST_CNODE_AND);
+
+	items = NULL;
+	ipp = &items;
+
+	for (npp = &top->u.ctrl; *npp != NULL; ) {
+		if ((*npp)->type == JVST_CNODE_ARR_ITEM) {
+			*ipp = *npp;
+			*npp = (*npp)->next;
+			ipp = &(*ipp)->next;
+			*ipp = NULL;
+		} else {
+			npp = &(*npp)->next;
+		}
+	}
+
+	// no items nodes
+	if (items == NULL) {
+		return top;
+	}
+
+	// only one ARR_ITEM node, nothing to combine
+	if (items->next == NULL) {
+		*npp = items;
+		return top;
+	}
+
+	maxitems = 0;
+	for (it = items; it != NULL; it = it->next) {
+		struct jvst_cnode *cons;
+		size_t n;
+
+		for (n=0, cons = it->u.items.items; cons != NULL; n++, cons = cons->next) {
+			continue;
+		}
+
+		if (n > maxitems) {
+			maxitems = n;
+		}
+	}
+
+	if (maxitems <= ARRAYLEN(consbuf)) {
+		consp = &consbuf[0];
+	} else {
+		consp = xmalloc(maxitems * sizeof *consp);
+	}
+
+	item_comb = jvst_cnode_alloc(JVST_CNODE_ARR_ITEM);
+	{
+		struct jvst_cnode **combpp, *addn;
+		size_t i;
+
+		combpp = &item_comb->u.items.items;
+
+		for (i=0; i < maxitems; i++) {
+			struct jvst_cnode *cons;
+
+			cons = jvst_cnode_alloc(JVST_CNODE_AND);
+			*combpp = cons;
+			combpp = &cons->next;
+			consp[i] = &cons->u.ctrl;
+		}
+
+		addn = jvst_cnode_alloc(JVST_CNODE_AND);
+		item_comb->u.items.additional = addn;
+		addpp = &addn->u.ctrl;
+	}
+
+	for (it = items; it != NULL; it = it->next) {
+		struct jvst_cnode *cons, *next, *addn;
+		size_t i;
+
+		addn = it->u.items.additional;
+
+		if (addn == NULL) {
+			addn = jvst_cnode_alloc(JVST_CNODE_VALID);
+		}
+
+		assert(addn->next == NULL);
+
+		for (i=0, cons = it->u.items.items; cons != NULL; i++, cons = next) {
+			assert(i < maxitems);
+
+			next = cons->next;
+
+			*(consp[i]) = cons;
+			cons->next = NULL;
+			consp[i] = &cons->next;
+		}
+
+		if (i < maxitems) {
+			for ( ; i < maxitems; i++) {
+				struct jvst_cnode *copy;
+
+				copy = cnode_deep_copy(addn);
+				*(consp[i]) = copy;
+				consp[i] = &copy->next;
+			}
+		}
+
+		*addpp = addn;
+		addpp = &addn->next;
+		*addpp = NULL;
+	}
+
+	// now simplify things...
+	{
+		struct jvst_cnode *simplified, *next, **spp, *addn;
+
+		simplified = NULL;
+		spp = &simplified;
+
+		for (it = item_comb->u.items.items; it != NULL; it = next) {
+			next = it->next;
+			*spp = jvst_cnode_simplify(it);
+			spp = &(*spp)->next;
+			*spp = NULL;
+		}
+
+		item_comb->u.items.items = simplified;
+
+		addn = item_comb->u.items.additional;
+		switch (addn->type) {
+		case JVST_CNODE_VALID:
+			item_comb->u.items.additional = NULL;
+			break;
+
+		case JVST_CNODE_AND:
+			if (addn->u.ctrl == NULL) {
+				item_comb->u.items.additional = NULL;
+			} else {
+				struct jvst_cnode *simp;
+
+				simp = jvst_cnode_simplify(addn);
+				if (simp->type == JVST_CNODE_VALID) {
+					simp = NULL;
+				}
+
+				item_comb->u.items.additional = simp;
+			}
+			break;
+
+		default:
+			SHOULD_NOT_REACH();
+		}
+	}
+
+	*npp = item_comb;
+
+	if (consp != &consbuf[0]) {
+		free(consp);
+	}
+
+	return top;
+}
+
+static struct jvst_cnode *
 cnode_simplify_andor(struct jvst_cnode *top)
 {
 	struct jvst_cnode *node, *next, **pp;
@@ -4033,6 +4197,10 @@ cnode_simplify_andor(struct jvst_cnode *top)
 
 	if (top->type == JVST_CNODE_AND) {
 		top = cnode_simplify_and_required(top);
+	}
+
+	if (top->type == JVST_CNODE_AND) {
+		top = cnode_simplify_and_items(top);
 	}
 
 	if (top->type == JVST_CNODE_AND || top->type == JVST_CNODE_OR) {

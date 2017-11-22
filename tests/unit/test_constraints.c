@@ -2832,6 +2832,135 @@ void test_simplify_xored_counts(void)
   RUNTESTS(tests);
 }
 
+void test_simplify_anded_items(void)
+{
+  struct arena_info A = {0};
+
+  const struct cnode_test tests[] = {
+    {
+      SIMPLIFY,
+      /*
+      newschema_p(&A, 0,
+        "oneOf", schema_set(&A, 
+          newschema(&A, JSON_VALUE_INTEGER),
+          newschema(&A, JSON_VALUE_STRING),
+          NULL),
+        NULL),
+      */
+
+      NULL,
+
+      newcnode_bool(&A, JVST_CNODE_AND,
+        newcnode_switch(&A, 0,
+	  SJP_ARRAY_BEG, newcnode_items(&A,
+	  		   NULL,
+	  		   newcnode_switch(&A, 0, SJP_STRING, newcnode_valid(), SJP_NONE),
+			   newcnode_switch(&A, 0, SJP_NUMBER, newcnode(&A,JVST_CNODE_NUM_INTEGER), SJP_NONE),
+			   NULL),
+	  SJP_NONE),
+        newcnode_switch(&A, 0,
+	  SJP_ARRAY_BEG, newcnode_items(&A,
+	  		   NULL,
+		           newcnode_switch(&A, 0,
+			           SJP_STRING, newcnode_counts(&A, JVST_CNODE_LENGTH_RANGE, 12, 0, false),
+			           SJP_NONE),
+			   newcnode_switch(&A, 0,
+			           SJP_NUMBER, newcnode_range(&A, JVST_CNODE_RANGE_MIN, 1.0, 0.0),
+			           SJP_NONE),
+			   NULL),
+	  SJP_NONE),
+        newcnode_switch(&A, 0,
+	  SJP_ARRAY_BEG, newcnode_items(&A,
+	  		   NULL,
+		           newcnode_switch(&A, 0,
+			           SJP_STRING, newcnode_counts(&A, JVST_CNODE_LENGTH_RANGE, 0, 24, true),
+			           SJP_NONE),
+			   newcnode_switch(&A, 0,
+			           SJP_NUMBER, newcnode_range(&A, JVST_CNODE_RANGE_MAX, 0.0, 10.0),
+			           SJP_NONE),
+			   NULL),
+	  SJP_NONE),
+	NULL),
+
+      newcnode_switch(&A, 0,
+	SJP_ARRAY_BEG, newcnode_items(&A,
+	  		   NULL,
+	  		   newcnode_switch(&A, 0,
+			     SJP_STRING, newcnode_counts(&A, JVST_CNODE_LENGTH_RANGE, 12, 24, true),
+			     SJP_NONE),
+	  		   newcnode_switch(&A, 0,
+			     SJP_NUMBER, newcnode_bool(&A, JVST_CNODE_AND,
+			                   newcnode(&A,JVST_CNODE_NUM_INTEGER),
+                                           newcnode_range(&A, JVST_CNODE_RANGE_MIN, 1.0, 0.0),
+                                           newcnode_range(&A, JVST_CNODE_RANGE_MAX, 0.0, 10.0),
+                                           NULL),
+			     SJP_NONE),
+			   NULL),
+	SJP_NONE),
+    },
+
+    // ANDs ARR_ITEM nodes with different numbers of item constraints,
+    // checks that additional items are added to the ones with fewer
+    // item constraints
+    {
+      SIMPLIFY,
+      NULL,
+
+      newcnode_bool(&A, JVST_CNODE_AND,
+        newcnode_switch(&A, 0,
+	  SJP_ARRAY_BEG, newcnode_items(&A,
+	  		   newcnode_switch(&A, 0, SJP_NUMBER, newcnode(&A,JVST_CNODE_NUM_INTEGER), SJP_NONE),
+	  		   newcnode_switch(&A, 0, SJP_STRING, newcnode_valid(), SJP_NONE),
+			   NULL),
+	  SJP_NONE),
+        newcnode_switch(&A, 0,
+	  SJP_ARRAY_BEG, newcnode_items(&A,
+	  		   newcnode_switch(&A, 0, SJP_NONE),  // no additional items
+		           newcnode_switch(&A, 0,
+			           SJP_STRING, newcnode_counts(&A, JVST_CNODE_LENGTH_RANGE, 12, 0, false),
+			           SJP_NONE),
+			   newcnode_switch(&A, 0,
+			           SJP_NUMBER, newcnode_range(&A, JVST_CNODE_RANGE_MIN, 1.0, 0.0),
+			           SJP_NONE),
+			   NULL),
+	  SJP_NONE),
+        newcnode_switch(&A, 0,
+	  SJP_ARRAY_BEG, newcnode_items(&A,
+			   newcnode_switch(&A, 0,
+			           SJP_NUMBER, newcnode_range(&A, JVST_CNODE_RANGE_MAX, 0.0, 10.0),
+			           SJP_NONE),
+		           newcnode_switch(&A, 0,
+			           SJP_STRING, newcnode_counts(&A, JVST_CNODE_LENGTH_RANGE, 0, 24, true),
+			           SJP_NONE),
+			   NULL),
+	  SJP_NONE),
+	NULL),
+
+      newcnode_switch(&A, 0,
+	SJP_ARRAY_BEG, newcnode_items(&A,
+	  		   newcnode_switch(&A, 0, SJP_NONE),  // no additional items
+	  		   newcnode_switch(&A, 0,
+			     SJP_STRING, newcnode_counts(&A, JVST_CNODE_LENGTH_RANGE, 12, 24, true),
+			     SJP_NONE),
+	  		   newcnode_switch(&A, 0,
+			     SJP_NUMBER, newcnode_bool(&A, JVST_CNODE_AND,
+			                   newcnode(&A,JVST_CNODE_NUM_INTEGER),
+                                           newcnode_range(&A, JVST_CNODE_RANGE_MIN, 1.0, 0.0),
+                                           newcnode_range(&A, JVST_CNODE_RANGE_MAX, 0.0, 10.0),
+                                           NULL),
+			     SJP_NONE),
+			   NULL),
+	SJP_NONE),
+
+
+    },
+
+    { STOP },
+  };
+
+  RUNTESTS(tests);
+}
+
 void test_simplify_oneof_2(void)
 {
   struct arena_info A = {0};
@@ -4343,6 +4472,7 @@ int main(void)
   test_simplify_not_counts();
   test_simplify_xored_counts();
 
+  test_simplify_anded_items();
   test_canonify_ored_schema();
   test_canonify_propsets();
   test_canonify_propertynames();
