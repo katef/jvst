@@ -1,0 +1,8 @@
+Tests oneOf for strings
+0       short string matching "foo" not "bar" is valid
+1       short string matching "bar" not "foo" is valid
+2       long string matching neither "foo" nor "bar" is valid
+3       short string matching neither "foo" nor "bar" is invalid
+4       matching both "foo" and "bar" is invalid
+5       long string matching "foo" is invalid
+6       long string matching "bar" is invalid

@@ -1,0 +1,7 @@
+Tests oneOf for arrays
+0       array of integer, string is valid
+1       array of integer, object is valid
+2       empty array is invalid
+3       array of integer is invalid
+4       array of integer, array is invalid
+5       array of string is invalid

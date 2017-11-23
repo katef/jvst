@@ -1,0 +1,19 @@
+{
+  "type" : "array",
+  "oneOf" : [
+    {
+      "items" : [
+        { "type" : "integer" },
+        { "type" : "string" }
+      ]
+    },
+    {
+      "items" : [
+        { "type" : "integer" },
+        { "type" : "object" }
+      ]
+    }
+  ]
+}
+
+
