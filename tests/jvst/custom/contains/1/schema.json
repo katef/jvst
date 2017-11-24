@@ -1,0 +1,22 @@
+{
+  "type" : "array",
+  "contains" : { "type" : "integer" },
+  "anyOf" : [
+    {
+      "items" : [
+        {
+          "type" : "string",
+          "pattern" : "element[0-9]+"
+        }
+      ]
+    },
+    {
+      "items" : [
+        {
+          "type" : "string",
+          "pattern" : "item[0-9]+"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,13 @@
+test contains with anyOf
+0       itemNNN, integer is valid
+1       elementNNN, integer is valid
+2       itemNNN, string, integer is valid
+3       elementNNN, array, integer is valid
+4       itemNNN without integer is invalid
+5       elementNNN without integer is invalid
+6       itemNNN, array is invalid
+7       elementNNN, array is invalid
+8       itemNNN, real is invalid
+9       elementNNN, real is invalid
+10      itemFoo, integer is invalid (bad item pattern)
+11      elementBar, integer is invalid (bad element pattern)
