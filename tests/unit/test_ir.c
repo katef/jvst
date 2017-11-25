@@ -1273,10 +1273,10 @@ void test_ir_properties(void)
                           newir_if(&A, newir_istok(&A, SJP_NUMBER),
                             newir_if(&A, 
                               newir_op(&A, JVST_IR_EXPR_AND,
+                                newir_isint(&A, newir_expr(&A, JVST_IR_EXPR_TOK_NUM)),
                                 newir_op(&A, JVST_IR_EXPR_LE, 
                                   newir_expr(&A, JVST_IR_EXPR_TOK_NUM),
-                                  newir_num(&A, 20.0)),
-                                newir_isint(&A, newir_expr(&A, JVST_IR_EXPR_TOK_NUM))
+                                  newir_num(&A, 20.0))
                               ),
                               newir_seq(&A,
                                 newir_stmt(&A, JVST_IR_STMT_CONSUME),
@@ -6496,11 +6496,11 @@ void test_ir_anyof_allof_oneof_1(void)
           newir_if(&A, newir_istok(&A, SJP_NUMBER),
             newir_if(&A,
               newir_op(&A, JVST_IR_EXPR_AND, 
+                newir_isint(&A, newir_expr(&A, JVST_IR_EXPR_TOK_NUM)),
                 newir_op(&A, JVST_IR_EXPR_GE, 
                   newir_expr(&A, JVST_IR_EXPR_TOK_NUM),
                   newir_num(&A, 2.0)
-                ),
-                newir_isint(&A, newir_expr(&A, JVST_IR_EXPR_TOK_NUM))
+                )
               ),
               newir_seq(&A,
                 newir_stmt(&A, JVST_IR_STMT_CONSUME),
@@ -6558,13 +6558,7 @@ void test_ir_anyof_allof_oneof_1(void)
             ),
 
             newir_block(&A, 2, "true",
-              newir_move(&A, newir_ftemp(&A, 1), newir_expr(&A, JVST_IR_EXPR_TOK_NUM)),
-              newir_move(&A, newir_ftemp(&A, 0), newir_num(&A, 2.0)),
-              newir_cbranch(&A,
-                newir_op(&A, JVST_IR_EXPR_GE, 
-                  newir_ftemp(&A, 1),
-                  newir_ftemp(&A, 0)
-                ),
+              newir_cbranch(&A, newir_isint(&A, newir_expr(&A, JVST_IR_EXPR_TOK_NUM)),
                 8, "and_true",
                 7, "invalid_3"
               ),
@@ -6588,7 +6582,13 @@ void test_ir_anyof_allof_oneof_1(void)
             ),
 
             newir_block(&A, 8, "and_true",
-              newir_cbranch(&A, newir_isint(&A, newir_expr(&A, JVST_IR_EXPR_TOK_NUM)),
+              newir_move(&A, newir_ftemp(&A, 1), newir_expr(&A, JVST_IR_EXPR_TOK_NUM)),
+              newir_move(&A, newir_ftemp(&A, 0), newir_num(&A, 2.0)),
+              newir_cbranch(&A,
+                newir_op(&A, JVST_IR_EXPR_GE, 
+                  newir_ftemp(&A, 1),
+                  newir_ftemp(&A, 0)
+                ),
                 4, "true",
                 7, "invalid_3"
               ),

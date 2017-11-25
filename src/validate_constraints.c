@@ -3970,6 +3970,126 @@ cnode_simplify_bool_ranges(struct jvst_cnode *top)
 }
 
 static struct jvst_cnode *
+cnode_simplify_and_num_ranges(struct jvst_cnode *top)
+{
+	struct jvst_cnode *ranges, **rpp, **npp, *n;
+	double lo, hi;
+	unsigned lo_flags;
+	unsigned hi_flags;
+#define FLAG_HAS  0x1
+#define FLAG_EXCL 0x2
+
+	assert(top->type == JVST_CNODE_AND);
+
+	ranges = NULL;
+	rpp = &ranges;
+	for (npp = &top->u.ctrl; *npp != NULL; ) {
+		if ((*npp)->type != JVST_CNODE_NUM_RANGE) {
+			npp = &(*npp)->next;
+			continue;
+		}
+
+		*rpp = *npp;
+		*npp = (*npp)->next;
+
+		rpp = &(*rpp)->next;
+		*rpp = NULL;
+	}
+
+	// no range nodes, so nothing to simplify
+	if (ranges == NULL) {
+		return top;
+	}
+
+	// only one range node, so nothing to simplify
+	if (ranges->next == NULL) {
+		*npp = ranges;
+		return top;
+	}
+
+	// two or more range nodes... we can compress them into one
+	// node
+	lo = hi = 0.0;
+	lo_flags = hi_flags = 0;
+
+	for (n = ranges; n != NULL; n = n->next) {
+		double min,max;
+		unsigned flags;
+
+		flags =  n->u.num_range.flags;
+		min   =  n->u.num_range.min;
+		max   =  n->u.num_range.max;
+
+		assert(n->type == JVST_CNODE_NUM_RANGE);
+
+		if (flags & JVST_CNODE_RANGE_MIN) {
+			if ((lo_flags & FLAG_HAS) == 0 || lo < min) {
+				lo = min;
+				lo_flags = FLAG_HAS;
+			}
+		} else if (flags & JVST_CNODE_RANGE_EXCL_MIN) {
+			if ((lo_flags & FLAG_HAS) == 0 || lo <= min) {
+				lo = min;
+				lo_flags = FLAG_HAS | FLAG_EXCL;
+			}
+		}
+
+		if (flags & JVST_CNODE_RANGE_MAX) {
+			if ((hi_flags & FLAG_HAS) == 0 || hi > max) {
+				hi = max;
+				hi_flags = FLAG_HAS;
+			}
+		} else if (flags & JVST_CNODE_RANGE_EXCL_MAX) {
+			if ((hi_flags & FLAG_HAS) == 0 || hi >= max) {
+				hi = max;
+				hi_flags = FLAG_HAS | FLAG_EXCL;
+			}
+		}
+	}
+
+	ranges = NULL;
+
+	// make sure that the whole thing is still valid
+	if ((lo_flags & FLAG_HAS) && (hi_flags & FLAG_HAS)) {
+		if (lo > hi) {
+			ranges = jvst_cnode_alloc(JVST_CNODE_INVALID);
+		} else if (lo == hi && ((lo_flags & FLAG_EXCL) || (hi_flags & FLAG_EXCL))) {
+			ranges = jvst_cnode_alloc(JVST_CNODE_INVALID);
+		}
+	}
+
+	if (ranges == NULL) {
+		ranges = jvst_cnode_alloc(JVST_CNODE_NUM_RANGE);
+		ranges->u.num_range.min = lo;
+		ranges->u.num_range.max = hi;
+		ranges->u.num_range.flags = 0;
+
+		if (lo_flags & FLAG_HAS) {
+			if (lo_flags & FLAG_EXCL) {
+				ranges->u.num_range.flags |= JVST_CNODE_RANGE_EXCL_MIN;
+			} else {
+				ranges->u.num_range.flags |= JVST_CNODE_RANGE_MIN;
+			}
+		}
+
+		if (hi_flags & FLAG_HAS) {
+			if (hi_flags & FLAG_EXCL) {
+				ranges->u.num_range.flags |= JVST_CNODE_RANGE_EXCL_MAX;
+			} else {
+				ranges->u.num_range.flags |= JVST_CNODE_RANGE_MAX;
+			}
+		}
+	}
+
+	*npp = ranges;
+
+#undef FLAG_HAS
+#undef FLAG_EXCL
+
+	return top;
+}
+
+static struct jvst_cnode *
 cnode_simplify_and_items(struct jvst_cnode *top)
 {
 	struct jvst_cnode *items, *it, *item_comb;
@@ -4205,6 +4325,10 @@ cnode_simplify_andor(struct jvst_cnode *top)
 
 	if (top->type == JVST_CNODE_AND || top->type == JVST_CNODE_OR) {
 		top = cnode_simplify_bool_ranges(top);
+	}
+
+	if (top->type == JVST_CNODE_AND) {
+		top = cnode_simplify_and_num_ranges(top);
 	}
 
 	if ((top->type == JVST_CNODE_AND) || (top->type == JVST_CNODE_OR)) {

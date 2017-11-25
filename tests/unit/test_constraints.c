@@ -1456,8 +1456,8 @@ static void test_simplify_ands(void)
 
       newcnode_switch(&A, 1,
           SJP_NUMBER, newcnode_bool(&A, JVST_CNODE_AND,
-                        newcnode_range(&A, JVST_CNODE_RANGE_MIN, 1.1, 0.0),
                         newcnode(&A,JVST_CNODE_NUM_INTEGER),
+                        newcnode_range(&A, JVST_CNODE_RANGE_MIN, 1.1, 0.0),
                         NULL),
           SJP_NONE),
     },
@@ -1483,9 +1483,9 @@ static void test_simplify_ands(void)
 
       newcnode_switch(&A, 1,
           SJP_NUMBER, newcnode_bool(&A, JVST_CNODE_AND,
-                        newcnode_range(&A, JVST_CNODE_RANGE_MIN, 1.1, 0.0),
                         newcnode(&A,JVST_CNODE_NUM_INTEGER),
-                        newcnode_range(&A, JVST_CNODE_RANGE_MAX, 0.0, 3.2),
+                        newcnode_range(&A,
+                          JVST_CNODE_RANGE_MIN | JVST_CNODE_RANGE_MAX, 1.1, 3.2),
                         NULL),
           SJP_NONE),
     },
@@ -2832,7 +2832,7 @@ void test_simplify_xored_counts(void)
   RUNTESTS(tests);
 }
 
-void test_simplify_anded_items(void)
+static void test_simplify_anded_items(void)
 {
   struct arena_info A = {0};
 
@@ -2891,8 +2891,8 @@ void test_simplify_anded_items(void)
 	  		   newcnode_switch(&A, 0,
 			     SJP_NUMBER, newcnode_bool(&A, JVST_CNODE_AND,
 			                   newcnode(&A,JVST_CNODE_NUM_INTEGER),
-                                           newcnode_range(&A, JVST_CNODE_RANGE_MIN, 1.0, 0.0),
-                                           newcnode_range(&A, JVST_CNODE_RANGE_MAX, 0.0, 10.0),
+                                           newcnode_range(&A,
+                                             JVST_CNODE_RANGE_MIN | JVST_CNODE_RANGE_MAX, 1.0, 10.0),
                                            NULL),
 			     SJP_NONE),
 			   NULL),
@@ -2945,8 +2945,8 @@ void test_simplify_anded_items(void)
 	  		   newcnode_switch(&A, 0,
 			     SJP_NUMBER, newcnode_bool(&A, JVST_CNODE_AND,
 			                   newcnode(&A,JVST_CNODE_NUM_INTEGER),
-                                           newcnode_range(&A, JVST_CNODE_RANGE_MIN, 1.0, 0.0),
-                                           newcnode_range(&A, JVST_CNODE_RANGE_MAX, 0.0, 10.0),
+                                           newcnode_range(&A,
+                                             JVST_CNODE_RANGE_MIN | JVST_CNODE_RANGE_MAX, 1.0, 10.0),
                                            NULL),
 			     SJP_NONE),
 			   NULL),
@@ -2961,7 +2961,226 @@ void test_simplify_anded_items(void)
   RUNTESTS(tests);
 }
 
-void test_simplify_oneof_2(void)
+static void test_simplify_anded_number_constraints(void)
+{
+  struct arena_info A = {0};
+
+  const struct cnode_test tests[] = {
+    {
+      SIMPLIFY,
+      NULL,
+
+      newcnode_switch(&A, 0,
+        SJP_NUMBER, newcnode_bool(&A, JVST_CNODE_AND,
+                      newcnode_range(&A, JVST_CNODE_RANGE_MIN, 1.0, 0.0),
+                      newcnode_range(&A, JVST_CNODE_RANGE_MAX, 0.0, 1.5),
+                      NULL),
+        SJP_NONE),
+
+      newcnode_switch(&A, 0,
+        SJP_NUMBER, newcnode_range(&A, JVST_CNODE_RANGE_MIN | JVST_CNODE_RANGE_MAX, 1.0, 1.5),
+        SJP_NONE)
+    },
+
+    {
+      SIMPLIFY,
+      NULL,
+
+      newcnode_switch(&A, 0,
+        SJP_NUMBER, newcnode_bool(&A, JVST_CNODE_AND,
+                      newcnode_range(&A, JVST_CNODE_RANGE_MIN | JVST_CNODE_RANGE_MAX, 1.0, 3.0),
+                      newcnode_range(&A, JVST_CNODE_RANGE_MAX, 0.0, 1.0),
+                      NULL),
+        SJP_NONE),
+
+      newcnode_switch(&A, 0,
+        SJP_NUMBER, newcnode_range(&A, JVST_CNODE_RANGE_MIN | JVST_CNODE_RANGE_MAX, 1.0, 1.0),
+        SJP_NONE)
+    },
+
+    {
+      SIMPLIFY,
+      NULL,
+
+      newcnode_switch(&A, 0,
+        SJP_NUMBER, newcnode_bool(&A, JVST_CNODE_AND,
+                      newcnode_range(&A, JVST_CNODE_RANGE_MIN, 3.0, 0.0),
+                      newcnode_range(&A, JVST_CNODE_RANGE_MIN, 1.0, 0.0),
+                      NULL),
+        SJP_NONE),
+
+      newcnode_switch(&A, 0,
+        SJP_NUMBER, newcnode_range(&A, JVST_CNODE_RANGE_MIN, 3.0, 0.0),
+        SJP_NONE)
+    },
+
+    {
+      SIMPLIFY,
+      NULL,
+
+      newcnode_switch(&A, 0,
+        SJP_NUMBER, newcnode_bool(&A, JVST_CNODE_AND,
+                      newcnode_range(&A, JVST_CNODE_RANGE_MAX, 0.0, 3.0),
+                      newcnode_range(&A, JVST_CNODE_RANGE_MAX, 0.0, 1.0),
+                      NULL),
+        SJP_NONE),
+
+      newcnode_switch(&A, 0,
+        SJP_NUMBER, newcnode_range(&A, JVST_CNODE_RANGE_MAX, 0.0, 1.0),
+        SJP_NONE)
+    },
+
+    {
+      SIMPLIFY,
+      NULL,
+
+      newcnode_switch(&A, 0,
+        SJP_NUMBER, newcnode_bool(&A, JVST_CNODE_AND,
+                      newcnode_range(&A, JVST_CNODE_RANGE_MIN, 3.1, 0.0),
+                      newcnode_range(&A, JVST_CNODE_RANGE_EXCL_MIN, 3.1, 0.0),
+                      NULL),
+        SJP_NONE),
+
+      newcnode_switch(&A, 0,
+        SJP_NUMBER, newcnode_range(&A, JVST_CNODE_RANGE_EXCL_MIN, 3.1, 0.0),
+        SJP_NONE)
+    },
+
+    {
+      SIMPLIFY,
+      NULL,
+
+      newcnode_switch(&A, 0,
+        SJP_NUMBER, newcnode_bool(&A, JVST_CNODE_AND,
+                      newcnode_range(&A, JVST_CNODE_RANGE_MIN, 3.2, 0.0),
+                      newcnode_range(&A, JVST_CNODE_RANGE_EXCL_MIN, 3.1, 0.0),
+                      NULL),
+        SJP_NONE),
+
+      newcnode_switch(&A, 0,
+        SJP_NUMBER, newcnode_range(&A, JVST_CNODE_RANGE_MIN, 3.2, 0.0),
+        SJP_NONE)
+    },
+
+    {
+      SIMPLIFY,
+      NULL,
+
+      newcnode_switch(&A, 0,
+        SJP_NUMBER, newcnode_bool(&A, JVST_CNODE_AND,
+                      newcnode_range(&A, JVST_CNODE_RANGE_MAX, 0.0, 3.0),
+                      newcnode_range(&A, JVST_CNODE_RANGE_EXCL_MAX, 0.0, 3.0),
+                      NULL),
+        SJP_NONE),
+
+      newcnode_switch(&A, 0,
+        SJP_NUMBER, newcnode_range(&A, JVST_CNODE_RANGE_EXCL_MAX, 0.0, 3.0),
+        SJP_NONE)
+    },
+
+    {
+      SIMPLIFY,
+      NULL,
+
+      newcnode_switch(&A, 0,
+        SJP_NUMBER, newcnode_bool(&A, JVST_CNODE_AND,
+                      newcnode_range(&A, JVST_CNODE_RANGE_MAX, 0.0, 3.0),
+                      newcnode_range(&A, JVST_CNODE_RANGE_EXCL_MAX, 0.0, 3.5),
+                      NULL),
+        SJP_NONE),
+
+      newcnode_switch(&A, 0,
+        SJP_NUMBER, newcnode_range(&A, JVST_CNODE_RANGE_MAX, 0.0, 3.0),
+        SJP_NONE)
+    },
+
+    {
+      SIMPLIFY,
+      NULL,
+
+      newcnode_switch(&A, 0,
+        SJP_NUMBER, newcnode_bool(&A, JVST_CNODE_AND,
+                      newcnode_range(&A, JVST_CNODE_RANGE_MAX, 0.0, 3.0),
+                      newcnode_range(&A, JVST_CNODE_RANGE_EXCL_MIN, 3.0, 0.0),
+                      NULL),
+        SJP_NONE),
+
+      newcnode_switch(&A, 0,
+        SJP_NUMBER, newcnode_invalid(),
+        SJP_NONE)
+    },
+
+    {
+      SIMPLIFY,
+      NULL,
+
+      newcnode_switch(&A, 0,
+        SJP_NUMBER, newcnode_bool(&A, JVST_CNODE_AND,
+                      newcnode_range(&A, JVST_CNODE_RANGE_MIN|JVST_CNODE_RANGE_MAX, 1.0, 3.0),
+                      newcnode_range(&A, JVST_CNODE_RANGE_MIN|JVST_CNODE_RANGE_MAX, 5.0, 6.0),
+                      NULL),
+        SJP_NONE),
+
+      newcnode_switch(&A, 0,
+        SJP_NUMBER, newcnode_invalid(),
+        SJP_NONE)
+    },
+
+    {
+      SIMPLIFY,
+      NULL,
+
+      newcnode_switch(&A, 0,
+        SJP_NUMBER, newcnode_bool(&A, JVST_CNODE_AND,
+                      newcnode_range(&A, JVST_CNODE_RANGE_MIN|JVST_CNODE_RANGE_MAX, 1.0, 3.0),
+                      newcnode_range(&A, JVST_CNODE_RANGE_MIN|JVST_CNODE_RANGE_MAX, 2.0, 6.0),
+                      NULL),
+        SJP_NONE),
+
+      newcnode_switch(&A, 0,
+        SJP_NUMBER, newcnode_range(&A, JVST_CNODE_RANGE_MIN|JVST_CNODE_RANGE_MAX, 2.0, 3.0),
+        SJP_NONE)
+    },
+
+    {
+      SIMPLIFY,
+      NULL,
+
+      newcnode_switch(&A, 0,
+        SJP_NUMBER, newcnode_bool(&A, JVST_CNODE_AND,
+                      newcnode_range(&A, JVST_CNODE_RANGE_MIN|JVST_CNODE_RANGE_EXCL_MAX, 1.0, 3.0),
+                      newcnode_range(&A, JVST_CNODE_RANGE_EXCL_MIN|JVST_CNODE_RANGE_MAX, 2.0, 6.0),
+                      NULL),
+        SJP_NONE),
+
+      newcnode_switch(&A, 0,
+        SJP_NUMBER, newcnode_range(&A, JVST_CNODE_RANGE_EXCL_MIN|JVST_CNODE_RANGE_EXCL_MAX, 2.0, 3.0),
+        SJP_NONE)
+    },
+
+    {
+      SIMPLIFY,
+      NULL,
+
+      newcnode_switch(&A, 0,
+        SJP_NUMBER, newcnode_bool(&A, JVST_CNODE_AND,
+                      newcnode_range(&A, JVST_CNODE_RANGE_EXCL_MIN|JVST_CNODE_RANGE_MAX, 1.0, 3.0),
+                      newcnode_range(&A, JVST_CNODE_RANGE_MIN|JVST_CNODE_RANGE_EXCL_MAX, 2.0, 6.0),
+                      NULL),
+        SJP_NONE),
+
+      newcnode_switch(&A, 0,
+        SJP_NUMBER, newcnode_range(&A, JVST_CNODE_RANGE_MIN|JVST_CNODE_RANGE_MAX, 2.0, 3.0),
+        SJP_NONE)
+    },
+
+    { STOP },
+  };
+
+  RUNTESTS(tests);
+}
+
+static void test_simplify_oneof_2(void)
 {
   struct arena_info A = {0};
 
@@ -3375,8 +3594,8 @@ void test_canonify_propsets(void)
                             newmatchset(&A, RE_NATIVE, "a*", RE_NATIVE, "aaa*", -1),
                             newcnode_switch(&A, 0,
                               SJP_NUMBER, newcnode_bool(&A, JVST_CNODE_AND,
-                                newcnode_range(&A, JVST_CNODE_RANGE_MAX, 0.0, 20.0),
                                 newcnode(&A,JVST_CNODE_NUM_INTEGER),
+                                newcnode_range(&A, JVST_CNODE_RANGE_MAX, 0.0, 20.0),
                                 NULL),
                               SJP_NONE)
                             ),
@@ -3771,8 +3990,8 @@ static void test_canonify_length_constraints(void)
                               newmatchset(&A, RE_LITERAL, "quantity", -1),
                               newcnode_switch(&A, 0,
                                 SJP_NUMBER, newcnode_bool(&A, JVST_CNODE_AND,
-                                              newcnode_range(&A, JVST_CNODE_RANGE_MIN|JVST_CNODE_RANGE_MAX, 0.0, 100.0),
                                               newcnode(&A,JVST_CNODE_NUM_INTEGER),
+                                              newcnode_range(&A, JVST_CNODE_RANGE_MIN|JVST_CNODE_RANGE_MAX, 0.0, 100.0),
                                               NULL),
                                 SJP_NONE)),
 
@@ -4471,8 +4690,9 @@ int main(void)
   test_simplify_anded_ored_counts();
   test_simplify_not_counts();
   test_simplify_xored_counts();
-
   test_simplify_anded_items();
+  test_simplify_anded_number_constraints();
+
   test_canonify_ored_schema();
   test_canonify_propsets();
   test_canonify_propertynames();
