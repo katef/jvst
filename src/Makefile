@@ -21,6 +21,10 @@ CFLAGS.${src} += -std=c99 -Wno-missing-field-initializers
 DFLAGS.${src} += -std=c99
 .endfor
 
+.for src in ${SRC:Msrc/parser.c}
+CFLAGS.${src} += -Wno-unused-parameter
+.endfor
+
 VALID_SRC += src/validate_sbuf.c
 VALID_SRC += src/validate.c
 VALID_SRC += src/validate_constraints.c
