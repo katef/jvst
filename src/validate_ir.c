@@ -1969,21 +1969,53 @@ obj_mcase_translate_inner(struct jvst_cnode *ctree, struct ir_object_builder *bu
 	}
 }
 
+static void
+ir_obj_prepend_constraints(struct jvst_ir_stmt **spp, struct jvst_cnode *constraints, struct ir_object_builder *builder);
+
 static struct jvst_ir_stmt *
 obj_mcase_translate(struct jvst_cnode *ctree, struct ir_object_builder *builder)
 {
-	struct jvst_ir_stmt *stmt, **spp;
-	struct jvst_cnode *n;
+	struct jvst_ir_stmt *stmt;
 
-	if (ctree->type != JVST_CNODE_AND) {
+	switch (ctree->type) {
+	case JVST_CNODE_LENGTH_RANGE:
+		{
+			struct jvst_cnode *vcons;
+
+			vcons = jvst_cnode_alloc(JVST_CNODE_VALID);
+
+			stmt = obj_mcase_translate_inner(vcons, builder);
+			ir_obj_prepend_constraints(&stmt, ctree, builder);
+		}
+		break;
+
+	default:
 		return obj_mcase_translate_inner(ctree,builder);
-	}
 
-	stmt = ir_stmt_new(JVST_IR_STMT_SEQ);
-	spp = &stmt->u.stmt_list;
-	for(n=ctree->u.ctrl; n != NULL; n=n->next) {
-		*spp = obj_mcase_translate_inner(n,builder);
-		spp = &(*spp)->next;
+	case JVST_CNODE_AND:
+		{
+			struct jvst_ir_stmt **spp;
+			struct jvst_cnode *n, *pcons;
+
+			stmt = ir_stmt_new(JVST_IR_STMT_SEQ);
+			spp = &stmt->u.stmt_list;
+
+			pcons = NULL;
+			for (n=ctree->u.ctrl; n != NULL; n=n->next) {
+				if (n->type == JVST_CNODE_LENGTH_RANGE) {
+					pcons = n;
+					continue;
+				}
+
+				*spp = obj_mcase_translate_inner(n,builder);
+				spp = &(*spp)->next;
+			}
+
+			if (pcons != NULL) {
+				ir_obj_prepend_constraints(&stmt, pcons, builder);
+			}
+		}
+		break;
 	}
 
 	return stmt;
@@ -2144,12 +2176,6 @@ ir_translate_obj_inner(struct jvst_cnode *top, struct ir_object_builder *builder
 				assert(caselist->u.mcase.tmp == mc);
 				assert(mc->next == NULL);
 
-				// FIXME: handle string constraints
-				if (caselist->u.mcase.name_constraint != NULL) {
-					ir_obj_prepend_constraints(&mc->stmt,
-						caselist->u.mcase.name_constraint, builder);
-				}
-
 				mc->which = ++which;
 				*builder->mcpp = mc;
 				builder->mcpp = &mc->next;
@@ -2185,13 +2211,6 @@ ir_translate_obj_inner(struct jvst_cnode *top, struct ir_object_builder *builder
 				// XXX - can we simplify this?  let's look at refactoring it to use the
 				// same mechanism as str_translate_concat_constraints
 				ir_dft = obj_mswitch_translate_and_ensure_consume(cnode_dft->u.mcase.value_constraint, builder);
-				if (cnode_dft->type != JVST_CNODE_INVALID) {
-					// if it's already invalid, don't bother with further
-					// constraints...
-
-					ir_obj_prepend_constraints(&ir_dft, cnode_dft->u.mcase.name_constraint, builder);
-				}
-
 				builder->match->u.match.default_case = ir_dft;
 			}
 
@@ -2313,6 +2332,7 @@ ir_translate_obj_inner(struct jvst_cnode *top, struct ir_object_builder *builder
 	case JVST_CNODE_ARR_CONTAINS:
 	case JVST_CNODE_ARR_UNIQUE:
 	case JVST_CNODE_STR_MATCH:
+	case JVST_CNODE_STR_LENGTH:
 	case JVST_CNODE_NUM_RANGE:
 	case JVST_CNODE_NUM_INTEGER:
 	case JVST_CNODE_NUM_MULTIPLE_OF:
@@ -2364,6 +2384,7 @@ cnode_and_requires_split(struct jvst_cnode *and_node)
 		case JVST_CNODE_PROP_RANGE:
 		case JVST_CNODE_ITEM_RANGE:
 		case JVST_CNODE_STR_MATCH:
+		case JVST_CNODE_STR_LENGTH:
 		case JVST_CNODE_NUM_RANGE:
 		case JVST_CNODE_NUM_INTEGER:
 		case JVST_CNODE_NUM_MULTIPLE_OF:
@@ -2443,6 +2464,7 @@ cnode_count_splits(struct jvst_cnode *top, size_t *np)
 	case JVST_CNODE_PROP_RANGE:
 	case JVST_CNODE_ITEM_RANGE:
 	case JVST_CNODE_STR_MATCH:
+	case JVST_CNODE_STR_LENGTH:
 	case JVST_CNODE_NUM_RANGE:
 	case JVST_CNODE_NUM_INTEGER:
 	case JVST_CNODE_NUM_MULTIPLE_OF:
@@ -2516,6 +2538,7 @@ separate_control_nodes(struct jvst_cnode *top, struct jvst_cnode **cpp, struct j
 		case JVST_CNODE_PROP_RANGE:
 		case JVST_CNODE_ITEM_RANGE:
 		case JVST_CNODE_STR_MATCH:
+		case JVST_CNODE_STR_LENGTH:
 		case JVST_CNODE_NUM_RANGE:
 		case JVST_CNODE_NUM_INTEGER:
 		case JVST_CNODE_NUM_MULTIPLE_OF:
@@ -2867,6 +2890,7 @@ split_gather(struct jvst_cnode *top, struct split_gather_data *data,
 	case JVST_CNODE_PROP_RANGE:
 	case JVST_CNODE_ITEM_RANGE:
 	case JVST_CNODE_STR_MATCH:
+	case JVST_CNODE_STR_LENGTH:
 	case JVST_CNODE_NUM_RANGE:
 	case JVST_CNODE_NUM_INTEGER:
 	case JVST_CNODE_NUM_MULTIPLE_OF:
@@ -3099,7 +3123,7 @@ ir_translate_object(struct jvst_cnode *top, struct jvst_ir_stmt *frame)
 
 
 static void
-str_translate_concat_constraints(struct jvst_cnode *sw_cons, struct jvst_cnode *case_cons,
+str_translate_concat_constraints(struct jvst_cnode *case_cons,
 	struct jvst_ir_stmt **spp, struct ir_str_builder *builder)
 {
 	struct jvst_ir_stmt **saved_ipp;
@@ -3109,9 +3133,6 @@ str_translate_concat_constraints(struct jvst_cnode *sw_cons, struct jvst_cnode *
 	saved_ipp = builder->ipp;
 	builder->ipp = spp;
 
-	if (sw_cons != NULL && sw_cons->type != JVST_CNODE_VALID && case_cons->type != JVST_CNODE_INVALID) {
-		ir_translate_string_inner(sw_cons, builder);
-	}
 	ir_translate_string_inner(case_cons, builder);
 
 	if ((*(builder->ipp))->type == JVST_IR_STMT_NOP) {
@@ -3178,8 +3199,7 @@ str_translate_mswitch(struct jvst_cnode *top, struct ir_str_builder *builder)
 		ir_constraint = NULL;
 		spp = &ir_constraint;
 
-		str_translate_concat_constraints(mcase->u.mcase.name_constraint,
-			mcase->u.mcase.value_constraint, spp, builder);
+		str_translate_concat_constraints(mcase->u.mcase.value_constraint, spp, builder);
 
 		mc = ir_mcase_new(++which, ir_constraint);
 		mc->matchset = mcase->u.mcase.matchset;
@@ -3197,8 +3217,8 @@ str_translate_mswitch(struct jvst_cnode *top, struct ir_str_builder *builder)
 	// translate the default case
 	assert(top->u.mswitch.dft_case != NULL);
 	assert(top->u.mswitch.dft_case->type == JVST_CNODE_MATCH_CASE);
-	str_translate_concat_constraints(top->u.mswitch.dft_case->u.mcase.name_constraint,
-		top->u.mswitch.dft_case->u.mcase.value_constraint, dftpp, builder);
+	str_translate_concat_constraints(top->u.mswitch.dft_case->u.mcase.value_constraint,
+		dftpp, builder);
 
 	// clear the u.mcase.tmp values in case they need to be used elsewhere
 	for (mcase = top->u.mswitch.cases; mcase != NULL; mcase = mcase->next) {
@@ -3442,6 +3462,7 @@ ir_translate_string_inner(struct jvst_cnode *top, struct ir_str_builder *builder
 		return;
 
 
+	case JVST_CNODE_STR_LENGTH:
 	case JVST_CNODE_STR_MATCH:
 		fprintf(stderr, "[%s:%d] cnode %s should not be be present in canonified cnode tree\n",
 				__FILE__, __LINE__, 
@@ -3923,6 +3944,7 @@ ir_translate_array_inner(struct jvst_cnode *top, struct ir_arr_builder *builder)
 	case JVST_CNODE_OBJ_PROP_DEFAULT:
 	case JVST_CNODE_OBJ_PROP_NAMES:
 	case JVST_CNODE_STR_MATCH:
+	case JVST_CNODE_STR_LENGTH:
 		fprintf(stderr, "[%s:%d] cnode %s should not be be present in canonified cnode tree\n",
 				__FILE__, __LINE__, 
 				jvst_cnode_type_name(top->type));

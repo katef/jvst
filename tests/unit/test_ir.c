@@ -4261,7 +4261,7 @@ static void test_ir_minmax_length_1(void)
 
       newcnode_switch(&A, 1,
         SJP_STRING, newcnode_bool(&A, JVST_CNODE_AND,
-                      newcnode_counts(&A, JVST_CNODE_LENGTH_RANGE, 12, 0, false),
+                      newcnode_counts(&A, JVST_CNODE_STR_LENGTH, 12, 0, false),
                       newcnode_valid(),
                       NULL),
         SJP_NONE),
@@ -4303,7 +4303,7 @@ static void test_ir_minmax_length_1(void)
 
       newcnode_switch(&A, 1,
         SJP_STRING, newcnode_bool(&A, JVST_CNODE_AND,
-                      newcnode_counts(&A, JVST_CNODE_LENGTH_RANGE, 0, 36, true),
+                      newcnode_counts(&A, JVST_CNODE_STR_LENGTH, 0, 36, true),
                       newcnode_valid(),
                       NULL),
         SJP_NONE),
@@ -4346,7 +4346,7 @@ static void test_ir_minmax_length_1(void)
 
       newcnode_switch(&A, 1,
         SJP_STRING, newcnode_bool(&A, JVST_CNODE_AND,
-                      newcnode_counts(&A, JVST_CNODE_LENGTH_RANGE, 23, 50, true),
+                      newcnode_counts(&A, JVST_CNODE_STR_LENGTH, 23, 50, true),
                       newcnode_valid(),
                       NULL),
         SJP_NONE),
@@ -4408,7 +4408,7 @@ static void test_ir_str_constraints(void)
       newcnode_switch(&A, 1,
         SJP_STRING, newcnode_bool(&A, JVST_CNODE_AND,
                       newcnode_strmatch(&A, RE_NATIVE, "a+b.d"),
-                      newcnode_counts(&A, JVST_CNODE_LENGTH_RANGE, 12, 0, false),
+                      newcnode_counts(&A, JVST_CNODE_STR_LENGTH, 12, 0, false),
                       newcnode_valid(),
                       NULL),
         SJP_NONE),
@@ -4793,7 +4793,7 @@ static void test_ir_propertynames()
                           newcnode_switch(&A, 0,
                             SJP_STRING, newcnode_bool(&A,JVST_CNODE_AND,
                                           newcnode_strmatch(&A, RE_NATIVE, "f.*"),
-                                          newcnode_counts(&A, JVST_CNODE_LENGTH_RANGE, 3, 16, true),
+                                          newcnode_counts(&A, JVST_CNODE_STR_LENGTH, 3, 16, true),
                                           NULL),
                             SJP_NONE)),
         SJP_NONE),
@@ -4854,7 +4854,7 @@ static void test_ir_propertynames()
       newcnode_switch(&A, 0,
         SJP_OBJECT_BEG, newcnode_propnames(&A,
                           newcnode_switch(&A, 0,
-                            SJP_STRING, newcnode_counts(&A, JVST_CNODE_LENGTH_RANGE, 3, 16, true),
+                            SJP_STRING, newcnode_counts(&A, JVST_CNODE_STR_LENGTH, 3, 16, true),
                             SJP_NONE)),
         SJP_NONE),
 
@@ -6608,8 +6608,8 @@ void test_ir_anyof_allof_oneof_1(void)
       // simplified tree
       newcnode_switch(&A, 0, 
           SJP_STRING, newcnode_bool(&A, JVST_CNODE_OR,
-                        newcnode_counts(&A, JVST_CNODE_LENGTH_RANGE, 0, 2, true),
-                        newcnode_counts(&A, JVST_CNODE_LENGTH_RANGE, 4, 0, false),
+                        newcnode_counts(&A, JVST_CNODE_STR_LENGTH, 0, 2, true),
+                        newcnode_counts(&A, JVST_CNODE_STR_LENGTH, 4, 0, false),
                         NULL),
           SJP_NONE),
 

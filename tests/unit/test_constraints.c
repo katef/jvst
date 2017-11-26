@@ -1286,7 +1286,7 @@ static void test_xlate_pattern_1(void)
 
       newcnode_switch(&A, 1,
         SJP_STRING, newcnode_bool(&A, JVST_CNODE_AND,
-                      newcnode_counts(&A, JVST_CNODE_LENGTH_RANGE, 12, 0, false),
+                      newcnode_counts(&A, JVST_CNODE_STR_LENGTH, 12, 0, false),
                       newcnode_bool(&A, JVST_CNODE_AND,
                         newcnode_strmatch(&A, RE_NATIVE, "a+b.d"),
                         newcnode_valid(),
@@ -1314,7 +1314,7 @@ static void test_xlate_minmax_length_1(void)
 
       newcnode_switch(&A, 1,
         SJP_STRING, newcnode_bool(&A, JVST_CNODE_AND,
-                      newcnode_counts(&A, JVST_CNODE_LENGTH_RANGE, 12, 0, false),
+                      newcnode_counts(&A, JVST_CNODE_STR_LENGTH, 12, 0, false),
                       newcnode_valid(),
                       NULL),
         SJP_NONE)
@@ -1328,7 +1328,7 @@ static void test_xlate_minmax_length_1(void)
 
       newcnode_switch(&A, 1,
         SJP_STRING, newcnode_bool(&A, JVST_CNODE_AND,
-                      newcnode_counts(&A, JVST_CNODE_LENGTH_RANGE, 0, 36, true),
+                      newcnode_counts(&A, JVST_CNODE_STR_LENGTH, 0, 36, true),
                       newcnode_valid(),
                       NULL),
         SJP_NONE)
@@ -1342,7 +1342,7 @@ static void test_xlate_minmax_length_1(void)
 
       newcnode_switch(&A, 1,
         SJP_STRING, newcnode_bool(&A, JVST_CNODE_AND,
-                      newcnode_counts(&A, JVST_CNODE_LENGTH_RANGE, 23, 50, true),
+                      newcnode_counts(&A, JVST_CNODE_STR_LENGTH, 23, 50, true),
                       newcnode_valid(),
                       NULL),
         SJP_NONE)
@@ -3478,8 +3478,8 @@ void test_canonify_ored_schema(void)
       // simplified tree
       newcnode_switch(&A, 0, 
           SJP_STRING, newcnode_bool(&A, JVST_CNODE_OR,
-                        newcnode_counts(&A, JVST_CNODE_LENGTH_RANGE, 0, 2, true),
-                        newcnode_counts(&A, JVST_CNODE_LENGTH_RANGE, 4, 0, false),
+                        newcnode_counts(&A, JVST_CNODE_STR_LENGTH, 0, 2, true),
+                        newcnode_counts(&A, JVST_CNODE_STR_LENGTH, 4, 0, false),
                         NULL),
           SJP_NONE),
 
@@ -3490,8 +3490,7 @@ void test_canonify_ored_schema(void)
                           // default case
                           newcnode_mcase_namecons(&A,
                             NULL,
-                            newcnode_counts(&A, JVST_CNODE_LENGTH_RANGE, 0, 2, true),
-                            newcnode_valid()
+                            newcnode_counts(&A, JVST_CNODE_LENGTH_RANGE, 0, 2, true)
                           ),
 
                           NULL
@@ -3501,8 +3500,7 @@ void test_canonify_ored_schema(void)
                           // default case
                           newcnode_mcase_namecons(&A,
                             NULL,
-                            newcnode_counts(&A, JVST_CNODE_LENGTH_RANGE, 4, 0, false),
-                            newcnode_valid()
+                            newcnode_counts(&A, JVST_CNODE_LENGTH_RANGE, 4, 0, false)
                           ),
 
                           NULL
@@ -3862,8 +3860,7 @@ static void test_canonify_propertynames(void)
 
                           newcnode_mcase_namecons(&A,
                             newmatchset(&A, RE_NATIVE, "f.*", -1),
-                            newcnode_counts(&A, JVST_CNODE_LENGTH_RANGE, 3, 16, true),
-                            newcnode_valid()),
+                            newcnode_counts(&A, JVST_CNODE_LENGTH_RANGE, 3, 16, true)),
                           NULL),
         SJP_NONE)
     },
@@ -3957,7 +3954,7 @@ static void test_canonify_length_constraints(void)
           SJP_OBJECT_BEG, newcnode_propset(&A,
                             newcnode_prop_match(&A, RE_LITERAL, "description",
                               newcnode_switch(&A, 0,
-                                SJP_STRING, newcnode_counts(&A, JVST_CNODE_LENGTH_RANGE, 3, 30, true),
+                                SJP_STRING, newcnode_counts(&A, JVST_CNODE_STR_LENGTH, 3, 30, true),
                                 SJP_NONE)),
                             newcnode_prop_match(&A, RE_LITERAL, "quantity",
                               newcnode_switch(&A, 0,
@@ -3981,8 +3978,7 @@ static void test_canonify_length_constraints(void)
                                               // default case
                                               newcnode_mcase_namecons(&A,
                                                 NULL,
-                                                newcnode_counts(&A, JVST_CNODE_LENGTH_RANGE, 3, 30, true),
-                                                newcnode_valid()),
+                                                newcnode_counts(&A, JVST_CNODE_LENGTH_RANGE, 3, 30, true)),
                                               NULL),
                                 SJP_NONE)),
 
@@ -4146,8 +4142,7 @@ static void test_canonify_patterns(void)
 
                       newcnode_mcase_namecons(&A,
                         newmatchset(&A, RE_NATIVE, "a+b.d", -1),
-                        newcnode_counts(&A, JVST_CNODE_LENGTH_RANGE, 12, 0, false),
-                        newcnode_valid()
+                        newcnode_counts(&A, JVST_CNODE_LENGTH_RANGE, 12, 0, false)
                       ),
 
                       NULL
@@ -4167,7 +4162,7 @@ static void test_canonify_patterns(void)
 
       newcnode_switch(&A, 1,
         SJP_STRING, newcnode_bool(&A, JVST_CNODE_AND,
-                      newcnode_counts(&A, JVST_CNODE_LENGTH_RANGE, 12, 0, false),
+                      newcnode_counts(&A, JVST_CNODE_STR_LENGTH, 12, 0, false),
                       newcnode_valid(),
                       NULL),
         SJP_NONE),
@@ -4176,8 +4171,7 @@ static void test_canonify_patterns(void)
         SJP_STRING, newcnode_mswitch(&A,
                       newcnode_mcase_namecons(&A,
                         NULL,
-                        newcnode_counts(&A, JVST_CNODE_LENGTH_RANGE, 12, 0, false),
-                        newcnode_valid()
+                        newcnode_counts(&A, JVST_CNODE_LENGTH_RANGE, 12, 0, false)
                       ),
 
                       NULL
