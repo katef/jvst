@@ -3488,7 +3488,7 @@ void test_canonify_ored_schema(void)
           SJP_STRING, newcnode_bool(&A, JVST_CNODE_OR,
                         newcnode_mswitch(&A,
                           // default case
-                          newcnode_mcase_namecons(&A,
+                          newcnode_mcase(&A,
                             NULL,
                             newcnode_counts(&A, JVST_CNODE_LENGTH_RANGE, 0, 2, true)
                           ),
@@ -3498,7 +3498,7 @@ void test_canonify_ored_schema(void)
 
                         newcnode_mswitch(&A,
                           // default case
-                          newcnode_mcase_namecons(&A,
+                          newcnode_mcase(&A,
                             NULL,
                             newcnode_counts(&A, JVST_CNODE_LENGTH_RANGE, 4, 0, false)
                           ),
@@ -3858,7 +3858,7 @@ static void test_canonify_propertynames(void)
                           // default case
                           newcnode_invalid(),
 
-                          newcnode_mcase_namecons(&A,
+                          newcnode_mcase(&A,
                             newmatchset(&A, RE_NATIVE, "f.*", -1),
                             newcnode_counts(&A, JVST_CNODE_LENGTH_RANGE, 3, 16, true)),
                           NULL),
@@ -3976,7 +3976,7 @@ static void test_canonify_length_constraints(void)
                               newcnode_switch(&A, 0,
                                 SJP_STRING, newcnode_mswitch(&A,
                                               // default case
-                                              newcnode_mcase_namecons(&A,
+                                              newcnode_mcase(&A,
                                                 NULL,
                                                 newcnode_counts(&A, JVST_CNODE_LENGTH_RANGE, 3, 30, true)),
                                               NULL),
@@ -4140,7 +4140,7 @@ static void test_canonify_patterns(void)
                       // default case
                       newcnode_invalid(),
 
-                      newcnode_mcase_namecons(&A,
+                      newcnode_mcase(&A,
                         newmatchset(&A, RE_NATIVE, "a+b.d", -1),
                         newcnode_counts(&A, JVST_CNODE_LENGTH_RANGE, 12, 0, false)
                       ),
@@ -4169,7 +4169,7 @@ static void test_canonify_patterns(void)
 
       newcnode_switch(&A, 1,
         SJP_STRING, newcnode_mswitch(&A,
-                      newcnode_mcase_namecons(&A,
+                      newcnode_mcase(&A,
                         NULL,
                         newcnode_counts(&A, JVST_CNODE_LENGTH_RANGE, 12, 0, false)
                       ),

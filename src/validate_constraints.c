@@ -291,7 +291,7 @@ cnode_new_mcase(struct jvst_cnode_matchset *ms, struct jvst_cnode *constraint)
 
 	node = jvst_cnode_alloc(JVST_CNODE_MATCH_CASE);
 	node->u.mcase.matchset = ms;
-	node->u.mcase.value_constraint = constraint;
+	node->u.mcase.constraint = constraint;
 
 	return node;
 }
@@ -820,7 +820,7 @@ and_or_xor:
 			}
 
 			sbuf_indent(buf, indent+2);
-			jvst_cnode_dump_inner(node->u.mcase.value_constraint, buf, indent+2);
+			jvst_cnode_dump_inner(node->u.mcase.constraint, buf, indent+2);
 			sbuf_snprintf(buf, "\n");
 			sbuf_indent(buf, indent);
 			sbuf_snprintf(buf, ")");
@@ -2114,7 +2114,7 @@ cnode_deep_copy(struct jvst_cnode *node)
 				mspp = &(*mspp)->next;
 			}
 
-			tree->u.mcase.value_constraint = cnode_deep_copy(node->u.mcase.value_constraint);
+			tree->u.mcase.constraint = cnode_deep_copy(node->u.mcase.constraint);
 			return tree;
 		}
 	}
@@ -2677,7 +2677,7 @@ mcase_list_jxn_with_default(struct jvst_cnode *mcases, struct jvst_cnode *dft, s
 
 	assert(dft->type == JVST_CNODE_MATCH_CASE);
 
-	vcons = dft->u.mcase.value_constraint;
+	vcons = dft->u.mcase.constraint;
 
 	new_cases = NULL;
 	ncpp = &new_cases;
@@ -2688,7 +2688,7 @@ mcase_list_jxn_with_default(struct jvst_cnode *mcases, struct jvst_cnode *dft, s
 		nc = cnode_deep_copy(c);
 
 		vdft = cnode_deep_copy(vcons);
-		nc->u.mcase.value_constraint = cnode_jxn_constraints(nc->u.mcase.value_constraint, vdft, jxntype);
+		nc->u.mcase.constraint = cnode_jxn_constraints(nc->u.mcase.constraint, vdft, jxntype);
 
 		// so the dfa can be updated with the revised MATCH_CASE
 		// nodes
@@ -3014,14 +3014,14 @@ mcase_add_name_constraint(struct jvst_cnode *c, struct jvst_cnode *name_cons)
 	// sanity assertions
 	assert(c != NULL);
 	assert(c->type == JVST_CNODE_MATCH_CASE);
-	assert(c->u.mcase.value_constraint != NULL);
-	assert(c->u.mcase.value_constraint->next == NULL);
+	assert(c->u.mcase.constraint != NULL);
+	assert(c->u.mcase.constraint->next == NULL);
 
 	assert(name_cons != NULL);
 	assert(name_cons->type != JVST_CNODE_MATCH_CASE);
 
-	c->u.mcase.value_constraint = cnode_jxn_constraints(
-		c->u.mcase.value_constraint, name_cons, JVST_CNODE_AND);
+	c->u.mcase.constraint = cnode_jxn_constraints(
+		c->u.mcase.constraint, name_cons, JVST_CNODE_AND);
 }
 
 static struct jvst_cnode *
@@ -3217,9 +3217,9 @@ merge_mswitches(struct jvst_cnode *mswlst, enum jvst_cnode_type jxntype)
 		assert(n->u.mswitch.dft_case != NULL);
 		assert(n->u.mswitch.dft_case->type == JVST_CNODE_MATCH_CASE);
 
-		msw->u.mswitch.dft_case->u.mcase.value_constraint = cnode_jxn_constraints(
-				msw->u.mswitch.dft_case->u.mcase.value_constraint,
-				n->u.mswitch.dft_case->u.mcase.value_constraint,
+		msw->u.mswitch.dft_case->u.mcase.constraint = cnode_jxn_constraints(
+				msw->u.mswitch.dft_case->u.mcase.constraint,
+				n->u.mswitch.dft_case->u.mcase.constraint,
 				jxntype);
 	}
 
@@ -4787,18 +4787,18 @@ jvst_cnode_simplify(struct jvst_cnode *tree)
 				// when updating FSM nodes.  We need to find a better way to do this!
 
 				smc = jvst_cnode_simplify(mc);
-				mc->u.mcase.value_constraint = smc->u.mcase.value_constraint;
+				mc->u.mcase.constraint = smc->u.mcase.constraint;
 			}
 
 			return tree;
 		}
 
 	case JVST_CNODE_MATCH_CASE:
-		assert(tree->u.mcase.value_constraint != NULL);
+		assert(tree->u.mcase.constraint != NULL);
 
-		tree->u.mcase.value_constraint = jvst_cnode_simplify(tree->u.mcase.value_constraint);
+		tree->u.mcase.constraint = jvst_cnode_simplify(tree->u.mcase.constraint);
 
-		assert(tree->u.mcase.value_constraint != NULL);
+		assert(tree->u.mcase.constraint != NULL);
 
 		return tree;
 
@@ -5015,8 +5015,8 @@ merge_mcases_with_cjxn(const struct fsm_state **orig, size_t n,
 			mspp = &(*mspp)->next;
 		}
 
-		assert(c->u.mcase.value_constraint->type != JVST_CNODE_MATCH_CASE);
-		*vjpp = cnode_deep_copy(c->u.mcase.value_constraint);
+		assert(c->u.mcase.constraint->type != JVST_CNODE_MATCH_CASE);
+		*vjpp = cnode_deep_copy(c->u.mcase.constraint);
 		vjpp = &(*vjpp)->next;
 	}
 
@@ -5359,8 +5359,8 @@ cnode_canonify_propset(struct jvst_cnode *top)
 	for (; mcases != NULL; mcases = mcases->next) {
 		struct jvst_cnode *vcons;
 
-		vcons = jvst_cnode_simplify(mcases->u.mcase.value_constraint);
-		mcases->u.mcase.value_constraint = jvst_cnode_canonify(vcons);
+		vcons = jvst_cnode_simplify(mcases->u.mcase.constraint);
+		mcases->u.mcase.constraint = jvst_cnode_canonify(vcons);
 	}
 
 	if (names_match == NULL) {
@@ -5599,11 +5599,11 @@ cnode_canonify_pass1(struct jvst_cnode *tree, int namecons)
 		{
 			struct jvst_cnode *c;
 			for (c = tree->u.mswitch.cases; c != NULL; c = c->next) {
-				c->u.mcase.value_constraint = cnode_canonify_pass1(c->u.mcase.value_constraint, namecons);
+				c->u.mcase.constraint = cnode_canonify_pass1(c->u.mcase.constraint, namecons);
 			}
 
 			c = tree->u.mswitch.dft_case;
-			c->u.mcase.value_constraint = cnode_canonify_pass1(c->u.mcase.value_constraint, namecons);
+			c->u.mcase.constraint = cnode_canonify_pass1(c->u.mcase.constraint, namecons);
 		}
 		return tree;
 
@@ -5800,7 +5800,7 @@ cnode_canonify_pass2(struct jvst_cnode *tree)
 
 	case JVST_CNODE_MATCH_CASE:
 		{
-			tree->u.mcase.value_constraint = cnode_canonify_pass2(tree->u.mcase.value_constraint);
+			tree->u.mcase.constraint = cnode_canonify_pass2(tree->u.mcase.constraint);
 		}
 		return tree;
 
