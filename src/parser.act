@@ -166,64 +166,8 @@
 		}
 	}
 
-	static struct json_string current_path(struct path *p)
-	{
-		static const struct json_string zero;
-		struct json_string result = zero;
-		size_t i;
-
-		// XXX - fixed-size limits how deep schema can get.  maybe this should be
-		// user-adjustable?
-		char path[2048], *s, *e;
-
-		s = &path[0];
-		e = &path[sizeof path];
-
-		*s++ = '#';
-		for (i=0; i < p->len; i++) {
-			int nc;
-
-			if (p->items[i].isnum) {
-				nc = snprintf(s, e-s, "/%zu", p->items[i].u.num);
-			} else {
-				size_t len = p->items[i].u.str.len;
-				const char *str = p->items[i].u.str.s;
-
-				if (len > INT_MAX) {
-					// XXX - handle error more gracefully?
-					fprintf(stderr, "path element is too long:");
-					fwrite(str, 1, len, stderr);
-					fprintf(stderr, "\n");
-					abort();
-				}
-
-				nc = snprintf(s, e-s, "/%.*s", (int)len, str);
-			}
-
-			if (nc < 0) {
-				// XXX - handle error more gracefully?
-				perror("building path string");
-				abort();
-			}
-
-			if (nc > e-s) {
-				// XXX - handle error more gracefully?
-				fprintf(stderr, "path is too long: %s\n", path);
-				abort();
-			}
-
-			s += nc;
-		}
-
-		// fprintf(stderr, "path: %s\n", path);
-		result.len = s-path;
-		result.s = xstrndup(path, result.len);
-		return result;
-	}
-
 	static void add_all_ids(struct ast_schema *ast, struct path *p)
         {
-		/* ast->path = current_path(p); */
                 path_add_all_ids(p, ast);
         }
 
