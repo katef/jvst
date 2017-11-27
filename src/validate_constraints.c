@@ -882,9 +882,10 @@ and_or_xor:
 		break;
 
 	case JVST_CNODE_ARR_UNIQUE:
-		fprintf(stderr, WHEREFMT "**not implemented**\n",
-			WHEREARGS);
-		abort();
+		{
+			sbuf_snprintf(buf, "UNIQUE");
+		}
+		break;
 	}
 }
 
@@ -1460,6 +1461,13 @@ cnode_translate_ast_with_ids(const struct ast_schema *ast, struct ast_translator
 		contains->u.contains = constraint;
 
 		add_ast_constraint(node, SJP_ARRAY_BEG, contains);
+	}
+
+	if (ast->unique_items) {
+		struct jvst_cnode *uniq;
+
+		uniq = jvst_cnode_alloc(JVST_CNODE_ARR_UNIQUE);
+		add_ast_constraint(node, SJP_ARRAY_BEG, uniq);
 	}
 
 	if (ast->kws & (KWS_MIN_ITEMS | KWS_MAX_ITEMS)) {
@@ -4188,6 +4196,29 @@ cnode_simplify_and_items(struct jvst_cnode *top)
 }
 
 static struct jvst_cnode *
+cnode_simplify_and_unique(struct jvst_cnode *top)
+{
+	struct jvst_cnode **npp, *uniq;
+	
+	for (uniq=NULL, npp = &top->u.ctrl; *npp != NULL;) {
+		if ((*npp)->type == JVST_CNODE_ARR_UNIQUE) {
+			if (uniq != NULL) {
+				// already have one UNIQUE node, remove
+				// the rest
+				*npp = (*npp)->next;
+				continue;
+			}
+
+			uniq = *npp;
+		}
+
+		npp = &(*npp)->next;
+	}
+
+	return top;
+}
+
+static struct jvst_cnode *
 cnode_simplify_andor(struct jvst_cnode *top)
 {
 	struct jvst_cnode *node, *next, **pp;
@@ -4251,6 +4282,10 @@ cnode_simplify_andor(struct jvst_cnode *top)
 
 	if (top->type == JVST_CNODE_AND) {
 		top = cnode_simplify_and_required(top);
+	}
+
+	if (top->type == JVST_CNODE_AND) {
+		top = cnode_simplify_and_unique(top);
 	}
 
 	if (top->type == JVST_CNODE_AND) {

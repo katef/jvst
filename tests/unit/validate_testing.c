@@ -368,6 +368,10 @@ newschema_p(struct arena_info *A, int types, ...)
 			if (s->contains == NULL) {
 				s->contains = schema;
 			}
+		} else if (strcmp(pname, "uniqueItems") == 0) {
+			int uniq;
+			uniq = va_arg(args, int);
+			s->unique_items = !!uniq;
 		} else if (strcmp(pname, "minItems") == 0) {
 			s->min_items = va_arg(args, int);
 			s->kws |= KWS_MIN_ITEMS;

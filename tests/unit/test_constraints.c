@@ -3295,6 +3295,44 @@ static void test_simplify_oneof_2(void)
   RUNTESTS(tests);
 }
 
+static void test_simplify_uniqueItems(void)
+{
+  struct arena_info A = {0};
+
+  const struct cnode_test tests[] = {
+    {
+      SIMPLIFY,
+      NULL,
+
+      /* make sure ANDed uniques are combined into one UNIQUE node */
+      newcnode_bool(&A, JVST_CNODE_AND,
+        newcnode_switch(&A, 1,
+          SJP_ARRAY_BEG, newcnode_bool(&A, JVST_CNODE_AND,
+                           newcnode(&A, JVST_CNODE_ARR_UNIQUE),
+                           newcnode_valid(),
+                           NULL
+                         ),
+          SJP_NONE),
+        newcnode_switch(&A, 1,
+          SJP_ARRAY_BEG, newcnode_bool(&A, JVST_CNODE_AND,
+                           newcnode(&A, JVST_CNODE_ARR_UNIQUE),
+                           newcnode_valid(),
+                           NULL
+                         ),
+          SJP_NONE),
+        NULL),
+
+      newcnode_switch(&A, 1,
+          SJP_ARRAY_BEG, newcnode(&A, JVST_CNODE_ARR_UNIQUE),
+          SJP_NONE),
+    },
+
+    { STOP },
+  };
+
+  RUNTESTS(tests);
+}
+
 void test_canonify_ored_schema(void)
 {
   struct arena_info A = {0};
@@ -4337,6 +4375,32 @@ static void test_xlate_contains(void)
   RUNTESTS(tests);
 }
 
+static void test_xlate_uniqueItems(void)
+{
+  struct arena_info A = {0};
+
+  const struct cnode_test tests[] = {
+    {
+      TRANSLATE,
+      newschema_p(&A, 0, "uniqueItems", 1, NULL),
+
+      NULL,
+
+      newcnode_switch(&A, 1,
+          SJP_ARRAY_BEG, newcnode_bool(&A, JVST_CNODE_AND,
+                           newcnode(&A, JVST_CNODE_ARR_UNIQUE),
+                           newcnode_valid(),
+                           NULL
+                         ),
+          SJP_NONE),
+    },
+
+    { STOP },
+  };
+
+  RUNTESTS(tests);
+}
+
 static void test_xlate_const(void)
 {
   struct arena_info A = {0};
@@ -4664,6 +4728,8 @@ int main(void)
   test_xlate_minmax_items();
   test_xlate_contains();
 
+  test_xlate_uniqueItems();
+
   test_xlate_const();
   test_xlate_enum();
 
@@ -4686,6 +4752,7 @@ int main(void)
   test_simplify_xored_counts();
   test_simplify_anded_items();
   test_simplify_anded_number_constraints();
+  test_simplify_uniqueItems();
 
   test_canonify_ored_schema();
   test_canonify_propsets();
