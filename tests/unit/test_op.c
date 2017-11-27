@@ -277,10 +277,10 @@ test_op_empty_schema(void)
             newop_instr(&A, JVST_OP_CONSUME),
 
             oplabel, "valid_8",
-            newop_instr(&A, JVST_OP_VALID),
+            newop_return(&A, 0),
 
             oplabel, "invalid_1_3",
-            newop_invalid(&A, 1),
+            newop_return(&A, 1),
 
             NULL
           ),
@@ -324,10 +324,10 @@ test_op_empty_schema(void)
             newop_instr(&A, JVST_OP_CONSUME),
 
             oplabel, "valid_8",
-            newop_instr(&A, JVST_OP_VALID),
+            newop_return(&A, 0),
 
             oplabel, "invalid_1_3",
-            newop_invalid(&A, 1),
+            newop_return(&A, 1),
 
             NULL
           ),
@@ -343,9 +343,9 @@ test_op_empty_schema(void)
           JVST_OP_IEQ, VMREG(JVST_VM_TT), VMLIT(SJP_ARRAY_END),
           JVST_OP_CBT, "invalid_1_3",
           JVST_OP_CONSUME, 0, 0,
-          JVST_OP_VALID, 0, 0,
+          JVST_OP_RETURN, 0, 0,
           VM_LABEL, "invalid_1_3",
-          JVST_OP_INVALID, VMLIT(1), 0,
+          JVST_OP_RETURN, VMLIT(1), 0,
           VM_END)
     },
 
@@ -385,13 +385,13 @@ static void test_op_type_constraints(void)
             newop_br(&A, JVST_OP_CBT, "true_2"),
 
             oplabel, "invalid_1_5",
-            newop_invalid(&A, 1),
+            newop_return(&A, 1),
 
             oplabel, "true_2",
             newop_instr(&A, JVST_OP_CONSUME),
 
             oplabel, "valid_3",
-            newop_instr(&A, JVST_OP_VALID),
+            newop_return(&A, 0),
 
             NULL
           ),
@@ -426,13 +426,13 @@ static void test_op_type_constraints(void)
             newop_br(&A, JVST_OP_CBT, "true_2"),
 
             oplabel, "invalid_1_5",
-            newop_invalid(&A, 1),
+            newop_return(&A, 1),
 
             oplabel, "true_2",
             newop_instr(&A, JVST_OP_CONSUME),
 
             oplabel, "valid_3",
-            newop_instr(&A, JVST_OP_VALID),
+            newop_return(&A, 0),
 
             NULL
           ),
@@ -481,13 +481,13 @@ static void test_op_type_constraints(void)
             newop_br(&A, JVST_OP_CBT, "true_6"),
 
             oplabel, "invalid_1_8",
-            newop_invalid(&A, 1),
+            newop_return(&A, 1),
 
             oplabel, "true_2",
             newop_instr(&A, JVST_OP_CONSUME),
 
             oplabel, "valid_3",
-            newop_instr(&A, JVST_OP_VALID),
+            newop_return(&A, 0),
 
             oplabel, "true_6",
             newop_instr(&A, JVST_OP_CONSUME),
@@ -545,20 +545,20 @@ static void test_op_type_integer(void)
             newop_br(&A, JVST_OP_CBT, "true_2"),
 
             oplabel, "invalid_1_9",
-            newop_invalid(&A, 1),
+            newop_return(&A, 1),
 
             oplabel, "true_2",
             newop_cmp(&A, JVST_OP_FINT, oparg_tnum(), oparg_none()),
             newop_br(&A, JVST_OP_CBT, "true_4"),
 
             oplabel, "invalid_2_7",
-            newop_invalid(&A, 2),
+            newop_return(&A, 2),
 
             oplabel, "true_4",
             newop_instr(&A, JVST_OP_CONSUME),
 
             oplabel, "valid_5",
-            newop_instr(&A, JVST_OP_VALID),
+            newop_return(&A, 0),
 
             NULL
           ),
@@ -594,20 +594,20 @@ static void test_op_type_integer(void)
             newop_br(&A, JVST_OP_CBT, "true_2"),
 
             oplabel, "invalid_1_9",
-            newop_invalid(&A, 1),
+            newop_return(&A, 1),
 
             oplabel, "true_2",
             newop_cmp(&A, JVST_OP_FINT, oparg_tnum(), oparg_none()),
             newop_br(&A, JVST_OP_CBT, "valid_5"),
 
             oplabel, "invalid_2_7",
-            newop_invalid(&A, 2),
+            newop_return(&A, 2),
 
             oplabel, "true_4",
             newop_instr(&A, JVST_OP_CONSUME),
 
             oplabel, "valid_5",
-            newop_instr(&A, JVST_OP_VALID),
+            newop_return(&A, 0),
 
             NULL
           ),
@@ -620,19 +620,19 @@ static void test_op_type_integer(void)
           JVST_OP_TOKEN, 0, 0,
           JVST_OP_IEQ, VMREG(JVST_VM_TT), VMLIT(SJP_NUMBER),
           JVST_OP_CBT, "true_2",
-          JVST_OP_INVALID, VMLIT(1), 0,
+          JVST_OP_RETURN, VMLIT(1), 0,
 
           VM_LABEL, "true_2",
           JVST_OP_FINT, VMREG(JVST_VM_TNUM), VMLIT(0),
           JVST_OP_CBT, "true_4",
 
-          JVST_OP_INVALID, VMLIT(2), 0,
+          JVST_OP_RETURN, VMLIT(2), 0,
 
           VM_LABEL, "true_4",
           JVST_OP_CONSUME, 0, 0,
 
           VM_LABEL, "valid_5",
-          JVST_OP_VALID, 0, 0,
+          JVST_OP_RETURN, 0, 0,
           VM_END)
     },
 
@@ -686,7 +686,7 @@ static void test_op_minimum(void)
             newop_br(&A, JVST_OP_CBT, "true_2"),
 
             oplabel, "invalid_1_9",
-            newop_invalid(&A, 1),
+            newop_return(&A, 1),
 
             oplabel, "true_2",
             newop_load(&A, JVST_OP_MOVE, oparg_slot(1), oparg_tnum()),
@@ -695,13 +695,13 @@ static void test_op_minimum(void)
             newop_br(&A, JVST_OP_CBT, "true_4"),
 
             oplabel, "invalid_3_7",
-            newop_invalid(&A, 3),
+            newop_return(&A, 3),
 
             oplabel, "true_4",
             newop_instr(&A, JVST_OP_CONSUME),
 
             oplabel, "valid_5",
-            newop_instr(&A, JVST_OP_VALID),
+            newop_return(&A, 0),
 
             NULL
           ),
@@ -781,7 +781,7 @@ static void test_op_minimum(void)
             newop_br(&A, JVST_OP_CBT, "true_2"),
 
             oplabel, "invalid_1_9",
-            newop_invalid(&A, 1),
+            newop_return(&A, 1),
 
             oplabel, "true_2",
             newop_load(&A, JVST_OP_MOVE, oparg_slot(1), oparg_tnum()),
@@ -790,13 +790,13 @@ static void test_op_minimum(void)
             newop_br(&A, JVST_OP_CBT, "true_4"),
 
             oplabel, "invalid_3_7",
-            newop_invalid(&A, 3),
+            newop_return(&A, 3),
 
             oplabel, "true_4",
             newop_instr(&A, JVST_OP_CONSUME),
 
             oplabel, "valid_5",
-            newop_instr(&A, JVST_OP_VALID),
+            newop_return(&A, 0),
 
             NULL
           ),
@@ -811,7 +811,7 @@ static void test_op_minimum(void)
           JVST_OP_TOKEN, 0, 0,
           JVST_OP_IEQ, VMREG(JVST_VM_TT), VMLIT(SJP_NUMBER),
           JVST_OP_CBT, "true_2",
-          JVST_OP_INVALID, VMLIT(1), 0,
+          JVST_OP_RETURN, VMLIT(1), 0,
 
           VM_LABEL, "true_2",
           JVST_OP_MOVE, VMSLOT(1), VMREG(JVST_VM_TNUM),
@@ -819,13 +819,13 @@ static void test_op_minimum(void)
           JVST_OP_FGE, VMSLOT(1), VMSLOT(0),
           JVST_OP_CBT, "true_4",
 
-          JVST_OP_INVALID, VMLIT(3), 0,
+          JVST_OP_RETURN, VMLIT(3), 0,
 
           VM_LABEL, "true_4",
           JVST_OP_CONSUME, 0, 0,
 
           VM_LABEL, "valid_5",
-          JVST_OP_VALID, 0, 0,
+          JVST_OP_RETURN, 0, 0,
           VM_END)
     },
 
@@ -895,7 +895,7 @@ static void test_op_multiple_of(void)
             newop_instr(&A, JVST_OP_CONSUME),
 
             oplabel, "valid_5",
-            newop_instr(&A, JVST_OP_VALID),
+            newop_return(&A, 0),
 
             oplabel, "true_2",
             newop_load(&A, JVST_OP_FLOAD, oparg_slot(0), oparg_lit(0)),
@@ -903,14 +903,14 @@ static void test_op_multiple_of(void)
             newop_br(&A, JVST_OP_CBT, "true_4"),
 
             oplabel, "invalid_17_7",
-            newop_invalid(&A, 17),
+            newop_return(&A, 17),
 
             oplabel, "true_4",
             newop_instr(&A, JVST_OP_CONSUME),
             newop_br(&A, JVST_OP_BR, "valid_5"),
 
             oplabel, "invalid_1_11",
-            newop_invalid(&A, 1),
+            newop_return(&A, 1),
 
             NULL
           ),
@@ -975,7 +975,7 @@ static void test_op_multiple_of(void)
             newop_instr(&A, JVST_OP_CONSUME),
 
             oplabel, "valid_5",
-            newop_instr(&A, JVST_OP_VALID),
+            newop_return(&A, 0),
 
             oplabel, "true_2",
             newop_load(&A, JVST_OP_FLOAD, oparg_slot(0), oparg_lit(0)),
@@ -983,14 +983,14 @@ static void test_op_multiple_of(void)
             newop_br(&A, JVST_OP_CBT, "true_4"),
 
             oplabel, "invalid_17_7",
-            newop_invalid(&A, 17),
+            newop_return(&A, 17),
 
             oplabel, "true_4",
             newop_instr(&A, JVST_OP_CONSUME),
             newop_br(&A, JVST_OP_BR, "valid_5"),
 
             oplabel, "invalid_1_11",
-            newop_invalid(&A, 1),
+            newop_return(&A, 1),
 
             NULL
           ),
@@ -1018,21 +1018,21 @@ static void test_op_multiple_of(void)
           JVST_OP_CONSUME, 0, 0,
 
           VM_LABEL, "valid_5",
-          JVST_OP_VALID, 0, 0,
+          JVST_OP_RETURN, 0, 0,
 
           VM_LABEL, "true_2",
           JVST_OP_FLOAD, VMSLOT(0), VMLIT(0),
           JVST_OP_FINT, VMREG(JVST_VM_TNUM), VMSLOT(0),
           JVST_OP_CBT, "true_4",
 
-          JVST_OP_INVALID, VMLIT(17), 0,
+          JVST_OP_RETURN, VMLIT(17), 0,
 
           VM_LABEL, "true_4",
           JVST_OP_CONSUME, 0, 0,
           JVST_OP_BR, "valid_5",
 
           VM_LABEL, "invalid_1_11",
-          JVST_OP_INVALID, VMLIT(1), 0,
+          JVST_OP_RETURN, VMLIT(1), 0,
 
           VM_END)
     },
@@ -1088,21 +1088,21 @@ static void test_op_multiple_of(void)
             newop_instr(&A, JVST_OP_CONSUME),
 
             oplabel, "valid_5",
-            newop_instr(&A, JVST_OP_VALID),
+            newop_return(&A, 0),
 
             oplabel, "true_2",
             newop_cmp(&A, JVST_OP_FINT, oparg_tnum(), oparg_lit(3)),
             newop_br(&A, JVST_OP_CBT, "true_4"),
 
             oplabel, "invalid_17_7",
-            newop_invalid(&A, 17),
+            newop_return(&A, 17),
 
             oplabel, "true_4",
             newop_instr(&A, JVST_OP_CONSUME),
             newop_br(&A, JVST_OP_BR, "valid_5"),
 
             oplabel, "invalid_1_11",
-            newop_invalid(&A, 1),
+            newop_return(&A, 1),
 
             NULL
           ),
@@ -1163,7 +1163,7 @@ static void test_op_multiple_of(void)
             newop_instr(&A, JVST_OP_CONSUME),
 
             oplabel, "valid_5",
-            newop_instr(&A, JVST_OP_VALID),
+            newop_return(&A, 0),
 
             oplabel, "true_2",
             newop_load(&A, JVST_OP_FLOAD, oparg_slot(0), oparg_lit(0)),
@@ -1171,14 +1171,14 @@ static void test_op_multiple_of(void)
             newop_br(&A, JVST_OP_CBT, "true_4"),
 
             oplabel, "invalid_17_7",
-            newop_invalid(&A, 17),
+            newop_return(&A, 17),
 
             oplabel, "true_4",
             newop_instr(&A, JVST_OP_CONSUME),
             newop_br(&A, JVST_OP_BR, "valid_5"),
 
             oplabel, "invalid_1_11",
-            newop_invalid(&A, 1),
+            newop_return(&A, 1),
 
             NULL
           ),
@@ -1204,20 +1204,20 @@ static void test_op_multiple_of(void)
           JVST_OP_CONSUME, 0, 0,
 
           VM_LABEL, "valid_5",
-          JVST_OP_VALID, 0, 0,
+          JVST_OP_RETURN, 0, 0,
 
           VM_LABEL, "true_2",
           JVST_OP_FINT, VMREG(JVST_VM_TNUM), VMLIT(3),
           JVST_OP_CBT, "true_4",
 
-          JVST_OP_INVALID, VMLIT(17), 0,
+          JVST_OP_RETURN, VMLIT(17), 0,
 
           VM_LABEL, "true_4",
           JVST_OP_CONSUME, 0, 0,
           JVST_OP_BR, "valid_5",
 
           VM_LABEL, "invalid_1_11",
-          JVST_OP_INVALID, VMLIT(1), 0,
+          JVST_OP_RETURN, VMLIT(1), 0,
 
           VM_END)
     },
@@ -1345,7 +1345,7 @@ static void test_op_properties(void)
             newop_instr(&A, JVST_OP_CONSUME),
 
             oplabel, "valid_15",
-            newop_instr(&A, JVST_OP_VALID),
+            newop_return(&A, 0),
 
             oplabel, "loop_4",
             newop_instr(&A, JVST_OP_TOKEN),
@@ -1367,7 +1367,7 @@ static void test_op_properties(void)
             newop_br(&A, JVST_OP_CBT, "M_13"),
 
             oplabel, "invalid_9_14",
-            newop_invalid(&A, 9),
+            newop_return(&A, 9),
 
             oplabel, "M_9",
             newop_instr(&A, JVST_OP_CONSUME),
@@ -1382,7 +1382,7 @@ static void test_op_properties(void)
             newop_br(&A, JVST_OP_BR, "loop_4"),
 
             oplabel, "invalid_1_19",
-            newop_invalid(&A, 1),
+            newop_return(&A, 1),
 
             NULL
           ),
@@ -1394,13 +1394,13 @@ static void test_op_properties(void)
             newop_br(&A, JVST_OP_CBT, "true_2"),
 
             oplabel, "invalid_1_5",
-            newop_invalid(&A, 1),
+            newop_return(&A, 1),
 
             oplabel, "true_2",
             newop_instr(&A, JVST_OP_CONSUME),
 
             oplabel, "valid_3",
-            newop_instr(&A, JVST_OP_VALID),
+            newop_return(&A, 0),
 
             NULL
           ),
@@ -1412,13 +1412,13 @@ static void test_op_properties(void)
             newop_br(&A, JVST_OP_CBT, "true_2"),
 
             oplabel, "invalid_1_5",
-            newop_invalid(&A, 1),
+            newop_return(&A, 1),
 
             oplabel, "true_2",
             newop_instr(&A, JVST_OP_CONSUME),
 
             oplabel, "valid_3",
-            newop_instr(&A, JVST_OP_VALID),
+            newop_return(&A, 0),
 
             NULL
           ),
@@ -1539,7 +1539,7 @@ static void test_op_properties(void)
             newop_instr(&A, JVST_OP_CONSUME),
 
             oplabel, "valid_15",
-            newop_instr(&A, JVST_OP_VALID),
+            newop_return(&A, 0),
 
             oplabel, "loop_4",
             newop_instr(&A, JVST_OP_TOKEN),
@@ -1561,7 +1561,7 @@ static void test_op_properties(void)
             newop_br(&A, JVST_OP_CBT, "M_13"),
 
             oplabel, "invalid_9_14",
-            newop_invalid(&A, 9),
+            newop_return(&A, 9),
 
             oplabel, "M_9",
             newop_instr(&A, JVST_OP_CONSUME),
@@ -1576,7 +1576,7 @@ static void test_op_properties(void)
             newop_br(&A, JVST_OP_BR, "loop_4"),
 
             oplabel, "invalid_1_19",
-            newop_invalid(&A, 1),
+            newop_return(&A, 1),
 
             NULL
           ),
@@ -1588,13 +1588,13 @@ static void test_op_properties(void)
             newop_br(&A, JVST_OP_CBT, "true_2"),
 
             oplabel, "invalid_1_5",
-            newop_invalid(&A, 1),
+            newop_return(&A, 1),
 
             oplabel, "true_2",
             newop_instr(&A, JVST_OP_CONSUME),
 
             oplabel, "valid_3",
-            newop_instr(&A, JVST_OP_VALID),
+            newop_return(&A, 0),
 
             NULL
           ),
@@ -1606,13 +1606,13 @@ static void test_op_properties(void)
             newop_br(&A, JVST_OP_CBT, "true_2"),
 
             oplabel, "invalid_1_5",
-            newop_invalid(&A, 1),
+            newop_return(&A, 1),
 
             oplabel, "true_2",
             newop_instr(&A, JVST_OP_CONSUME),
 
             oplabel, "valid_3",
-            newop_instr(&A, JVST_OP_VALID),
+            newop_return(&A, 0),
 
             NULL
           ),
@@ -1638,7 +1638,7 @@ static void test_op_properties(void)
           JVST_OP_CONSUME, 0, 0,
 
           VM_LABEL, "valid_15",
-          JVST_OP_VALID, 0, 0,
+          JVST_OP_RETURN, 0, 0,
 
           VM_LABEL, "loop_4",
           JVST_OP_TOKEN, 0, 0,
@@ -1656,7 +1656,7 @@ static void test_op_properties(void)
           JVST_OP_IEQ, VMSLOT(0), VMLIT(2),
           JVST_OP_CBT, "M_13",
 
-          JVST_OP_INVALID, VMLIT(9), 0,
+          JVST_OP_RETURN, VMLIT(9), 0,
 
           VM_LABEL, "M_9",
           JVST_OP_CONSUME, 0, 0,
@@ -1671,7 +1671,7 @@ static void test_op_properties(void)
           JVST_OP_BR, "loop_4",
 
           VM_LABEL, "invalid_1_19",
-          JVST_OP_INVALID, VMLIT(1), 0,
+          JVST_OP_RETURN, VMLIT(1), 0,
 
           JVST_OP_PROC, VMLIT(0), VMLIT(0),
 
@@ -1679,13 +1679,13 @@ static void test_op_properties(void)
           JVST_OP_IEQ, VMREG(JVST_VM_TT), VMLIT(SJP_STRING),
           JVST_OP_CBT, "true_2a",
 
-          JVST_OP_INVALID, VMLIT(1), 0,
+          JVST_OP_RETURN, VMLIT(1), 0,
 
           VM_LABEL, "true_2a",
           JVST_OP_CONSUME, 0, 0,
 
           VM_LABEL, "valid_3a",
-          JVST_OP_VALID, 0, 0,
+          JVST_OP_RETURN, 0, 0,
 
           JVST_OP_PROC, VMLIT(0), VMLIT(0),
 
@@ -1693,13 +1693,13 @@ static void test_op_properties(void)
           JVST_OP_IEQ, VMREG(JVST_VM_TT), VMLIT(SJP_NUMBER),
           JVST_OP_CBT, "true_2b",
 
-          JVST_OP_INVALID, VMLIT(1), 0,
+          JVST_OP_RETURN, VMLIT(1), 0,
 
           VM_LABEL, "true_2b",
           JVST_OP_CONSUME, 0, 0,
 
           VM_LABEL, "valid_3b",
-          JVST_OP_VALID, 0, 0,
+          JVST_OP_RETURN, 0, 0,
 
           VM_END)
     },
@@ -1799,7 +1799,7 @@ static void test_op_properties(void)
             newop_instr(&A, JVST_OP_CONSUME),
 
             oplabel, "valid_15",
-            newop_instr(&A, JVST_OP_VALID),
+            newop_return(&A, 0),
 
             oplabel, "loop_4",
             newop_instr(&A, JVST_OP_TOKEN),
@@ -1821,7 +1821,7 @@ static void test_op_properties(void)
             newop_br(&A, JVST_OP_CBT, "M_13"),
 
             oplabel, "invalid_9_14",
-            newop_invalid(&A, 9),
+            newop_return(&A, 9),
 
             oplabel, "M_9",
             newop_instr(&A, JVST_OP_CONSUME),
@@ -1836,7 +1836,7 @@ static void test_op_properties(void)
             newop_br(&A, JVST_OP_BR, "loop_4"),
 
             oplabel, "invalid_1_19",
-            newop_invalid(&A, 1),
+            newop_return(&A, 1),
 
             NULL
           ),
@@ -1846,7 +1846,7 @@ static void test_op_properties(void)
             newop_instr(&A, JVST_OP_TOKEN),
 
             oplabel, "invalid_1_1",
-            newop_invalid(&A, 1),
+            newop_return(&A, 1),
 
             NULL
           ),
@@ -1858,13 +1858,13 @@ static void test_op_properties(void)
             newop_br(&A, JVST_OP_CBT, "true_2"),
 
             oplabel, "invalid_1_5",
-            newop_invalid(&A, 1),
+            newop_return(&A, 1),
 
             oplabel, "true_2",
             newop_instr(&A, JVST_OP_CONSUME),
 
             oplabel, "valid_3",
-            newop_instr(&A, JVST_OP_VALID),
+            newop_return(&A, 0),
 
             NULL
           ),
@@ -1983,7 +1983,7 @@ void test_op_minmax_properties_1(void)
             newop_instr(&A, JVST_OP_CONSUME),
 
             oplabel, "valid_10",
-            newop_instr(&A, JVST_OP_VALID),
+            newop_return(&A, 0),
 
             oplabel, "loop_4",
             newop_instr(&A, JVST_OP_TOKEN),
@@ -2004,10 +2004,10 @@ void test_op_minmax_properties_1(void)
             newop_br(&A, JVST_OP_CBT, "valid_10"),
 
             oplabel, "invalid_4_12",
-            newop_invalid(&A, 4),
+            newop_return(&A, 4),
 
             oplabel, "invalid_1_16",
-            newop_invalid(&A, 1),
+            newop_return(&A, 1),
 
             NULL
           ),
@@ -2098,7 +2098,7 @@ void test_op_minmax_properties_1(void)
             newop_instr(&A, JVST_OP_CONSUME),
 
             oplabel, "valid_10",
-            newop_instr(&A, JVST_OP_VALID),
+            newop_return(&A, 0),
 
             oplabel, "loop_4",
             newop_instr(&A, JVST_OP_TOKEN),
@@ -2119,10 +2119,10 @@ void test_op_minmax_properties_1(void)
             newop_br(&A, JVST_OP_CBT, "valid_10"),
 
             oplabel, "invalid_5_12",
-            newop_invalid(&A, 5),
+            newop_return(&A, 5),
 
             oplabel, "invalid_1_16",
-            newop_invalid(&A, 1),
+            newop_return(&A, 1),
 
             NULL
           ),
@@ -2213,7 +2213,7 @@ void test_op_minmax_properties_1(void)
             newop_instr(&A, JVST_OP_CONSUME),
 
             oplabel, "valid_12",
-            newop_instr(&A, JVST_OP_VALID),
+            newop_return(&A, 0),
 
             oplabel, "loop_4",
             newop_instr(&A, JVST_OP_TOKEN),
@@ -2234,7 +2234,7 @@ void test_op_minmax_properties_1(void)
             newop_br(&A, JVST_OP_CBT, "true_9"),
 
             oplabel, "invalid_4_16",
-            newop_invalid(&A, 4),
+            newop_return(&A, 4),
 
             oplabel, "true_9",
             newop_load(&A, JVST_OP_MOVE, oparg_slot(1), oparg_slot(0)),
@@ -2244,10 +2244,10 @@ void test_op_minmax_properties_1(void)
             newop_br(&A, JVST_OP_CBT, "valid_12"),
 
             oplabel, "invalid_5_14",
-            newop_invalid(&A, 5),
+            newop_return(&A, 5),
 
             oplabel, "invalid_1_20",
-            newop_invalid(&A, 1),
+            newop_return(&A, 1),
 
             NULL
           ),
@@ -2338,7 +2338,7 @@ void test_op_minmax_properties_1(void)
             newop_instr(&A, JVST_OP_CONSUME),
 
             oplabel, "valid_12",
-            newop_instr(&A, JVST_OP_VALID),
+            newop_return(&A, 0),
 
             oplabel, "loop_4",
             newop_instr(&A, JVST_OP_TOKEN),
@@ -2359,7 +2359,7 @@ void test_op_minmax_properties_1(void)
             newop_br(&A, JVST_OP_CBT, "true_9"),
 
             oplabel, "invalid_4_16",
-            newop_invalid(&A, 4),
+            newop_return(&A, 4),
 
             oplabel, "true_9",
             newop_load(&A, JVST_OP_MOVE, oparg_slot(1), oparg_slot(0)),
@@ -2369,10 +2369,10 @@ void test_op_minmax_properties_1(void)
             newop_br(&A, JVST_OP_CBT, "valid_12"),
 
             oplabel, "invalid_5_14",
-            newop_invalid(&A, 5),
+            newop_return(&A, 5),
 
             oplabel, "invalid_1_20",
-            newop_invalid(&A, 1),
+            newop_return(&A, 1),
 
             NULL
           ),
@@ -2396,7 +2396,7 @@ void test_op_minmax_properties_1(void)
           JVST_OP_CONSUME, 0, 0,
 
           VM_LABEL, "valid_12",
-          JVST_OP_VALID, 0, 0,
+          JVST_OP_RETURN, 0, 0,
 
           VM_LABEL, "loop_4",
           JVST_OP_TOKEN, 0, 0,
@@ -2415,7 +2415,7 @@ void test_op_minmax_properties_1(void)
           JVST_OP_IGE, VMSLOT(6), VMSLOT(5),
           JVST_OP_CBT, "true_9",
 
-          JVST_OP_INVALID, VMLIT(4), 0,
+          JVST_OP_RETURN, VMLIT(4), 0,
 
           VM_LABEL, "true_9",
           JVST_OP_MOVE, VMSLOT(1), VMSLOT(0),
@@ -2424,10 +2424,10 @@ void test_op_minmax_properties_1(void)
           JVST_OP_ILE, VMSLOT(3), VMSLOT(2),
           JVST_OP_CBT, "valid_12",
 
-          JVST_OP_INVALID, VMLIT(5), 0,
+          JVST_OP_RETURN, VMLIT(5), 0,
 
           VM_LABEL, "invalid_1_20",
-          JVST_OP_INVALID, VMLIT(1), 0,
+          JVST_OP_RETURN, VMLIT(1), 0,
 
           VM_END)
     },
@@ -2570,7 +2570,7 @@ void test_op_minproperties_2(void)
             newop_instr(&A, JVST_OP_CONSUME),
 
             oplabel, "valid_17",
-            newop_instr(&A, JVST_OP_VALID),
+            newop_return(&A, 0),
 
             oplabel, "loop_4",
             newop_instr(&A, JVST_OP_TOKEN),
@@ -2592,7 +2592,7 @@ void test_op_minproperties_2(void)
             newop_br(&A, JVST_OP_CBT, "M_13"),
 
             oplabel, "invalid_9_14",
-            newop_invalid(&A, 9),
+            newop_return(&A, 9),
 
             oplabel, "M_9",
             newop_instr(&A, JVST_OP_CONSUME),
@@ -2617,10 +2617,10 @@ void test_op_minproperties_2(void)
             newop_br(&A, JVST_OP_CBT, "valid_17"),
 
             oplabel, "invalid_4_19",
-            newop_invalid(&A, 4),
+            newop_return(&A, 4),
 
             oplabel, "invalid_1_23",
-            newop_invalid(&A, 1),
+            newop_return(&A, 1),
 
             NULL
           ),
@@ -2632,13 +2632,13 @@ void test_op_minproperties_2(void)
             newop_br(&A, JVST_OP_CBT, "true_2"),
 
             oplabel, "invalid_1_5",
-            newop_invalid(&A, 1),
+            newop_return(&A, 1),
 
             oplabel, "true_2",
             newop_instr(&A, JVST_OP_CONSUME),
 
             oplabel, "valid_3",
-            newop_instr(&A, JVST_OP_VALID),
+            newop_return(&A, 0),
 
             NULL
           ),
@@ -2650,13 +2650,13 @@ void test_op_minproperties_2(void)
             newop_br(&A, JVST_OP_CBT, "true_2"),
 
             oplabel, "invalid_1_5",
-            newop_invalid(&A, 1),
+            newop_return(&A, 1),
 
             oplabel, "true_2",
             newop_instr(&A, JVST_OP_CONSUME),
 
             oplabel, "valid_3",
-            newop_instr(&A, JVST_OP_VALID),
+            newop_return(&A, 0),
 
             NULL
           ),
@@ -2815,7 +2815,7 @@ void test_op_required(void)
             newop_instr(&A, JVST_OP_CONSUME),
 
             oplabel, "valid_17",
-            newop_instr(&A, JVST_OP_VALID),
+            newop_return(&A, 0),
 
             oplabel, "loop_4",
             newop_instr(&A, JVST_OP_TOKEN),
@@ -2837,7 +2837,7 @@ void test_op_required(void)
             newop_br(&A, JVST_OP_CBT, "M_13"),
 
             oplabel, "invalid_9_14",
-            newop_invalid(&A, 9),
+            newop_return(&A, 9),
 
             oplabel, "M_9",
             newop_instr(&A, JVST_OP_CONSUME),
@@ -2859,10 +2859,10 @@ void test_op_required(void)
             newop_br(&A, JVST_OP_CBT, "valid_17"),
 
             oplabel, "invalid_6_19",
-            newop_invalid(&A, 6),
+            newop_return(&A, 6),
 
             oplabel, "invalid_1_23",
-            newop_invalid(&A, 1),
+            newop_return(&A, 1),
 
             NULL
           ),
@@ -2874,13 +2874,13 @@ void test_op_required(void)
             newop_br(&A, JVST_OP_CBT, "true_2"),
 
             oplabel, "invalid_1_5",
-            newop_invalid(&A, 1),
+            newop_return(&A, 1),
 
             oplabel, "true_2",
             newop_instr(&A, JVST_OP_CONSUME),
 
             oplabel, "valid_3",
-            newop_instr(&A, JVST_OP_VALID),
+            newop_return(&A, 0),
 
             NULL
           ),
@@ -2892,13 +2892,13 @@ void test_op_required(void)
             newop_br(&A, JVST_OP_CBT, "true_2"),
 
             oplabel, "invalid_1_5",
-            newop_invalid(&A, 1),
+            newop_return(&A, 1),
 
             oplabel, "true_2",
             newop_instr(&A, JVST_OP_CONSUME),
 
             oplabel, "valid_3",
-            newop_instr(&A, JVST_OP_VALID),
+            newop_return(&A, 0),
 
             NULL
           ),
@@ -3032,7 +3032,7 @@ void test_op_required(void)
             newop_instr(&A, JVST_OP_CONSUME),
 
             oplabel, "valid_17",
-            newop_instr(&A, JVST_OP_VALID),
+            newop_return(&A, 0),
 
             oplabel, "loop_4",
             newop_instr(&A, JVST_OP_TOKEN),
@@ -3054,7 +3054,7 @@ void test_op_required(void)
             newop_br(&A, JVST_OP_CBT, "M_13"),
 
             oplabel, "invalid_9_14",
-            newop_invalid(&A, 9),
+            newop_return(&A, 9),
 
             oplabel, "M_9",
             newop_instr(&A, JVST_OP_CONSUME),
@@ -3076,10 +3076,10 @@ void test_op_required(void)
             newop_br(&A, JVST_OP_CBT, "valid_17"),
 
             oplabel, "invalid_6_19",
-            newop_invalid(&A, 6),
+            newop_return(&A, 6),
 
             oplabel, "invalid_1_23",
-            newop_invalid(&A, 1),
+            newop_return(&A, 1),
 
             NULL
           ),
@@ -3091,13 +3091,13 @@ void test_op_required(void)
             newop_br(&A, JVST_OP_CBT, "true_2"),
 
             oplabel, "invalid_1_5",
-            newop_invalid(&A, 1),
+            newop_return(&A, 1),
 
             oplabel, "true_2",
             newop_instr(&A, JVST_OP_CONSUME),
 
             oplabel, "valid_3",
-            newop_instr(&A, JVST_OP_VALID),
+            newop_return(&A, 0),
 
             NULL
           ),
@@ -3109,13 +3109,13 @@ void test_op_required(void)
             newop_br(&A, JVST_OP_CBT, "true_2"),
 
             oplabel, "invalid_1_5",
-            newop_invalid(&A, 1),
+            newop_return(&A, 1),
 
             oplabel, "true_2",
             newop_instr(&A, JVST_OP_CONSUME),
 
             oplabel, "valid_3",
-            newop_instr(&A, JVST_OP_VALID),
+            newop_return(&A, 0),
 
             NULL
           ),
@@ -3141,7 +3141,7 @@ void test_op_required(void)
           JVST_OP_CONSUME, 0, 0,
 
           VM_LABEL, "valid_17",
-          JVST_OP_VALID, 0, 0,
+          JVST_OP_RETURN, 0, 0,
 
           VM_LABEL, "loop_4",
           JVST_OP_TOKEN, 0, 0,
@@ -3159,7 +3159,7 @@ void test_op_required(void)
           JVST_OP_IEQ, VMSLOT(1), VMLIT(2),
           JVST_OP_CBT, "M_13",
 
-          JVST_OP_INVALID, VMLIT(9), 0,
+          JVST_OP_RETURN, VMLIT(9), 0,
 
           VM_LABEL, "M_9",
           JVST_OP_CONSUME, VMLIT(0), VMLIT(0),
@@ -3180,10 +3180,10 @@ void test_op_required(void)
           JVST_OP_IEQ, VMSLOT(2), VMLIT(1),
           JVST_OP_CBT, "valid_17",
 
-          JVST_OP_INVALID, VMLIT(6), 0,
+          JVST_OP_RETURN, VMLIT(6), 0,
 
           VM_LABEL, "invalid_1_23",
-          JVST_OP_INVALID, VMLIT(1), 0,
+          JVST_OP_RETURN, VMLIT(1), 0,
 
           JVST_OP_PROC, VMLIT(0), VMLIT(0),
 
@@ -3191,13 +3191,13 @@ void test_op_required(void)
           JVST_OP_IEQ, VMREG(JVST_VM_TT), VMLIT(SJP_STRING),
           JVST_OP_CBT, "true_2a",
 
-          JVST_OP_INVALID, VMLIT(1), 0,
+          JVST_OP_RETURN, VMLIT(1), 0,
 
           VM_LABEL, "true_2a",
           JVST_OP_CONSUME, 0, 0,
 
           VM_LABEL, "valid_3a",
-          JVST_OP_VALID, 0, 0,
+          JVST_OP_RETURN, 0, 0,
 
           JVST_OP_PROC, VMLIT(0), VMLIT(0),
 
@@ -3205,13 +3205,13 @@ void test_op_required(void)
           JVST_OP_IEQ, VMREG(JVST_VM_TT), VMLIT(SJP_NUMBER),
           JVST_OP_CBT, "true_2b",
 
-          JVST_OP_INVALID, VMLIT(1), 0,
+          JVST_OP_RETURN, VMLIT(1), 0,
 
           VM_LABEL, "true_2b",
           JVST_OP_CONSUME, 0, 0,
 
           VM_LABEL, "valid_3b",
-          JVST_OP_VALID, 0, 0,
+          JVST_OP_RETURN, 0, 0,
 
           VM_END)
     },
@@ -3381,7 +3381,7 @@ void test_op_dependencies(void)
             newop_instr(&A, JVST_OP_CONSUME),
 
             oplabel, "valid_5",
-            newop_instr(&A, JVST_OP_VALID),
+            newop_return(&A, 0),
 
             oplabel, "true_2",
             newop_instr2(&A, JVST_OP_SPLIT, oparg_lit(0), oparg_slot(3)),
@@ -3392,10 +3392,10 @@ void test_op_dependencies(void)
             newop_br(&A, JVST_OP_CBT, "valid_5"),
 
             oplabel, "invalid_7_7",
-            newop_invalid(&A, 7),
+            newop_return(&A, 7),
 
             oplabel, "invalid_1_11",
-            newop_invalid(&A, 1),
+            newop_return(&A, 1),
 
             NULL
           ),
@@ -3419,17 +3419,17 @@ void test_op_dependencies(void)
             newop_br(&A, JVST_OP_CBT, "invalid_8_10"),
 
             oplabel, "invalid_9_11",
-            newop_invalid(&A, 9),
+            newop_return(&A, 9),
 
             oplabel, "M_7",
             newop_instr(&A, JVST_OP_CONSUME),
             newop_br(&A, JVST_OP_BR, "loop_2"),
 
             oplabel, "valid_12",
-            newop_instr(&A, JVST_OP_VALID),
+            newop_return(&A, 0),
 
             oplabel, "invalid_8_10",
-            newop_invalid(&A, 8),
+            newop_return(&A, 8),
 
             NULL
           ),
@@ -3457,7 +3457,7 @@ void test_op_dependencies(void)
             newop_br(&A, JVST_OP_CBT, "M_11"),
 
             oplabel, "invalid_9_12",
-            newop_invalid(&A, 9),
+            newop_return(&A, 9),
 
             oplabel, "M_7",
             newop_instr(&A, JVST_OP_CONSUME),
@@ -3480,10 +3480,10 @@ void test_op_dependencies(void)
             newop_br(&A, JVST_OP_CBT, "valid_15"),
 
             oplabel, "invalid_6_17",
-            newop_invalid(&A, 6),
+            newop_return(&A, 6),
 
             oplabel, "valid_15",
-            newop_instr(&A, JVST_OP_VALID),
+            newop_return(&A, 0),
 
             NULL
           ),
@@ -3638,7 +3638,7 @@ void test_op_dependencies(void)
             newop_br(&A, JVST_OP_CBT, "invalid_1_11"),
 
             oplabel, "valid_5",
-            newop_instr(&A, JVST_OP_VALID),
+            newop_return(&A, 0),
 
             oplabel, "true_2",
             newop_instr2(&A, JVST_OP_SPLIT, oparg_lit(0), oparg_slot(3)),
@@ -3649,10 +3649,10 @@ void test_op_dependencies(void)
             newop_br(&A, JVST_OP_CBT, "valid_5"),
 
             oplabel, "invalid_7_7",
-            newop_invalid(&A, 7),
+            newop_return(&A, 7),
 
             oplabel, "invalid_1_11",
-            newop_invalid(&A, 1),
+            newop_return(&A, 1),
 
             NULL
           ),
@@ -3676,17 +3676,17 @@ void test_op_dependencies(void)
             newop_br(&A, JVST_OP_CBT, "invalid_8_10"),
 
             oplabel, "invalid_9_11",
-            newop_invalid(&A, 9),
+            newop_return(&A, 9),
 
             oplabel, "M_7",
             newop_instr(&A, JVST_OP_CONSUME),
             newop_br(&A, JVST_OP_BR, "loop_2"),
 
             oplabel, "valid_12",
-            newop_instr(&A, JVST_OP_VALID),
+            newop_return(&A, 0),
 
             oplabel, "invalid_8_10",
-            newop_invalid(&A, 8),
+            newop_return(&A, 8),
 
             NULL
           ),
@@ -3714,7 +3714,7 @@ void test_op_dependencies(void)
             newop_br(&A, JVST_OP_CBT, "M_11"),
 
             oplabel, "invalid_9_12",
-            newop_invalid(&A, 9),
+            newop_return(&A, 9),
 
             oplabel, "M_7",
             newop_instr(&A, JVST_OP_CONSUME),
@@ -3737,10 +3737,10 @@ void test_op_dependencies(void)
             newop_br(&A, JVST_OP_CBT, "valid_15"),
 
             oplabel, "invalid_6_17",
-            newop_invalid(&A, 6),
+            newop_return(&A, 6),
 
             oplabel, "valid_15",
-            newop_instr(&A, JVST_OP_VALID),
+            newop_return(&A, 0),
 
             NULL
           ),
@@ -3766,7 +3766,7 @@ void test_op_dependencies(void)
           JVST_OP_CONSUME, 0, 0,
 
           VM_LABEL, "valid_5",
-          JVST_OP_VALID, 0, 0,
+          JVST_OP_RETURN, 0, 0,
 
           VM_LABEL, "true_2",
           JVST_OP_SPLIT, VMLIT(0), VMSLOT(3),
@@ -3777,10 +3777,10 @@ void test_op_dependencies(void)
           JVST_OP_CBT, "valid_5",
 
           VM_LABEL, "invalid_7_7",
-          JVST_OP_INVALID, VMLIT(7), 0,
+          JVST_OP_RETURN, VMLIT(7), 0,
 
           VM_LABEL, "invalid_1_11",
-          JVST_OP_INVALID, VMLIT(1), 0,
+          JVST_OP_RETURN, VMLIT(1), 0,
 
 
           JVST_OP_PROC, VMLIT(1), VMLIT(0),
@@ -3799,17 +3799,17 @@ void test_op_dependencies(void)
           JVST_OP_CBT, "invalid_8_10",
 
           VM_LABEL, "invalid_9_11",
-          JVST_OP_INVALID, VMLIT(9), 0,
+          JVST_OP_RETURN, VMLIT(9), 0,
 
           VM_LABEL, "M_7",
           JVST_OP_CONSUME, VMLIT(0), VMLIT(0),
           JVST_OP_BR, "loop_2",
 
           VM_LABEL, "valid_12",
-          JVST_OP_VALID, VMLIT(0), VMLIT(0),
+          JVST_OP_RETURN, VMLIT(0), VMLIT(0),
 
           VM_LABEL, "invalid_8_10",
-          JVST_OP_INVALID, VMLIT(8), 0,
+          JVST_OP_RETURN, VMLIT(8), 0,
 
 
           JVST_OP_PROC, VMLIT(3), VMLIT(0),
@@ -3831,7 +3831,7 @@ void test_op_dependencies(void)
           JVST_OP_CBT, "M_11b",
 
           VM_LABEL, "invalid_9_12",
-          JVST_OP_INVALID, VMLIT(9), 0,
+          JVST_OP_RETURN, VMLIT(9), 0,
 
           VM_LABEL, "M_7b",
           JVST_OP_CONSUME, VMLIT(0), VMLIT(0),
@@ -3854,10 +3854,10 @@ void test_op_dependencies(void)
           JVST_OP_CBT, "valid_15",
 
           VM_LABEL, "invalid_6_17",
-          JVST_OP_INVALID, VMLIT(6), 0,
+          JVST_OP_RETURN, VMLIT(6), 0,
 
           VM_LABEL, "valid_15",
-          JVST_OP_VALID, VMLIT(0), VMLIT(0),
+          JVST_OP_RETURN, VMLIT(0), VMLIT(0),
 
           VM_END)
     },
@@ -4024,7 +4024,7 @@ void test_op_dependencies(void)
             newop_instr(&A, JVST_OP_CONSUME),
 
             oplabel, "valid_5",
-            newop_instr(&A, JVST_OP_VALID),
+            newop_return(&A, 0),
 
             oplabel, "true_2",
             newop_instr2(&A, JVST_OP_SPLIT, oparg_lit(0), oparg_slot(3)),
@@ -4035,10 +4035,10 @@ void test_op_dependencies(void)
             newop_br(&A, JVST_OP_CBT, "valid_5"),
 
             oplabel, "invalid_7_7",
-            newop_invalid(&A, 7),
+            newop_return(&A, 7),
 
             oplabel, "invalid_1_11",
-            newop_invalid(&A, 1),
+            newop_return(&A, 1),
 
             NULL
           ),
@@ -4062,17 +4062,17 @@ void test_op_dependencies(void)
             newop_br(&A, JVST_OP_CBT, "invalid_8_10"),
 
             oplabel, "invalid_9_11",
-            newop_invalid(&A, 9),
+            newop_return(&A, 9),
 
             oplabel, "M_7",
             newop_instr(&A, JVST_OP_CONSUME),
             newop_br(&A, JVST_OP_BR, "loop_2"),
 
             oplabel, "valid_12",
-            newop_instr(&A, JVST_OP_VALID),
+            newop_return(&A, 0),
 
             oplabel, "invalid_8_10",
-            newop_invalid(&A, 8),
+            newop_return(&A, 8),
 
             NULL
           ),
@@ -4104,7 +4104,7 @@ void test_op_dependencies(void)
             newop_br(&A, JVST_OP_CBT, "M_13"),
 
             oplabel, "invalid_9_14",
-            newop_invalid(&A, 9),
+            newop_return(&A, 9),
 
             oplabel, "M_7",
             newop_instr(&A, JVST_OP_CONSUME),
@@ -4132,10 +4132,10 @@ void test_op_dependencies(void)
             newop_br(&A, JVST_OP_CBT, "valid_17"),
 
             oplabel, "invalid_6_19",
-            newop_invalid(&A, 6),
+            newop_return(&A, 6),
 
             oplabel, "valid_17",
-            newop_instr(&A, JVST_OP_VALID),
+            newop_return(&A, 0),
 
             NULL
           ),
@@ -4415,7 +4415,7 @@ void test_op_dependencies(void)
             newop_instr(&A, JVST_OP_CONSUME),
 
             oplabel, "valid_5",
-            newop_instr(&A, JVST_OP_VALID),
+            newop_return(&A, 0),
 
             oplabel, "true_2",
             newop_instr2(&A, JVST_OP_SPLITV, oparg_lit(0), oparg_slot(0)),
@@ -4431,7 +4431,7 @@ void test_op_dependencies(void)
             newop_br(&A, JVST_OP_CBT, "and_true_8"),
 
             oplabel, "invalid_7_7",
-            newop_invalid(&A, 7),
+            newop_return(&A, 7),
 
             oplabel, "and_true_8",
             newop_load(&A, JVST_OP_MOVE, oparg_slot(3), oparg_slot(0)),
@@ -4447,7 +4447,7 @@ void test_op_dependencies(void)
             newop_br(&A, JVST_OP_BR, "invalid_7_7"),
 
             oplabel, "invalid_1_14",
-            newop_invalid(&A, 1),
+            newop_return(&A, 1),
 
             NULL
           ),
@@ -4470,17 +4470,17 @@ void test_op_dependencies(void)
             newop_br(&A, JVST_OP_CBT, "invalid_8_10"),
 
             oplabel, "invalid_9_11",
-            newop_invalid(&A, 9),
+            newop_return(&A, 9),
 
             oplabel, "M_7",
             newop_instr(&A, JVST_OP_CONSUME),
             newop_br(&A, JVST_OP_BR, "loop_2"),
 
             oplabel, "valid_12",
-            newop_instr(&A, JVST_OP_VALID),
+            newop_return(&A, 0),
 
             oplabel, "invalid_8_10",
-            newop_invalid(&A, 8),
+            newop_return(&A, 8),
 
             NULL
           ),
@@ -4512,7 +4512,7 @@ void test_op_dependencies(void)
             newop_br(&A, JVST_OP_CBT, "M_13"),
 
             oplabel, "invalid_9_14",
-            newop_invalid(&A, 9),
+            newop_return(&A, 9),
 
             oplabel, "M_7",
             newop_instr(&A, JVST_OP_CONSUME),
@@ -4540,10 +4540,10 @@ void test_op_dependencies(void)
             newop_br(&A, JVST_OP_CBT, "valid_17"),
 
             oplabel, "invalid_6_19",
-            newop_invalid(&A, 6),
+            newop_return(&A, 6),
 
             oplabel, "valid_17",
-            newop_instr(&A, JVST_OP_VALID),
+            newop_return(&A, 0),
 
             NULL
           ),
@@ -4567,17 +4567,17 @@ void test_op_dependencies(void)
             newop_br(&A, JVST_OP_CBT, "invalid_8_10"),
 
             oplabel, "invalid_9_11",
-            newop_invalid(&A, 9),
+            newop_return(&A, 9),
 
             oplabel, "M_7",
             newop_instr(&A, JVST_OP_CONSUME),
             newop_br(&A, JVST_OP_BR, "loop_2"),
 
             oplabel, "valid_12",
-            newop_instr(&A, JVST_OP_VALID),
+            newop_return(&A, 0),
 
             oplabel, "invalid_8_10",
-            newop_invalid(&A, 8),
+            newop_return(&A, 8),
 
             NULL
           ),
@@ -4605,7 +4605,7 @@ void test_op_dependencies(void)
             newop_br(&A, JVST_OP_CBT, "M_11"),
 
             oplabel, "invalid_9_12",
-            newop_invalid(&A, 9),
+            newop_return(&A, 9),
 
             oplabel, "M_7",
             newop_instr(&A, JVST_OP_CONSUME),
@@ -4628,10 +4628,10 @@ void test_op_dependencies(void)
             newop_br(&A, JVST_OP_CBT, "valid_15"),
 
             oplabel, "invalid_6_17",
-            newop_invalid(&A, 6),
+            newop_return(&A, 6),
 
             oplabel, "valid_15",
-            newop_instr(&A, JVST_OP_VALID),
+            newop_return(&A, 0),
 
             NULL
           ),

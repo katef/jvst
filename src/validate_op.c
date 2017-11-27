@@ -321,11 +321,10 @@ op_instr_dump(struct sbuf *buf, struct jvst_op_instr *instr)
 		return;
 
 	case JVST_OP_CONSUME:
-	case JVST_OP_VALID:
 		sbuf_snprintf(buf, "%s", jvst_op_name(instr->op));
 		return;
 
-	case JVST_OP_INVALID:
+	case JVST_OP_RETURN:
 		sbuf_snprintf(buf, "%s %d",
 			jvst_op_name(instr->op),
 			instr->args[0].u.index);
@@ -642,8 +641,7 @@ asm_fixup_addr(struct asm_addr_fixup *fix)
 	case JVST_OP_INCR:
 	case JVST_OP_BSET:
 	case JVST_OP_BAND:
-	case JVST_OP_VALID:
-	case JVST_OP_INVALID:
+	case JVST_OP_RETURN:
 	case JVST_OP_MOVE:
 		fprintf(stderr, "%s:%d (%s) invalid op %s for address lookup\n",
 			__FILE__, __LINE__, __func__, jvst_op_name(fix->instr->op));
@@ -1029,8 +1027,7 @@ emit_cond(struct op_assembler *opasm, enum jvst_vm_op op,
 	case JVST_OP_INCR:
 	case JVST_OP_BSET:
 	case JVST_OP_BAND:
-	case JVST_OP_VALID:
-	case JVST_OP_INVALID:
+	case JVST_OP_RETURN:
 	case JVST_OP_MOVE:
 		fprintf(stderr, "op %s is not a conditional\n", jvst_op_name(op));
 		abort();
@@ -1826,13 +1823,18 @@ op_assemble(struct op_assembler *opasm, struct jvst_ir_stmt *stmt)
 		return;
 
 	case JVST_IR_STMT_VALID:
-		emit_instr(opasm, op_instr_new(JVST_OP_VALID));
-		return;
-
 	case JVST_IR_STMT_INVALID:
-		instr = op_instr_new(JVST_OP_INVALID);
-		instr->args[0] = arg_const(stmt->u.invalid.code);
-		emit_instr(opasm, instr);
+		{
+			int ecode = 0;
+
+			if (stmt->type == JVST_IR_STMT_INVALID) {
+				ecode = stmt->u.invalid.code;
+			}
+
+			instr = op_instr_new(JVST_OP_RETURN);
+			instr->args[0] = arg_const(ecode);
+			emit_instr(opasm, instr);
+		}
 		return;
 
 	case JVST_IR_STMT_MOVE:
@@ -2226,7 +2228,6 @@ encode_pass1(struct op_encoder *enc, struct jvst_op_instr *first)
 
 		case JVST_OP_TOKEN:
 		case JVST_OP_CONSUME:
-		case JVST_OP_VALID:
 
 		case JVST_OP_NOP:
 		case JVST_OP_PROC:
@@ -2252,7 +2253,7 @@ encode_pass1(struct op_encoder *enc, struct jvst_op_instr *first)
 		case JVST_OP_INCR:
 		case JVST_OP_BSET:
 		case JVST_OP_BAND:
-		case JVST_OP_INVALID:
+		case JVST_OP_RETURN:
 			a = encode_arg(instr->args[0]);
 			b = encode_arg(instr->args[1]);
 

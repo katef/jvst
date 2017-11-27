@@ -380,7 +380,7 @@ struct jvst_op_instr *
 newop_incr(struct arena_info *A, size_t slot);
 
 struct jvst_op_instr *
-newop_invalid(struct arena_info *A, enum jvst_invalid_code ecode);
+newop_return(struct arena_info *A, enum jvst_invalid_code ecode);
 
 struct jvst_op_instr *
 newop_bitop(struct arena_info *A, enum jvst_vm_op op, int frame_off, int bit);

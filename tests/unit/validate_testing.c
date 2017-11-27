@@ -2405,8 +2405,7 @@ newop_cmp(struct arena_info *A, enum jvst_vm_op op,
 	case JVST_OP_INCR:
 	case JVST_OP_BSET:
 	case JVST_OP_BAND:
-	case JVST_OP_VALID:
-	case JVST_OP_INVALID:
+	case JVST_OP_RETURN:
 	case JVST_OP_MOVE:
 		fprintf(stderr, "%s:%d (%s) OP %s is not a comparison\n",
 			__FILE__, __LINE__, __func__, jvst_op_name(op));
@@ -2538,8 +2537,7 @@ newop_load(struct arena_info *A, enum jvst_vm_op op,
 	case JVST_OP_INCR:
 	case JVST_OP_BSET:
 	case JVST_OP_BAND:
-	case JVST_OP_VALID:
-	case JVST_OP_INVALID:
+	case JVST_OP_RETURN:
 		fprintf(stderr, "OP %s is not a load\n",
 			jvst_op_name(op));
 		abort();
@@ -2595,8 +2593,7 @@ newop_br(struct arena_info *A, enum jvst_vm_op op, const char *label)
 	case JVST_OP_INCR:
 	case JVST_OP_BSET:
 	case JVST_OP_BAND:
-	case JVST_OP_VALID:
-	case JVST_OP_INVALID:
+	case JVST_OP_RETURN:
 	case JVST_OP_MOVE:
 		fprintf(stderr, "%s:%d (%s) OP %s is not a branch\n",
 		__FILE__, __LINE__, __func__, jvst_op_name(op));
@@ -2638,10 +2635,10 @@ newop_incr(struct arena_info *A, size_t slot)
 }
 
 struct jvst_op_instr *
-newop_invalid(struct arena_info *A, enum jvst_invalid_code ecode)
+newop_return(struct arena_info *A, enum jvst_invalid_code ecode)
 {
 	struct jvst_op_instr *instr;
-	instr = newop_instr(A, JVST_OP_INVALID);
+	instr = newop_instr(A, JVST_OP_RETURN);
 	instr->args[0].type = JVST_VM_ARG_CONST;
 	instr->args[0].u.index = ecode;
 	return instr;

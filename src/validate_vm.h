@@ -72,12 +72,10 @@ enum jvst_vm_op {
 
 	JVST_OP_BAND,		// Bitwise-AND: BAND(regA,reg_slotB)  regA = regA & reg_slotB
 
-	JVST_OP_VALID,		// Consumes the current token and returns a VALID result for the current proc.
-				// If the current token in $OBJECT_BEG or $ARRAY_BEG, consumes the entire object/array.
-	JVST_OP_INVALID,	// Raises an INVALID result: INVALID(errcode)
+	JVST_OP_RETURN,		// Returns VALID or raises an INVALID result.  INVALID results have an error code.
 };
 
-#define JVST_OP_MAX JVST_OP_INVALID
+#define JVST_OP_MAX JVST_OP_RETURN
 
 /* VM opcode encoding:
  * 

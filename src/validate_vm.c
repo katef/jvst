@@ -67,8 +67,7 @@ jvst_op_name(enum jvst_vm_op op)
 	case JVST_OP_INCR:      return "INCR";
 	case JVST_OP_BSET:      return "BSET";
 	case JVST_OP_BAND:      return "BAND";
-	case JVST_OP_VALID:     return "VALID";
-	case JVST_OP_INVALID:   return "INVALID";
+	case JVST_OP_RETURN:    return "RETURN";
 	}
 
 	fprintf(stderr, "Unknown OP %d\n", op);
@@ -1319,39 +1318,41 @@ loop:
 		}
 		NEXT;
 
-	case JVST_OP_VALID:
-		// consume token, then return to previous frame or, if top of
-		// stack, return JVST_VALID
-		ret = consume_current_value(vm);
-		if (ret != JVST_VALID && ret != JVST_NEXT) {
-			return ret;
-		}
-
-		// value consumed... return to previous frame or finish
-		// if we're at the top of the stack
-		if (fp == 0) {
-			vm->r_pc = pc = 0;
-			ret = JVST_VALID;
-			goto finish;
-		}
-
-		vm->r_sp = sp = fp-2;
-		vm->r_pc = pc = vm->stack[fp-2].u;
-		vm->r_fp = fp = vm->stack[fp-1].u;
-		NEXT; // pc points to CALL, continue with next instruction
-
-	case JVST_OP_INVALID:
+	case JVST_OP_RETURN:
 		{
 			uint32_t arg0;
-			int ecode;
 
 			arg0 = jvst_vm_decode_arg0(opcode);
 			assert(jvst_vm_arg_islit(arg0));
 
-			vm->error = vm_ival(vm, fp, arg0);
-			assert(vm->error != 0);
-			ret = JVST_INVALID;
-			goto finish;
+			if (arg0 != 0) {
+				vm->error = vm_ival(vm, fp, arg0);
+				assert(vm->error != 0);
+				ret = JVST_INVALID;
+				goto finish;
+			}
+
+			// otherwise VALID return
+
+			// consume token, then return to previous frame or, if top of
+			// stack, return JVST_VALID
+			ret = consume_current_value(vm);
+			if (ret != JVST_VALID && ret != JVST_NEXT) {
+				return ret;
+			}
+
+			// value consumed... return to previous frame or finish
+			// if we're at the top of the stack
+			if (fp == 0) {
+				vm->r_pc = pc = 0;
+				ret = JVST_VALID;
+				goto finish;
+			}
+
+			vm->r_sp = sp = fp-2;
+			vm->r_pc = pc = vm->stack[fp-2].u;
+			vm->r_fp = fp = vm->stack[fp-1].u;
+			NEXT; // pc points to CALL, continue with next instruction
 		}
 
 	case JVST_OP_MOVE:
