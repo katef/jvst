@@ -720,6 +720,10 @@
 		ast->max_items = c;
 	@};
 
+	<set-unique-items>: (b :bool) -> () = @{
+		ast->unique_items = @b;
+	@};
+
         <set-all-of>:   (lst :ast-schema-list) -> () = @{
                 ast_schema_list_t items;
 
@@ -1237,6 +1241,11 @@
 		xerr_syntax(lex_state, "string");
 	@};
 
+	<err-expected-bool>: () -> (b :bool) = @{
+		@b = false;
+		xerr_syntax(lex_state, "bool");
+	@};
+
 	<err-expected-id> = @{
 		xerr_syntax(lex_state, "id");
 	@};
@@ -1264,3 +1273,4 @@
 
 @};
 
+/* vim: set tabstop=8 shiftwidth=8 noexpandtab: */

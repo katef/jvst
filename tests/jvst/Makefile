@@ -18,7 +18,7 @@ JSON_SUITES += not.json
 JSON_SUITES += items.json
 JSON_SUITES += additionalItems.json
 JSON_SUITES += contains.json
-# JSON_SUITES += uniqueItems.json
+JSON_SUITES += uniqueItems.json
 
 JSON_SUITES += minItems.json
 JSON_SUITES += maxItems.json
