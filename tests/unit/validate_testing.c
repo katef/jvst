@@ -2371,18 +2371,8 @@ newop_cmp(struct arena_info *A, enum jvst_vm_op op,
 	struct jvst_op_instr *instr;
 
 	switch (op) {
-	case JVST_OP_ILT:
-	case JVST_OP_ILE:
-	case JVST_OP_IEQ:
-	case JVST_OP_IGE:
-	case JVST_OP_IGT:
-	case JVST_OP_INEQ:
-	case JVST_OP_FLT:
-	case JVST_OP_FLE:
-	case JVST_OP_FEQ:
-	case JVST_OP_FGE:
-	case JVST_OP_FGT:
-	case JVST_OP_FNEQ:
+	case JVST_OP_ICMP:
+	case JVST_OP_FCMP:
 	case JVST_OP_FINT:
 		instr = newop_instr(A, op);
 		instr->args[0] = arg1;
@@ -2391,9 +2381,7 @@ newop_cmp(struct arena_info *A, enum jvst_vm_op op,
 
 	case JVST_OP_NOP:
 	case JVST_OP_PROC:
-	case JVST_OP_BR:
-	case JVST_OP_CBT:
-	case JVST_OP_CBF:
+	case JVST_OP_JMP:
 	case JVST_OP_CALL:
 	case JVST_OP_SPLIT:
 	case JVST_OP_SPLITV:
@@ -2510,24 +2498,12 @@ newop_load(struct arena_info *A, enum jvst_vm_op op,
 		// XXX - add some rules!
 		goto make_op;
 
-	case JVST_OP_ILT:
-	case JVST_OP_ILE:
-	case JVST_OP_IEQ:
-	case JVST_OP_IGE:
-	case JVST_OP_IGT:
-	case JVST_OP_INEQ:
-	case JVST_OP_FLT:
-	case JVST_OP_FLE:
-	case JVST_OP_FEQ:
-	case JVST_OP_FGE:
-	case JVST_OP_FGT:
-	case JVST_OP_FNEQ:
+	case JVST_OP_ICMP:
+	case JVST_OP_FCMP:
 	case JVST_OP_FINT:
 	case JVST_OP_NOP:
 	case JVST_OP_PROC:
-	case JVST_OP_BR:
-	case JVST_OP_CBT:
-	case JVST_OP_CBF:
+	case JVST_OP_JMP:
 	case JVST_OP_CALL:
 	case JVST_OP_SPLIT:
 	case JVST_OP_SPLITV:
@@ -2554,55 +2530,18 @@ make_op:
 }
 
 struct jvst_op_instr *
-newop_br(struct arena_info *A, enum jvst_vm_op op, const char *label)
+newop_br(struct arena_info *A, enum jvst_vm_br_cond brc, const char *label)
 {
 	struct jvst_op_instr *instr;
 
-	switch (op) {
-	case JVST_OP_BR:
-	case JVST_OP_CBT:
-	case JVST_OP_CBF:
-		instr = newop_instr(A, op);
-		instr->args[0].type = JVST_VM_ARG_LABEL;
-		instr->args[0].u.label = label;
-		return instr;
+	instr = newop_instr(A, JVST_OP_JMP);
 
-	case JVST_OP_ILT:
-	case JVST_OP_ILE:
-	case JVST_OP_IEQ:
-	case JVST_OP_IGE:
-	case JVST_OP_IGT:
-	case JVST_OP_INEQ:
-	case JVST_OP_FLT:
-	case JVST_OP_FLE:
-	case JVST_OP_FEQ:
-	case JVST_OP_FGE:
-	case JVST_OP_FGT:
-	case JVST_OP_FNEQ:
-	case JVST_OP_FINT:
-	case JVST_OP_NOP:
-	case JVST_OP_PROC:
-	case JVST_OP_CALL:
-	case JVST_OP_SPLIT:
-	case JVST_OP_SPLITV:
-	case JVST_OP_TOKEN:
-	case JVST_OP_CONSUME:
-	case JVST_OP_MATCH:
-	case JVST_OP_FLOAD:
-	case JVST_OP_ILOAD:
-	case JVST_OP_INCR:
-	case JVST_OP_BSET:
-	case JVST_OP_BAND:
-	case JVST_OP_RETURN:
-	case JVST_OP_MOVE:
-		fprintf(stderr, "%s:%d (%s) OP %s is not a branch\n",
-		__FILE__, __LINE__, __func__, jvst_op_name(op));
-		abort();
-	}
+	instr->args[0].type = JVST_VM_ARG_CONST;
+	instr->args[0].u.index= brc;
 
-	fprintf(stderr, "%s:%d (%s) unknown OP %d\n",
-		__FILE__, __LINE__, __func__, op);
-	abort();
+	instr->args[1].type = JVST_VM_ARG_LABEL;
+	instr->args[1].u.label = label;
+	return instr;
 }
 
 struct jvst_op_instr *
@@ -2774,10 +2713,9 @@ newvm_program(struct arena_info *A, ...)
 			pc++;
 			break;
 
-		case JVST_OP_BR:
-		case JVST_OP_CBT:
-		case JVST_OP_CBF:
-			// eat label
+		case JVST_OP_JMP:
+			// eat condition, label
+			va_arg(args, int);
 			va_arg(args, const char *);
 			pc++;
 			break;
@@ -2877,14 +2815,14 @@ end_label_scan:
 			(void)va_arg(args, const char *);
 			continue;
 
-		case JVST_OP_BR:
-		case JVST_OP_CBT:
-		case JVST_OP_CBF:
+		case JVST_OP_JMP:
 			{
 				const char *lbl;
 				int i;
 				int32_t delta;
+				enum jvst_vm_br_cond brc;
 
+				brc = va_arg(args, int);
 				lbl = va_arg(args, const char *);
 				i = findlbl(labels, nlbl, lbl);
 				if (i < 0 || (size_t)i >= nlbl) {
@@ -2896,7 +2834,7 @@ end_label_scan:
 				delta = labels[i].off - pc;
 				assert(delta >= JVST_VM_BARG_MIN && delta <= JVST_VM_BARG_MAX);
 
-				code[pc++] = VMBR(op,delta);
+				code[pc++] = VMBR(op,brc,delta);
 			}
 			break;
 
@@ -2909,7 +2847,7 @@ end_label_scan:
 				assert(proc_ind >= 1 && (size_t)proc_ind <= nproc);
 
 				delta = (long)procs[proc_ind-1] - (long)pc;
-				code[pc++] = VMBR(op,delta);
+				code[pc++] = VMBR(op,JVST_VM_BR_ALWAYS,delta);
 			}
 			break;
 

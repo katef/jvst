@@ -368,7 +368,7 @@ newop_load(struct arena_info *A, enum jvst_vm_op op,
 	struct jvst_op_arg arg1, struct jvst_op_arg arg2);
 
 struct jvst_op_instr *
-newop_br(struct arena_info *A, enum jvst_vm_op op, const char *label);
+newop_br(struct arena_info *A, enum jvst_vm_br_cond brc, const char *label);
 
 struct jvst_op_instr *
 newop_match(struct arena_info *A, int64_t dfa);

@@ -26,28 +26,33 @@ enum jvst_vm_op {
 	JVST_OP_NOP	= 0,
 	JVST_OP_PROC,		// FRAME N sets up a call frame and reserves N 64-bit slots on the call stack
 
-	// Integer comparison operators.  CMP(slot, slot_or_const)
-	JVST_OP_ILT,
-	JVST_OP_ILE,
-	JVST_OP_IEQ,
-	JVST_OP_IGE,
-	JVST_OP_IGT,
-	JVST_OP_INEQ,
-
-	// Floating point comparison operators.  Args must be slots
-	JVST_OP_FLT,
-	JVST_OP_FLE,
-	JVST_OP_FEQ,
-	JVST_OP_FGE,
-	JVST_OP_FGT,
-	JVST_OP_FNEQ,
+	// Integer and float comparisons.  xCMP(slot, slot_or_const)
+	// These set the FLAGS register to:
+	// 	-1	arg0 < arg1
+	// 	 0	arg0 = arg1
+	// 	+1	arg0 > arg1
+	//
+	JVST_OP_ICMP,
+	JVST_OP_FCMP,
 
 	JVST_OP_FINT,		// Checks if a float value in a slot is an integer.
 				// args: slot.  result: isnormal(reg) && (reg == ceil(reg)).
+				// FLAGS should have a non-zero value on success, a zero value on failure.
 
-	JVST_OP_BR,		// Unconditional branch
-	JVST_OP_CBT,		// Conditional branch on true
-	JVST_OP_CBF,		// Conditional branch on false
+	JVST_OP_JMP,		// Branch, the branch interprets the FLAGS register based on the condition arg:
+				// 
+				// Arg	FlagBits	Value	Behavior
+				// NV   000             0       Never jump (NOP)
+				// LT	001		1	Jump if FLAGS <  0
+				// LE	101		5	Jump if FLAGS <= 0
+				// EQ	100		4	Jump if FLAGS == 0
+				// GE	110		6	Jump if FLAGS >= 0
+				// GT	010		2	Jump if FLAGS >  0
+				// NE	011		3	Jump if FLAGS >  0
+				// UC	111		7	Unconditional (ignores FLAGS)
+				//
+				// If the leading bit is set, the test
+				// is negated.
 
 	JVST_OP_CALL,		// Calls into another proc.  Control will continue at the next 
 				// instruction if the proc returns VALID.
@@ -76,6 +81,17 @@ enum jvst_vm_op {
 };
 
 #define JVST_OP_MAX JVST_OP_RETURN
+
+enum jvst_vm_br_cond {
+	JVST_VM_BR_NEVER  = 0,           // bits: 000
+	JVST_VM_BR_LT     = 0x01,        //       001
+	JVST_VM_BR_LE     = 0x04 | 0x01, //       101
+	JVST_VM_BR_EQ     = 0x04,        //       101
+	JVST_VM_BR_GE     = 0x04 | 0x02, //       110
+	JVST_VM_BR_GT     = 0x02,        //       010
+	JVST_VM_BR_NE     = 0x01 | 0x02, //       011
+	JVST_VM_BR_ALWAYS = 0x07,        // bits: 111
+};
 
 /* VM opcode encoding:
  * 
@@ -110,14 +126,17 @@ enum jvst_vm_op {
  * Special encoding for branch instructions:
  *
  * 01234567890123456789012345678901
- * IIIIIAAAAAAAAAAAAAAAAAAAAAAAAAAS
+ * IIIIICCCAAAAAAAAAAAAAAAAAAAAAAAS
  *
- * Single argument for the branch address, which is a signed 27-bit
- * number.
+ * Two arguments, a 3-bit condition (C) and a signed 24-bit branch
+ * address (A)
  */
 
 const char *
 jvst_op_name(enum jvst_vm_op op);
+
+const char *
+jvst_vm_br_cond_name(enum jvst_vm_br_cond brc);
 
 static inline enum jvst_vm_op
 jvst_vm_decode_op(uint32_t op)
@@ -142,12 +161,18 @@ jvst_vm_decode_arg1(uint32_t op)
 #define VMSLOT(x)     (jvst_vm_arg_slot(JVST_VM_NUMREG + (x)))
 #define VMREG(x)      (jvst_vm_arg_slot((x)))
 #define VMOP(op,a,b)  (jvst_vm_encode2((op), (a), (b)))
-#define VMBR(op,addr) (jvst_vm_encodeb((op), (addr)))
+#define VMBR(op,cond,addr) (jvst_vm_encodeb((op), (cond), (addr)))
 
 static inline uint32_t
 jvst_vm_decode_barg(uint32_t op)
 {
-	return (op >> 5) & 0x7ffffff;
+	return (op >> 8) & 0xffffff;
+}
+
+static inline uint32_t
+jvst_vm_decode_bcond(uint32_t op)
+{
+	return (op >> 5) & 0x7;
 }
 
 static inline int
@@ -219,10 +244,10 @@ jvst_vm_arg_tolit(uint32_t arg)
 }
 
 enum {
-	JVST_VM_BARG_MIN  = -(1<<26),
-	JVST_VM_BARG_MAX  = (1<<26)-1,
-	JVST_VM_BARG_MASK = (1<<27)-1,
-	JVST_VM_BARG_SIGN = (1<<26),
+	JVST_VM_BARG_MIN  = -(1<<23),
+	JVST_VM_BARG_MAX  = (1<<23)-1,
+	JVST_VM_BARG_MASK = (1<<24)-1,
+	JVST_VM_BARG_SIGN = (1<<23),
 };
 
 static inline uint32_t
@@ -242,9 +267,9 @@ jvst_vm_tobarg(uint32_t arg)
 }
 
 static inline uint32_t
-jvst_vm_encodeb(enum jvst_vm_op op, long rel)
+jvst_vm_encodeb(enum jvst_vm_op op, enum jvst_vm_br_cond brc, long rel)
 {
-	return (uint32_t)op | (jvst_vm_barg(rel) << 5);
+	return (uint32_t)op | ((brc & 0x7) << 5) | (jvst_vm_barg(rel) << 8);
 }
 
 static inline uint32_t

@@ -234,18 +234,8 @@ op_instr_dump(struct sbuf *buf, struct jvst_op_instr *instr)
 		op_arg_dump(buf, instr->args[0]);
 		return;
 
-	case JVST_OP_ILT:
-	case JVST_OP_ILE:
-	case JVST_OP_IEQ:
-	case JVST_OP_IGE:
-	case JVST_OP_IGT:
-	case JVST_OP_INEQ:
-	case JVST_OP_FLT:
-	case JVST_OP_FLE:
-	case JVST_OP_FEQ:
-	case JVST_OP_FGE:
-	case JVST_OP_FGT:
-	case JVST_OP_FNEQ:
+	case JVST_OP_ICMP:
+	case JVST_OP_FCMP:
 		sbuf_snprintf(buf, "%s ", jvst_op_name(instr->op));
 		op_arg_dump(buf, instr->args[0]);
 		sbuf_snprintf(buf, ", ");
@@ -261,19 +251,24 @@ op_instr_dump(struct sbuf *buf, struct jvst_op_instr *instr)
 		}
 		return;
 
-	case JVST_OP_BR:
-	case JVST_OP_CBT:
-	case JVST_OP_CBF:
+	case JVST_OP_JMP:
 		{
-			const char *lbl = NULL;
+			const char *cond, *lbl = NULL;
+			int cfield;
 
-			switch (instr->args[0].type) {
+			assert(instr->args[0].type == JVST_VM_ARG_CONST);
+
+			cfield = instr->args[0].u.index;
+
+			cond = jvst_vm_br_cond_name(cfield);
+
+			switch (instr->args[1].type) {
 			case JVST_VM_ARG_INSTR:
-				lbl = instr->args[0].u.dest->label;
+				lbl = instr->args[1].u.dest->label;
 				break;
 
 			case JVST_VM_ARG_LABEL:
-				lbl = instr->args[0].u.label;
+				lbl = instr->args[1].u.label;
 				break;
 
 			default:
@@ -285,7 +280,10 @@ op_instr_dump(struct sbuf *buf, struct jvst_op_instr *instr)
 				lbl = "(null)";
 			}
 
-			sbuf_snprintf(buf, "%s :%s", jvst_op_name(instr->op), lbl);
+			sbuf_snprintf(buf, "%s %c%s :%s",
+				jvst_op_name(instr->op),
+				(cfield & 0x08) ? '~' : ' ',
+				cond, lbl);
 		}
 		return;
 
@@ -569,9 +567,7 @@ static void
 asm_fixup_addr(struct asm_addr_fixup *fix)
 {
 	switch (fix->instr->op) {
-	case JVST_OP_BR:
-	case JVST_OP_CBT:
-	case JVST_OP_CBF:
+	case JVST_OP_JMP:
 		assert(fix->ir != NULL);
 		assert(fix->ir->data != NULL);
 		assert(fix->type == FIXUP_ARG);
@@ -620,18 +616,8 @@ asm_fixup_addr(struct asm_addr_fixup *fix)
 
 	case JVST_OP_NOP:
 	case JVST_OP_PROC:
-	case JVST_OP_ILT:
-	case JVST_OP_ILE:
-	case JVST_OP_IEQ:
-	case JVST_OP_IGE:
-	case JVST_OP_IGT:
-	case JVST_OP_INEQ:
-	case JVST_OP_FLT:
-	case JVST_OP_FLE:
-	case JVST_OP_FEQ:
-	case JVST_OP_FGE:
-	case JVST_OP_FGT:
-	case JVST_OP_FNEQ:
+	case JVST_OP_ICMP:
+	case JVST_OP_FCMP:
 	case JVST_OP_FINT:
 	case JVST_OP_TOKEN:
 	case JVST_OP_CONSUME:
@@ -996,24 +982,17 @@ emit_cond(struct op_assembler *opasm, enum jvst_vm_op op,
 {
 	struct jvst_op_instr *instr;
 	switch (op) {
-	case JVST_OP_ILT:
-	case JVST_OP_ILE:
-	case JVST_OP_IEQ:
-	case JVST_OP_IGE:
-	case JVST_OP_IGT:
-	case JVST_OP_INEQ:
-	case JVST_OP_FLT:
-	case JVST_OP_FLE:
-	case JVST_OP_FEQ:
-	case JVST_OP_FGE:
-	case JVST_OP_FGT:
-	case JVST_OP_FNEQ:
+	case JVST_OP_ICMP:
+	case JVST_OP_FCMP:
 	case JVST_OP_FINT:
-		goto emit_cond;
+		instr = op_instr_new(op);
+		instr->args[0] = a0;
+		instr->args[1] = a1;
+		emit_instr(opasm, instr);
 
-	case JVST_OP_BR:
-	case JVST_OP_CBT:
-	case JVST_OP_CBF:
+		return instr;
+
+	case JVST_OP_JMP:
 	case JVST_OP_NOP:
 	case JVST_OP_PROC:
 	case JVST_OP_CALL:
@@ -1035,14 +1014,6 @@ emit_cond(struct op_assembler *opasm, enum jvst_vm_op op,
 
 	fprintf(stderr, "unknown op %d\n", op);
 	abort();
-
-emit_cond:
-	instr = op_instr_new(op);
-	instr->args[0] = a0;
-	instr->args[1] = a1;
-	emit_instr(opasm, instr);
-
-	return instr;
 }
 
 static void
@@ -1374,6 +1345,54 @@ emit_op_arg(struct op_assembler *opasm, struct jvst_ir_expr *arg)
 	abort();
 }
 
+static enum jvst_vm_br_cond
+cmp_br_type(enum jvst_ir_expr_type type)
+{
+	switch (type) {
+	case JVST_IR_EXPR_NE: return JVST_VM_BR_NE;
+	case JVST_IR_EXPR_LT: return JVST_VM_BR_LT;
+	case JVST_IR_EXPR_LE: return JVST_VM_BR_LE;
+	case JVST_IR_EXPR_EQ: return JVST_VM_BR_EQ;
+	case JVST_IR_EXPR_GE: return JVST_VM_BR_GE;
+	case JVST_IR_EXPR_GT: return JVST_VM_BR_GT;
+
+	case JVST_IR_EXPR_NONE:
+	case JVST_IR_EXPR_ISTOK:
+	case JVST_IR_EXPR_ISINT:
+	case JVST_IR_EXPR_MULTIPLE_OF:
+	case JVST_IR_EXPR_AND:
+	case JVST_IR_EXPR_OR:
+	case JVST_IR_EXPR_NOT:
+	case JVST_IR_EXPR_BTEST:
+	case JVST_IR_EXPR_BTESTALL:
+	case JVST_IR_EXPR_BTESTANY:
+	case JVST_IR_EXPR_BTESTONE:
+	case JVST_IR_EXPR_BOOL:
+	case JVST_IR_EXPR_NUM:
+	case JVST_IR_EXPR_INT:
+	case JVST_IR_EXPR_SIZE:
+	case JVST_IR_EXPR_TOK_TYPE:
+	case JVST_IR_EXPR_TOK_NUM:
+	case JVST_IR_EXPR_TOK_LEN:
+	case JVST_IR_EXPR_COUNT:
+	case JVST_IR_EXPR_BCOUNT:
+	case JVST_IR_EXPR_SPLIT:
+	case JVST_IR_EXPR_SLOT:
+	case JVST_IR_EXPR_ITEMP:
+	case JVST_IR_EXPR_FTEMP:
+	case JVST_IR_EXPR_SEQ:
+	case JVST_IR_EXPR_MATCH:
+		fprintf(stderr, "%s:%d (%s) IR expression %s is not a comparison\n",
+			__FILE__, __LINE__, __func__, jvst_ir_expr_type_name(type));
+		abort();
+	}
+
+	fprintf(stderr, "%s:%d (%s) unknown IR expression %d\n",
+		__FILE__, __LINE__, __func__, type);
+	abort();
+}
+
+#if 0
 static void
 cmp_type(enum jvst_ir_expr_type type, enum jvst_vm_op *iopp, enum jvst_vm_op *fopp)
 {
@@ -1437,16 +1456,17 @@ cmp_type(enum jvst_ir_expr_type type, enum jvst_vm_op *iopp, enum jvst_vm_op *fo
 		__FILE__, __LINE__, __func__, type);
 	abort();
 }
+#endif /* 0 */
 
-static struct jvst_op_instr *
+static enum jvst_vm_br_cond
 emit_cmp(struct op_assembler *opasm, struct jvst_ir_expr *expr)
 {
 	struct jvst_op_arg a0,a1;
+	enum jvst_vm_br_cond brc;
 	int t0, t1;
-	enum jvst_vm_op iop, fop;
+	enum jvst_vm_op cmp;
 
-	iop = fop = JVST_OP_NOP;
-	cmp_type(expr->type, &iop, &fop);
+	brc = cmp_br_type(expr->type);
 
 	t0 = ir_expr_type(expr->u.cmp.left->type);
 	t1 = ir_expr_type(expr->u.cmp.right->type);
@@ -1476,19 +1496,21 @@ emit_cmp(struct op_assembler *opasm, struct jvst_ir_expr *expr)
 	assert((t0 == ARG_INT) || (t0 == ARG_FLOAT));
 	assert((t1 == ARG_INT) || (t1 == ARG_FLOAT));
 
-	switch (t0) {
-	case ARG_INT:
-		return emit_cond(opasm, iop, a0, a1);
-	case ARG_FLOAT:
-		return emit_cond(opasm, fop, a0, a1);
-	default:
+	if (t0 == ARG_INT) {
+		cmp = JVST_OP_ICMP;
+	} else if (t0 == ARG_FLOAT) {
+		cmp = JVST_OP_FCMP;
+	} else {
 		fprintf(stderr, "%s:%d (%s) only ARG_INT and ARG_FLOAT are supported (type is %d)\n",
 			__FILE__, __LINE__, __func__, t0);
 		abort();
 	}
+
+	emit_cond(opasm, cmp, a0, a1);
+	return brc;
 }
 
-static void
+static enum jvst_vm_br_cond
 op_assemble_cond(struct op_assembler *opasm, struct jvst_ir_expr *cond)
 {
 	switch (cond->type) {
@@ -1498,14 +1520,14 @@ op_assemble_cond(struct op_assembler *opasm, struct jvst_ir_expr *cond)
 		abort();
 
 	case JVST_IR_EXPR_ISTOK:
-		emit_cond(opasm, JVST_OP_IEQ,
+		emit_cond(opasm, JVST_OP_ICMP,
 			arg_special(JVST_VM_ARG_TT), arg_tt(cond->u.istok.tok_type));
-		return;
+		return JVST_VM_BR_EQ;
 
 	case JVST_IR_EXPR_ISINT:
 		emit_cond(opasm, JVST_OP_FINT,
 			arg_special(JVST_VM_ARG_TNUM), arg_none());
-		return;
+		return JVST_VM_BR_NE;
 
 	case JVST_IR_EXPR_MULTIPLE_OF:
 		{
@@ -1523,7 +1545,7 @@ op_assemble_cond(struct op_assembler *opasm, struct jvst_ir_expr *cond)
 			a = emit_op_arg(opasm, cond->u.multiple_of.arg);
 			emit_cond(opasm, JVST_OP_FINT, a,b);
 		}
-		return;
+		return JVST_VM_BR_NE;
 
 	case JVST_IR_EXPR_NE:
 	case JVST_IR_EXPR_LT:
@@ -1531,10 +1553,7 @@ op_assemble_cond(struct op_assembler *opasm, struct jvst_ir_expr *cond)
 	case JVST_IR_EXPR_EQ:
 	case JVST_IR_EXPR_GE:
 	case JVST_IR_EXPR_GT:
-		{
-			emit_cmp(opasm, cond);
-		}
-		return;
+		return emit_cmp(opasm, cond);
 
 	case JVST_IR_EXPR_BTEST:
 		assert(cond->u.btest.b0 == cond->u.btest.b1);
@@ -1547,8 +1566,9 @@ op_assemble_cond(struct op_assembler *opasm, struct jvst_ir_expr *cond)
 			uint64_t mask;
 			size_t nb, b0,b1, nbm;
 			int64_t cidx;
-			struct jvst_op_arg iarg0, ireg1, slot;
+			struct jvst_op_arg iarg0, ireg1, slot, icmp;
 			struct jvst_op_instr *instr;
+			enum jvst_vm_br_cond brc;
 
 			bv = cond->u.btest.bitvec;
 			assert(bv != NULL);
@@ -1614,19 +1634,29 @@ op_assemble_cond(struct op_assembler *opasm, struct jvst_ir_expr *cond)
 			//
 			switch (cond->type) {
 			case JVST_IR_EXPR_BTESTANY:
-				emit_cond(opasm, JVST_OP_INEQ, ireg1, arg_const(0));
+				// emit_cond(opasm, JVST_OP_INEQ, ireg1, arg_const(0));
+				icmp = arg_const(0);
+				brc = JVST_VM_BR_NE;
+				// emit_cond(opasm, JVST_OP_ICMP, ireg1, arg_const(0));
+				// return JVST_VM_BR_NE;
 				break;
 
 			case JVST_IR_EXPR_BTEST:
 			case JVST_IR_EXPR_BTESTALL:
-				emit_cond(opasm, JVST_OP_IEQ, ireg1, iarg0);
+				icmp = iarg0;
+				brc = JVST_VM_BR_EQ;
+				// emit_cond(opasm, JVST_OP_IEQ, ireg1, iarg0);
+				// emit_cond(opasm, JVST_OP_ICMP, ireg1, iarg0);
+				// return JVST_VM_BR_EQ;
 				break;
 
 			default:
 				assert( !"unreachable" );
 			}
+
+			emit_cond(opasm, JVST_OP_ICMP, ireg1, icmp);
+			return brc;
 		}
-		return;
 
 	case JVST_IR_EXPR_BOOL:
 	case JVST_IR_EXPR_BTESTONE:
@@ -1692,41 +1722,66 @@ emit_match(struct op_assembler *opasm, struct jvst_ir_expr *expr)
 	return arg_special(JVST_VM_ARG_M);
 }
 
+static enum jvst_vm_br_cond
+cmp_negate(enum jvst_vm_br_cond brc)
+{
+	switch (brc) {
+	case JVST_VM_BR_NEVER: return JVST_VM_BR_ALWAYS;
+	case JVST_VM_BR_LT: return JVST_VM_BR_GE;
+	case JVST_VM_BR_LE: return JVST_VM_BR_GT;
+	case JVST_VM_BR_EQ: return JVST_VM_BR_NE;
+	case JVST_VM_BR_GE: return JVST_VM_BR_LT;
+	case JVST_VM_BR_GT: return JVST_VM_BR_LE;
+	case JVST_VM_BR_NE: return JVST_VM_BR_EQ;
+	case JVST_VM_BR_ALWAYS: return JVST_VM_BR_NEVER;
+	default:
+		fprintf(stderr, "%s:%d (%s) unknown branch condition 0x%02x\n",
+			__FILE__, __LINE__, __func__, (unsigned int)brc);
+	}
+}
+
 static void
 op_assemble_cbranch(struct op_assembler *opasm, struct jvst_ir_stmt *stmt)
 {
 	struct jvst_op_instr *instr;
+	enum jvst_vm_br_cond brc;
+	struct jvst_ir_stmt *dest;
 
 	/* emit condition */
-	op_assemble_cond(opasm, stmt->u.cbranch.cond);
+	brc = op_assemble_cond(opasm, stmt->u.cbranch.cond);
 
 	if (stmt->next == NULL) {
 		goto emit_two_branches;
 	}
 
 	if (stmt->u.cbranch.br_false == stmt->next) {
-		instr = op_instr_new(JVST_OP_CBT);
-		asm_addr_fixup_add_dest(opasm->fixups, instr, &instr->args[0], stmt->u.cbranch.br_true);
+		instr = op_instr_new(JVST_OP_JMP);
+		instr->args[0] = arg_const(brc);
+		asm_addr_fixup_add_dest(opasm->fixups, instr, &instr->args[1], stmt->u.cbranch.br_true);
 		emit_instr(opasm, instr);
 		return;
 	}
 
 	if (stmt->u.cbranch.br_true == stmt->next) {
-		instr = op_instr_new(JVST_OP_CBF);
-		asm_addr_fixup_add_dest(opasm->fixups, instr, &instr->args[0], stmt->u.cbranch.br_false);
+		brc = cmp_negate(brc);
+		instr = op_instr_new(JVST_OP_JMP);
+		instr->args[0] = arg_const(brc);
+		asm_addr_fixup_add_dest(opasm->fixups, instr, &instr->args[1], stmt->u.cbranch.br_false);
 		emit_instr(opasm, instr);
 		return;
 	}
 
 emit_two_branches:
-	instr = op_instr_new(JVST_OP_CBT);
-	asm_addr_fixup_add_dest(opasm->fixups, instr, &instr->args[0], stmt->u.cbranch.br_true);
+	instr = op_instr_new(JVST_OP_JMP);
+	instr->args[0] = arg_const(brc);
+	asm_addr_fixup_add_dest(opasm->fixups, instr, &instr->args[1], stmt->u.cbranch.br_true);
 	emit_instr(opasm, instr);
 
-	instr = op_instr_new(JVST_OP_BR);
-	asm_addr_fixup_add_dest(opasm->fixups, instr, &instr->args[0], stmt->u.cbranch.br_false);
+	// emit second branch
+	instr = op_instr_new(JVST_OP_JMP);
+	instr->args[0] = arg_const(JVST_VM_BR_ALWAYS);
+	asm_addr_fixup_add_dest(opasm->fixups, instr, &instr->args[1], stmt->u.cbranch.br_false);
 	emit_instr(opasm, instr);
-	return;
 }
 
 static void
@@ -1813,8 +1868,9 @@ op_assemble(struct op_assembler *opasm, struct jvst_ir_stmt *stmt)
 		return;
 
 	case JVST_IR_STMT_BRANCH:
-		instr = op_instr_new(JVST_OP_BR);
-		asm_addr_fixup_add_dest(opasm->fixups, instr, &instr->args[0], stmt->u.branch);
+		instr = op_instr_new(JVST_OP_JMP);
+		instr->args[0] = arg_const(JVST_VM_BR_ALWAYS);
+		asm_addr_fixup_add_dest(opasm->fixups, instr, &instr->args[1], stmt->u.branch);
 		emit_instr(opasm, instr);
 		return;
 
@@ -2204,14 +2260,13 @@ encode_pass1(struct op_encoder *enc, struct jvst_op_instr *first)
 		uint16_t a,b;
 
 		switch (instr->op) {
-		case JVST_OP_BR:
-		case JVST_OP_CBT:
-		case JVST_OP_CBF:
+		case JVST_OP_JMP:
 			{
-				assert(instr->args[0].type == JVST_VM_ARG_INSTR);
-				assert(instr->args[0].u.dest != NULL);
+				assert(instr->args[0].type == JVST_VM_ARG_CONST);
+				assert(instr->args[1].type == JVST_VM_ARG_INSTR);
+				assert(instr->args[1].u.dest != NULL);
 
-				cp = encoder_emit(enc, VMBR(instr->op, 0));
+				cp = encoder_emit(enc, VMBR(instr->op, instr->args[0].u.index, 0));
 				instr->code_off = cp;
 			}
 			break;
@@ -2221,7 +2276,7 @@ encode_pass1(struct op_encoder *enc, struct jvst_op_instr *first)
 				assert(instr->args[0].type == JVST_VM_ARG_CALL);
 				assert(instr->args[0].u.dest != NULL);
 
-				cp = encoder_emit(enc, VMBR(instr->op, 0));
+				cp = encoder_emit(enc, VMBR(instr->op, JVST_VM_BR_ALWAYS, 0));
 				instr->code_off = cp;
 			}
 			break;
@@ -2231,18 +2286,8 @@ encode_pass1(struct op_encoder *enc, struct jvst_op_instr *first)
 
 		case JVST_OP_NOP:
 		case JVST_OP_PROC:
-		case JVST_OP_ILT:
-		case JVST_OP_ILE:
-		case JVST_OP_IEQ:
-		case JVST_OP_IGE:
-		case JVST_OP_IGT:
-		case JVST_OP_INEQ:
-		case JVST_OP_FLT:
-		case JVST_OP_FLE:
-		case JVST_OP_FEQ:
-		case JVST_OP_FGE:
-		case JVST_OP_FGT:
-		case JVST_OP_FNEQ:
+		case JVST_OP_ICMP:
+		case JVST_OP_FCMP:
 		case JVST_OP_FINT:
 		case JVST_OP_SPLIT:
 		case JVST_OP_SPLITV:
@@ -2278,21 +2323,19 @@ encode_pass2(struct op_encoder *enc, struct jvst_op_instr *first)
 	for (instr = first; instr != NULL; instr = instr->next) {
 		uint32_t cp;
 		uint32_t br;
+		enum jvst_vm_br_cond brc;
 		int64_t delta;
 
 		switch (instr->op) {
-		case JVST_OP_BR:
-		case JVST_OP_CBT:
-		case JVST_OP_CBF:
-		case JVST_OP_CALL:
-			assert(instr->args[0].type == JVST_VM_ARG_INSTR ||
-				instr->args[0].type == JVST_VM_ARG_CALL);
-			assert(instr->args[0].u.dest != NULL);
+		case JVST_OP_JMP:
+			assert(instr->args[0].type == JVST_VM_ARG_CONST);
+			assert(instr->args[1].type == JVST_VM_ARG_INSTR ||
+				instr->args[1].type == JVST_VM_ARG_CALL);
+			assert(instr->args[1].u.dest != NULL);
 
 			cp = instr->code_off;
-			br = (instr->op == JVST_OP_CALL)
-				? instr->args[0].u.proc->code_off
-				: instr->args[0].u.dest->code_off;
+			brc = instr->args[0].u.index;
+			br = instr->args[1].u.dest->code_off;
 
 			delta = (int64_t)br - (int64_t)cp;
 			if (delta < JVST_VM_BARG_MIN || delta > JVST_VM_BARG_MAX) {
@@ -2303,8 +2346,30 @@ encode_pass2(struct op_encoder *enc, struct jvst_op_instr *first)
 				abort();
 			}
 
-			enc->code[cp] = VMBR(instr->op, (long)delta);
+			enc->code[cp] = VMBR(instr->op, brc, (long)delta);
 			break;
+
+		case JVST_OP_CALL:
+			assert(instr->args[0].type == JVST_VM_ARG_INSTR ||
+				instr->args[0].type == JVST_VM_ARG_CALL);
+			assert(instr->args[0].u.dest != NULL);
+
+			cp = instr->code_off;
+			brc = JVST_VM_BR_ALWAYS;
+			br = instr->args[0].u.proc->code_off;
+
+			delta = (int64_t)br - (int64_t)cp;
+			if (delta < JVST_VM_BARG_MIN || delta > JVST_VM_BARG_MAX) {
+				// XXX - add in support for branch to a register
+				// destination
+				fprintf(stderr, "%s:%d (%s) unsupported branch distance %zd\n",
+					__FILE__, __LINE__, __func__, delta);
+				abort();
+			}
+
+			enc->code[cp] = VMBR(instr->op, brc, (long)delta);
+			break;
+
 
 		default:
 			/* nop */
@@ -2405,4 +2470,5 @@ jvst_op_encode(struct jvst_op_program *prog)
 
 	return vmprog;
 }
+
 /* vim: set tabstop=8 shiftwidth=8 noexpandtab: */
