@@ -5,8 +5,7 @@
 
 #include "sjp_parser.h"
 #include "ast.h"
-
-#define MODULE_NAME VALIDATE_CONSTRAINTS
+#include "idtbl.h"
 
 /* simplified tree of validation constraints
  *
@@ -72,6 +71,8 @@ enum jvst_cnode_type {
 	JVST_CNODE_ARR_ADDITIONAL,
 	JVST_CNODE_ARR_UNIQUE,
 	JVST_CNODE_ARR_CONTAINS,
+
+	JVST_CNODE_REF,
 
 	// The following node types are only present after
 	// canonification.
@@ -186,8 +187,12 @@ struct jvst_cnode {
 
 		// for array contains constraint
 		struct jvst_cnode *contains;
+
+		struct json_string ref;
 	} u;
 };
+
+struct jvst_cnode_id_table;
 
 struct jvst_cnode *
 jvst_cnode_alloc(enum jvst_cnode_type type);
@@ -208,10 +213,16 @@ jvst_cnode_from_ast(const struct ast_schema *ast);
 
 // Just do a raw translation without doing any optimization of the
 // constraint tree
+//
+// If tbl is not NULL, builds an id -> cnode table.
+struct jvst_cnode_forest *
+jvst_cnode_translate_ast_with_ids(const struct ast_schema *ast);
+
+// Backwards-compatible version of the above while we migrate code/tests
 struct jvst_cnode *
 jvst_cnode_translate_ast(const struct ast_schema *ast);
 
-// Simplfies the cnode tree.  Returns a new tree.
+// Simplifies a single cnode tree.  Returns a new tree.
 struct jvst_cnode *
 jvst_cnode_simplify(struct jvst_cnode *tree);
 
@@ -232,7 +243,44 @@ jvst_cnode_print(FILE *f, struct jvst_cnode *node);
 void
 jvst_cnode_debug(struct jvst_cnode *node);
 
-#undef MODULE_NAME
+struct jvst_cnode_forest {
+	size_t len;
+	size_t cap;
+	struct jvst_cnode **trees;
+	struct jvst_cnode_id_table *all_ids;
+	struct jvst_cnode_id_table *ref_ids;
+};
+
+struct jvst_cnode_forest *
+jvst_cnode_forest_new(void);
+
+void
+jvst_cnode_forest_delete(struct jvst_cnode_forest *forest);
+
+void
+jvst_cnode_forest_initialize(struct jvst_cnode_forest *forest);
+
+void
+jvst_cnode_forest_finalize(struct jvst_cnode_forest *forest);
+
+void
+jvst_cnode_forest_add_tree(struct jvst_cnode_forest *forest, struct jvst_cnode *tree);
+
+// Simplifies the cnode forest.  Replaces each tree in the forest with a
+// simplified one.
+struct jvst_cnode_forest *
+jvst_cnode_simplify_forest(struct jvst_cnode_forest *forest);
+
+// Canonifies the cnode forest.  Replaces each tree in the forest with a
+// canonified one.
+struct jvst_cnode_forest *
+jvst_cnode_canonify_forest(struct jvst_cnode_forest *tree);
+
+void
+jvst_cnode_print_forest(FILE *f, struct jvst_cnode_forest *ctrees);
+
+void
+jvst_cnode_debug_forest(struct jvst_cnode_forest *ctrees);
 
 #endif /* VALIDATE_CONSTRAINTS_H */
 

@@ -8,6 +8,7 @@
 #include <string.h>
 
 #include "jdom.h"
+#include "xalloc.h"
 
 static struct {
 	const char *s;
@@ -74,4 +75,49 @@ type_name(enum json_valuetype t)
 
 	return "?";
 }
+
+struct json_string
+json_strdup(const struct json_string s)
+{
+	static const struct json_string zero;
+	struct json_string dup = zero;
+
+	if (s.len == 0) {
+		return dup;
+	}
+
+	dup.s = xstrndup(s.s, s.len);
+	dup.len = s.len;
+
+	return dup;
+}
+
+struct json_string
+json_new_cstr(const char *s)
+{
+	size_t len = (s != NULL) ? strlen(s) : 0;
+	return json_new_str(s,len);
+}
+
+struct json_string
+json_new_str(const char *s, size_t len)
+{
+	static const struct json_string zero;
+	struct json_string str = zero;
+
+	if (len > 0) {
+		str.s = xstrndup(s, len);
+		str.len = len;
+	}
+
+	return str;
+}
+
+void
+json_str_free(struct json_string s)
+{
+	free((char *)s.s);
+}
+
+/* vim: set tabstop=8 shiftwidth=8 noexpandtab: */
 

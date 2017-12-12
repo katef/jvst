@@ -20,6 +20,7 @@
 #include "jvst_macros.h"
 #include "sjp_testing.h"
 #include "validate_sbuf.h"
+#include "hmap.h"
 
 #define WHEREFMT "%s:%d (%s) "
 #define WHEREARGS __FILE__, __LINE__, __func__
@@ -250,6 +251,17 @@ jvst_cnode_alloc(enum jvst_cnode_type type)
 }
 
 static struct jvst_cnode *
+cnode_new_ref(struct json_string id)
+{
+	struct jvst_cnode *node;
+
+	node = jvst_cnode_alloc(JVST_CNODE_REF);
+	node->u.ref = json_strdup(id);
+
+	return node;
+}
+
+static struct jvst_cnode *
 cnode_new_switch(int allvalid)
 {
 	size_t i, n;
@@ -421,6 +433,8 @@ jvst_cnode_type_name(enum jvst_cnode_type type)
 		return "MATCH_SWITCH";
 	case JVST_CNODE_MATCH_CASE:
 		return "MATCH_CASE";
+	case JVST_CNODE_REF:
+		return "REF";
 	}
 
 	fprintf(stderr, "unknown cnode type %d\n", type);
@@ -540,6 +554,18 @@ jvst_cnode_dump_inner(struct jvst_cnode *node, struct sbuf *buf, int indent)
 					sbuf_indent(buf, indent);
 					sbuf_snprintf(buf, ")");
 				}
+			}
+		}
+		break;
+
+	case JVST_CNODE_REF:
+		{
+			if (node->u.ref.len <= INT_MAX) {
+				sbuf_snprintf(buf, "REF( \"%.*s\" )",
+					(int)node->u.ref.len, node->u.ref.s);
+			} else {
+				sbuf_snprintf(buf, "REF( \"%.*s...\" )",
+					INT_MAX, node->u.ref.s);
 			}
 		}
 		break;
@@ -891,6 +917,60 @@ jvst_cnode_debug(struct jvst_cnode *node)
 }
 
 void
+jvst_cnode_debug_forest(struct jvst_cnode_forest *ctrees)
+{
+	jvst_cnode_print_forest(stderr, ctrees);
+}
+
+struct cnode_id_pair {
+	struct json_string id;
+	struct jvst_cnode *ctree;
+};
+
+static int
+find_ref_name(void *opaque, struct json_string *key, struct jvst_cnode **ctreep)
+{
+	struct cnode_id_pair *pair = opaque;
+
+	assert(ctreep != NULL);
+
+	if (*ctreep != pair->ctree) {
+		return 1; // keep going
+	}
+
+	pair->id = *key;
+
+	return 0;
+}
+
+void
+jvst_cnode_print_forest(FILE *f, struct jvst_cnode_forest *forest)
+{
+	size_t i;
+	static const struct cnode_id_pair zero;
+
+	fprintf(f, "CNODE forest: %zu cnode trees\n", forest->len);
+
+	for (i=0; i < forest->len; i++) {
+		struct cnode_id_pair pair = zero;
+		pair.ctree = forest->trees[i];
+
+		if (jvst_cnode_id_table_foreach(forest->ref_ids, find_ref_name, &pair) == 0) {
+			if (pair.id.len < INT_MAX) {
+				fprintf(f, "[ REF: \"%.*s\" ]\n", (int)pair.id.len, pair.id.s);
+			} else {
+				fprintf(f, "[ REF: \"%.*s...\" ]\n", INT_MAX, pair.id.s);
+			}
+		} else {
+			fprintf(f, "[ REF: UNKNOWN ]\n");
+		}
+
+		jvst_cnode_print(f, forest->trees[i]);
+		fprintf(f,"\n");
+	}
+}
+
+void
 jvst_cnode_print(FILE *f, struct jvst_cnode *node)
 {
 	// FIXME: gross hack
@@ -1123,10 +1203,98 @@ cnode_enum_translate(struct json_value *v)
 	return jvst_cnode_alloc(JVST_CNODE_INVALID);
 }
 
+static
+void add_cnode_ids(struct jvst_cnode_id_table *tbl, const struct ast_schema *ast, struct jvst_cnode *n)
+{
+	struct ast_string_set *ss;
+
+	// XXX - better error messages!
+	// XXX - better error handling!
+	// fprintf(stderr, "ADDING: ids for %p\n", (void *)n);
+	// jvst_cnode_debug(n);
+	for (ss = ast->all_ids; ss != NULL; ss = ss->next) {
+		// fprintf(stderr, "  >> %.*s\n", (int)ss->str.len, ss->str.s);
+		if (!jvst_cnode_id_table_add(tbl, ss->str, n)) {
+			int len = (ss->str.len < INT_MAX) ? ss->str.len : INT_MAX;
+
+			// fprintf(stderr, "error adding path '%.*s' -> cnode entry to id table\n",
+			// 	len, ss->str.s);
+			abort();
+		}
+	}
+}
+
+struct ast_translator {
+	struct jvst_cnode_forest forest;
+
+	struct {
+		size_t len;
+		size_t cap;
+		struct jvst_cnode **items;
+	} refs;
+};
+
+static void
+xlator_add_ref(struct ast_translator *xl, struct jvst_cnode *ref)
+{
+	size_t i;
+
+	assert(ref->type == JVST_CNODE_REF);
+
+	if (xl->refs.len >= xl->refs.cap) {
+		xl->refs.items = xenlargevec(xl->refs.items, &xl->refs.cap, 1, sizeof xl->refs.items[0]);
+	}
+
+	assert(xl->refs.len < xl->refs.cap);
+	xl->refs.items[xl->refs.len++] = ref;
+}
+
+static int
+xlator_has_root(struct ast_translator *xl, struct jvst_cnode *root)
+{
+	size_t i,n;
+
+	n = xl->forest.len;
+
+	// XXX - dumb linear scan.  do we need to do more?
+	for (i=0; i < n; i++) {
+		if (xl->forest.trees[i] == root) {
+			return 1;
+		}
+	}
+
+	return 0;
+}
+
+static void
+xlator_finalize(struct ast_translator *xl)
+{
+	if (xl == NULL) {
+		return;
+	}
+
+	free(xl->refs.items);
+}
+
+static void 
+xlator_initialize(struct ast_translator *xl)
+{
+	static const struct ast_translator zero;
+
+	*xl = zero;
+	jvst_cnode_forest_initialize(&xl->forest);
+}
+
+static void 
+xlator_add_tree(struct ast_translator *xl, struct jvst_cnode *tree)
+{
+	jvst_cnode_forest_add_tree(&xl->forest, tree);
+}
+
 // Just do a raw translation without doing any optimization of the
 // constraint tree
-struct jvst_cnode *
-jvst_cnode_translate_ast(const struct ast_schema *ast)
+static struct jvst_cnode *
+cnode_translate_ast_with_ids(const struct ast_schema *ast, struct ast_translator *xl)
 {
 	struct jvst_cnode *node;
 	enum json_valuetype types;
@@ -1138,7 +1306,46 @@ jvst_cnode_translate_ast(const struct ast_schema *ast)
 			fprintf(stderr, "Invalid JSON value type.  Schemas must be objects or booleans.\n");
 			abort();
 		}
-		return cnode_new_switch(ast->value.u.v);
+
+		node = cnode_new_switch(ast->value.u.v);
+		add_cnode_ids(xl->forest.all_ids, ast, node);
+
+		return node;
+	}
+
+	/* definitions can be referred to by their json pointer,
+	 * so we translate them even if the node is a reference
+	 */
+	if (ast->definitions != NULL) {
+		const struct ast_schema_set *def;
+		// add definitions to the all_ids table
+		for (def = ast->definitions; def != NULL; def = def->next) {
+			assert(def->schema != NULL);
+			cnode_translate_ast_with_ids(def->schema, xl);
+		}
+	}
+
+	// if an object has a "$ref", then all other properties must be
+	// ignored
+	//
+	// XXX - should we translate the properties so they can still be referred to by their json
+	//       pointers?  This would involve moving this check to the end and replacing the
+	//       node with the ref node.
+	if (ast->kws & KWS_HAS_REF) {
+		assert(ast->ref.len > 0);
+		assert(ast->ref.s != NULL);
+
+		node = cnode_new_ref(ast->ref);
+		add_cnode_ids(xl->forest.all_ids, ast, node);
+
+		// for first pass, add (id -> NULL) entries to the
+		// ref_ids table
+		jvst_cnode_id_table_add(xl->forest.ref_ids, ast->ref, NULL);
+
+		// add node the ref list
+		xlator_add_ref(xl, node);
+
+		return node;
 	}
 
 	types = ast->types;
@@ -1251,7 +1458,7 @@ jvst_cnode_translate_ast(const struct ast_schema *ast)
 			assert(ast->items->schema != NULL);
 			assert(ast->items->next == NULL);
 
-			constraint = jvst_cnode_translate_ast(ast->items->schema);
+			constraint = cnode_translate_ast_with_ids(ast->items->schema, xl);
 			items_constraint = jvst_cnode_alloc(JVST_CNODE_ARR_ADDITIONAL);
 			items_constraint->u.items = constraint;
 		} else {
@@ -1265,7 +1472,7 @@ jvst_cnode_translate_ast(const struct ast_schema *ast)
 
 				assert(sl->schema != NULL);
 
-				constraint = jvst_cnode_translate_ast(sl->schema);
+				constraint = cnode_translate_ast_with_ids(sl->schema, xl);
 				*ilpp = constraint;
 				ilpp = &constraint->next;
 			}
@@ -1280,7 +1487,7 @@ jvst_cnode_translate_ast(const struct ast_schema *ast)
 	if (ast->additional_items != NULL && ast->items != NULL && (ast->kws & KWS_SINGLETON_ITEMS) == 0) {
 		struct jvst_cnode *constraint, *additional;
 
-		constraint = jvst_cnode_translate_ast(ast->additional_items);
+		constraint = cnode_translate_ast_with_ids(ast->additional_items, xl);
 		additional = jvst_cnode_alloc(JVST_CNODE_ARR_ADDITIONAL);
 		additional->u.items = constraint;
 
@@ -1290,7 +1497,7 @@ jvst_cnode_translate_ast(const struct ast_schema *ast)
 	if (ast->contains != NULL) {
 		struct jvst_cnode *constraint, *contains;
 
-		constraint = jvst_cnode_translate_ast(ast->contains);
+		constraint = cnode_translate_ast_with_ids(ast->contains, xl);
 		contains = jvst_cnode_alloc(JVST_CNODE_ARR_CONTAINS);
 		contains->u.contains = constraint;
 
@@ -1322,7 +1529,7 @@ jvst_cnode_translate_ast(const struct ast_schema *ast)
 			pnode = jvst_cnode_alloc(JVST_CNODE_OBJ_PROP_MATCH);
 			// FIXME: I think this will leak!
 			pnode->u.prop_match.match = pset->pattern;
-			pnode->u.prop_match.constraint = jvst_cnode_translate_ast(pset->schema);
+			pnode->u.prop_match.constraint = cnode_translate_ast_with_ids(pset->schema, xl);
 			*plist = pnode;
 			plist = &pnode->next;
 		}
@@ -1337,7 +1544,7 @@ jvst_cnode_translate_ast(const struct ast_schema *ast)
 	if (ast->additional_properties != NULL) {
 		struct jvst_cnode *constraint, *pdft;
 
-		constraint = jvst_cnode_translate_ast(ast->additional_properties);
+		constraint = cnode_translate_ast_with_ids(ast->additional_properties, xl);
 		assert(constraint != NULL);
 		assert(constraint->next == NULL);
 
@@ -1351,7 +1558,7 @@ jvst_cnode_translate_ast(const struct ast_schema *ast)
 		struct jvst_cnode *constraint;
 		struct jvst_cnode *pnames;
 
-		constraint = jvst_cnode_translate_ast(ast->property_names);
+		constraint = cnode_translate_ast_with_ids(ast->property_names, xl);
 
 		pnames = jvst_cnode_alloc(JVST_CNODE_OBJ_PROP_NAMES);
 		pnames->u.prop_names = constraint;
@@ -1448,7 +1655,7 @@ jvst_cnode_translate_ast(const struct ast_schema *ast)
 			sw = cnode_new_switch(false);
 			sw->u.sw[SJP_OBJECT_BEG] = req;
 			andjxn->u.ctrl = sw;
-			sw->next = jvst_cnode_translate_ast(pschema->schema);
+			sw->next = cnode_translate_ast_with_ids(pschema->schema, xl);
 
 			*jpp = andjxn;
 			jpp  = &(*jpp)->next;
@@ -1486,7 +1693,7 @@ jvst_cnode_translate_ast(const struct ast_schema *ast)
 		some_jxn->u.ctrl = NULL;
 		for (sset = ast->some_of.set; sset != NULL; sset = sset->next) {
 			struct jvst_cnode *c;
-			c = jvst_cnode_translate_ast(sset->schema);
+			c = cnode_translate_ast_with_ids(sset->schema, xl);
 			*conds = c;
 			conds = &c->next;
 		}
@@ -1527,7 +1734,125 @@ jvst_cnode_translate_ast(const struct ast_schema *ast)
 		node = top_jxn;
 	}
 
+	add_cnode_ids(xl->forest.all_ids, ast, node);
 	return node;
+}
+
+static int
+cnode_reroot_referred_ids(void *opaque, struct json_string *id, struct jvst_cnode **ctreep)
+{
+	struct ast_translator *xl;
+	struct jvst_cnode *orig, *copy;
+
+	assert(ctreep != NULL);
+	assert(*ctreep == NULL);
+
+	xl = opaque;
+
+	orig = jvst_cnode_id_table_lookup(xl->forest.all_ids, *id);
+
+	if (orig == NULL) {
+		if (id->len <= INT_MAX) {
+			fprintf(stderr, "WARNING: cannot match $ref(%.*s) with a node\n",
+				(int)id->len, id->s);
+		} else {
+			fprintf(stderr, "WARNING: cannot match $ref(%.*s...) with a node\n",
+				INT_MAX, id->s);
+		}
+
+		// Keep going to report all missing references
+		//
+		// The dangling reference will be caught in the IR
+		// translation and we'll abort then.
+		return 1;
+	}
+
+	// if it's already a root, we're good
+	if (xlator_has_root(xl, orig)) {
+		*ctreep = orig;
+		return 1;
+	}
+
+	// not already a root... cut it off the tree, make it into a new
+	// root, and replace the original node with a REF to the new
+	// root.
+	//
+	// we don't want to descend the tree to find the node's parent,
+	// so we make a shallow copy, make that the new root, and
+	// convert the original into REF node
+	copy = jvst_cnode_alloc(orig->type);
+	*copy = *orig;
+
+	// add shallow copy as a new root
+	xlator_add_tree(xl,copy);
+
+	// change original value to a REF
+	orig->type = JVST_CNODE_REF;
+	orig->u.ref = *id;
+
+	// update value in all_ids map
+	if (!jvst_cnode_id_table_set(xl->forest.all_ids, *id, copy)) {
+		fprintf(stderr, "cannot update ID in table\n");
+		abort();
+	}
+
+	// update value in ref_ids map
+	*ctreep = copy;
+
+	return 1;
+}
+
+struct jvst_cnode_forest *
+jvst_cnode_translate_ast_with_ids(const struct ast_schema *ast)
+{
+	struct ast_translator xl;
+	struct jvst_cnode_forest *forest;
+	struct jvst_cnode *ctree;
+
+	xlator_initialize(&xl);
+	ctree = cnode_translate_ast_with_ids(ast, &xl);
+
+	assert(ctree != NULL);
+
+	// add the main tree
+	xlator_add_tree(&xl, ctree);
+
+	// now iterate through the entries of the ref_ids table,
+	// splitting them into separate trees
+	jvst_cnode_id_table_foreach(xl.forest.ref_ids, cnode_reroot_referred_ids, &xl);
+
+	// finally, add the root as a ref
+	{
+		assert(ast->all_ids != NULL);
+		jvst_cnode_id_table_add(xl.forest.ref_ids, ast->all_ids->str, ctree);
+		// struct json_string root_id = { .s = "#", .len = 1 };
+		// jvst_cnode_id_table_add(xl.forest.ref_ids, root_id, ctree);
+	}
+
+	forest = malloc(sizeof *forest);
+	*forest = xl.forest;
+
+	xlator_finalize(&xl);
+
+	return forest;
+}
+
+struct jvst_cnode *
+jvst_cnode_translate_ast(const struct ast_schema *ast)
+{
+	struct jvst_cnode_forest *forest;
+	struct jvst_cnode *root;
+
+	forest = jvst_cnode_translate_ast_with_ids(ast);
+	if (forest->len == 0) {
+		return NULL;
+	}
+
+	root = forest->trees[0];
+
+	jvst_cnode_forest_delete(forest);
+
+	return root;
 }
 
 static struct jvst_cnode *
@@ -1685,6 +2010,11 @@ cnode_deep_copy(struct jvst_cnode *node)
 	case JVST_CNODE_NUM_MULTIPLE_OF:
 		tree = jvst_cnode_alloc(node->type);
 		tree->u.multiple_of = node->u.multiple_of;
+		return tree;
+
+	case JVST_CNODE_REF:
+		tree = jvst_cnode_alloc(node->type);
+		tree->u.ref = json_strdup(node->u.ref);
 		return tree;
 
 	case JVST_CNODE_AND:
@@ -4148,6 +4478,7 @@ jvst_cnode_simplify(struct jvst_cnode *tree)
 	case JVST_CNODE_NUM_INTEGER:
 	case JVST_CNODE_NUM_MULTIPLE_OF:
 	case JVST_CNODE_ARR_UNIQUE:
+	case JVST_CNODE_REF:
 		return tree;
 
 	case JVST_CNODE_AND:
@@ -4953,11 +5284,11 @@ cnode_canonify_strmatch(struct jvst_cnode *top)
 }
 
 static struct jvst_cnode *
-cnode_canonify_pass1(struct jvst_cnode *tree);
+cnode_canonify_pass1(struct jvst_cnode *tree, int namecons);
 
 // canonifies a list of nodes
 static struct jvst_cnode *
-cnode_nodelist_canonify_pass1(struct jvst_cnode *nodes)
+cnode_nodelist_canonify_pass1(struct jvst_cnode *nodes, int namecons)
 {
 	struct jvst_cnode *result, **rpp, *n, *next;
 
@@ -4966,7 +5297,7 @@ cnode_nodelist_canonify_pass1(struct jvst_cnode *nodes)
 	for (n = nodes; n != NULL; n = next) {
 		next = n->next;
 		
-		*rpp = cnode_canonify_pass1(n);
+		*rpp = cnode_canonify_pass1(n, namecons);
 		rpp = &(*rpp)->next;
 		*rpp = NULL;
 	}
@@ -4976,7 +5307,7 @@ cnode_nodelist_canonify_pass1(struct jvst_cnode *nodes)
 
 // Initial canonification before DFAs are constructed
 static struct jvst_cnode *
-cnode_canonify_pass1(struct jvst_cnode *tree)
+cnode_canonify_pass1(struct jvst_cnode *tree, int namecons)
 {
 	struct jvst_cnode *node;
 
@@ -4991,20 +5322,21 @@ cnode_canonify_pass1(struct jvst_cnode *tree)
 	case JVST_CNODE_NUM_RANGE:
 	case JVST_CNODE_PROP_RANGE:
 	case JVST_CNODE_ITEM_RANGE:
+	case JVST_CNODE_REF:
 		return tree;
 
 	case JVST_CNODE_AND:
 	case JVST_CNODE_OR:
 	case JVST_CNODE_XOR:
 	case JVST_CNODE_NOT:
-		tree->u.ctrl = cnode_nodelist_canonify_pass1(tree->u.ctrl);
+		tree->u.ctrl = cnode_nodelist_canonify_pass1(tree->u.ctrl, namecons);
 		return tree;
 
 	case JVST_CNODE_SWITCH:
 		{
 			size_t i, n;
 			for (i = 0, n = ARRAYLEN(tree->u.sw); i < n; i++) {
-				tree->u.sw[i] = cnode_canonify_pass1(tree->u.sw[i]);
+				tree->u.sw[i] = cnode_canonify_pass1(tree->u.sw[i], namecons);
 			}
 		}
 		return tree;
@@ -5016,12 +5348,12 @@ cnode_canonify_pass1(struct jvst_cnode *tree)
 
 				switch (node->type) {
 				case JVST_CNODE_OBJ_PROP_MATCH:
-					cons = cnode_canonify_pass1(node->u.prop_match.constraint);
+					cons = cnode_canonify_pass1(node->u.prop_match.constraint, namecons);
 					node->u.prop_match.constraint = cons;
 					break;
 
 				case JVST_CNODE_OBJ_PROP_DEFAULT:
-					cons = cnode_canonify_pass1(node->u.prop_default);
+					cons = cnode_canonify_pass1(node->u.prop_default, namecons);
 					node->u.prop_default = cons;
 					break;
 
@@ -5048,6 +5380,10 @@ cnode_canonify_pass1(struct jvst_cnode *tree)
 		{
 			struct jvst_cnode *msw, *mc, *v;
 
+			if (namecons) {
+				return tree;
+			}
+
 			msw = jvst_cnode_alloc(JVST_CNODE_MATCH_SWITCH);
 			v = jvst_cnode_alloc(JVST_CNODE_VALID);
 			mc = cnode_new_mcase(NULL,v);
@@ -5059,11 +5395,11 @@ cnode_canonify_pass1(struct jvst_cnode *tree)
 
 	case JVST_CNODE_ARR_ITEM:
 	case JVST_CNODE_ARR_ADDITIONAL:
-		tree->u.items = cnode_nodelist_canonify_pass1(tree->u.items);
+		tree->u.items = cnode_nodelist_canonify_pass1(tree->u.items, namecons);
 		return tree;
 
 	case JVST_CNODE_ARR_CONTAINS:
-		tree->u.items = cnode_nodelist_canonify_pass1(tree->u.items);
+		tree->u.items = cnode_nodelist_canonify_pass1(tree->u.items, namecons);
 		return tree;
 
 	case JVST_CNODE_MATCH_SWITCH:
@@ -5071,16 +5407,16 @@ cnode_canonify_pass1(struct jvst_cnode *tree)
 			struct jvst_cnode *c;
 			for (c = tree->u.mswitch.cases; c != NULL; c = c->next) {
 				if (c->u.mcase.name_constraint != NULL) {
-					c->u.mcase.name_constraint = cnode_canonify_pass1(c->u.mcase.name_constraint);
+					c->u.mcase.name_constraint = cnode_canonify_pass1(c->u.mcase.name_constraint, 1);
 				}
-				c->u.mcase.value_constraint = cnode_canonify_pass1(c->u.mcase.value_constraint);
+				c->u.mcase.value_constraint = cnode_canonify_pass1(c->u.mcase.value_constraint, namecons);
 			}
 
 			c = tree->u.mswitch.dft_case;
 			if (c->u.mcase.name_constraint != NULL) {
-				c->u.mcase.name_constraint = cnode_canonify_pass1(c->u.mcase.name_constraint);
+				c->u.mcase.name_constraint = cnode_canonify_pass1(c->u.mcase.name_constraint, 1);
 			}
-			c->u.mcase.value_constraint = cnode_canonify_pass1(c->u.mcase.value_constraint);
+			c->u.mcase.value_constraint = cnode_canonify_pass1(c->u.mcase.value_constraint, namecons);
 		}
 		return tree;
 
@@ -5165,6 +5501,7 @@ cnode_canonify_pass2(struct jvst_cnode *tree)
 	case JVST_CNODE_LENGTH_RANGE:
 	case JVST_CNODE_PROP_RANGE:
 	case JVST_CNODE_ITEM_RANGE:
+	case JVST_CNODE_REF:
 		return tree;
 
 	case JVST_CNODE_NOT:
@@ -5314,11 +5651,127 @@ cnode_canonify_pass2(struct jvst_cnode *tree)
 struct jvst_cnode *
 jvst_cnode_canonify(struct jvst_cnode *tree)
 {
-	tree = cnode_canonify_pass1(tree);
+	tree = cnode_canonify_pass1(tree, 0);
 	tree = jvst_cnode_simplify(tree);
 	tree = cnode_canonify_pass2(tree);
 	tree = jvst_cnode_simplify(tree);
 	return tree;
+}
+
+void
+jvst_cnode_forest_add_tree(struct jvst_cnode_forest *forest, struct jvst_cnode *tree)
+{
+	forest->trees = xenlargevec(forest->trees, &forest->cap, 1, sizeof forest->trees[0]);
+
+	assert(forest->cap > 0);
+	assert(forest->len < forest->cap);
+	forest->trees[forest->len++] = tree;
+}
+
+void
+jvst_cnode_forest_initialize(struct jvst_cnode_forest *forest)
+{
+	static const struct jvst_cnode_forest zero;
+
+	*forest = zero;
+	forest->all_ids = jvst_cnode_id_table_new();
+	forest->ref_ids = jvst_cnode_id_table_new();
+}
+
+struct jvst_cnode_forest *
+jvst_cnode_forest_new(void)
+{
+	struct jvst_cnode_forest *forest;
+
+	forest = malloc(sizeof *forest);
+	jvst_cnode_forest_initialize(forest);
+
+	return forest;
+}
+
+void
+jvst_cnode_forest_finalize(struct jvst_cnode_forest *forest)
+{
+	if (forest == NULL) {
+		return;
+	}
+
+	jvst_cnode_id_table_delete(forest->all_ids);
+	jvst_cnode_id_table_delete(forest->ref_ids);
+	free(forest->trees);
+}
+
+void
+jvst_cnode_forest_delete(struct jvst_cnode_forest *forest)
+{
+	jvst_cnode_forest_finalize(forest);
+	free(forest);
+}
+
+static int
+cnode_id_update(void *opaque, struct json_string *k, struct jvst_cnode **ctreep)
+{
+	struct hmap *upds = opaque;
+
+	(void)k;
+
+	assert(ctreep != NULL);
+	assert(upds != NULL);
+
+	if (*ctreep != NULL) {
+		struct jvst_cnode *ctree_new;
+		ctree_new = hmap_getptr(upds, *ctreep);
+		assert(ctree_new != NULL);
+
+		*ctreep = ctree_new;
+	}
+
+	return 1;
+}
+
+static struct jvst_cnode_forest *
+cnode_update_forest(struct jvst_cnode_forest *forest, struct jvst_cnode *(*updater)(struct jvst_cnode *))
+{
+	size_t i,n;
+	struct hmap *upds;
+
+	upds = hmap_create_pointer(
+			jvst_cnode_id_table_nbuckets(forest->ref_ids),
+			jvst_cnode_id_table_maxload(forest->ref_ids));
+
+	n = forest->len;
+	for (i = 0; i < n; i++) {
+		struct jvst_cnode *cnode;
+
+		cnode = updater(forest->trees[i]);
+		if (!hmap_setptr(upds, forest->trees[i], cnode)) {
+			fprintf(stderr, "could not add entry to cnode update table\n");
+			abort();
+		}
+
+		forest->trees[i] = cnode;
+	}
+
+	// jvst_cnode_id_table_foreach(forest->all_ids, cnode_id_update, upds);
+	jvst_cnode_id_table_foreach(forest->ref_ids, cnode_id_update, upds);
+
+	hmap_free(upds);
+
+	return forest;
+}
+
+struct jvst_cnode_forest *
+jvst_cnode_simplify_forest(struct jvst_cnode_forest *forest)
+{
+	return cnode_update_forest(forest, jvst_cnode_simplify);
+}
+
+// Canonifies the cnode forest.  Replaces each tree in the forest with a
+// canonified one.
+struct jvst_cnode_forest *
+jvst_cnode_canonify_forest(struct jvst_cnode_forest *forest)
+{
+	return cnode_update_forest(forest, jvst_cnode_canonify);
 }
 
 /* vim: set tabstop=8 shiftwidth=8 noexpandtab: */

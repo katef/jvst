@@ -14,6 +14,7 @@
 	lex_state :lex_state;
 	act_state :act_state;
 	ast       :ast;
+	path	  :path;
 
 %maps%
 
@@ -39,17 +40,23 @@
         ast-json-property-pair -> ast_json_ppair_t;
         ast-json-item-list     -> ast_json_ilist_t;
 
+	path -> path_t;
+
 %header% @{
 
 	#include <assert.h>
 	#include <stdarg.h>
 	#include <stdlib.h>
 	#include <string.h>
+	#include <limits.h>
+
+        #include <uriparser/Uri.h>
 
 	#include "sjp_lexer.h"
 
 	#include "debug.h"
 	#include "parser.h"
+        #include "parserutils.h"
 	#include "jdom.h"
 	#include "ast.h"
 	#include "kw.h"
@@ -60,13 +67,14 @@
 		enum SJP_TOKEN save;
 	};
 
-	typedef struct json_string string;
 	typedef json_number number;
 	typedef enum kw kw;
 	typedef enum json_valuetype type;
 
 	typedef enum re_dialect re_dialect_t;
 	typedef struct ast_regexp ast_regexp_t;
+
+	typedef struct path *path_t;
 
 	struct string_set {
 		struct ast_string_set *head;
@@ -158,13 +166,66 @@
 		}
 	}
 
-	static struct json_string copy_json_string(struct json_string s)
+	static struct json_string current_path(struct path *p)
 	{
-		struct json_string copy;
-		copy.s   = xstrndup(s.s, s.len);
-		copy.len = s.len;
-		return copy;
+		static const struct json_string zero;
+		struct json_string result = zero;
+		size_t i;
+
+		// XXX - fixed-size limits how deep schema can get.  maybe this should be
+		// user-adjustable?
+		char path[2048], *s, *e;
+
+		s = &path[0];
+		e = &path[sizeof path];
+
+		*s++ = '#';
+		for (i=0; i < p->len; i++) {
+			int nc;
+
+			if (p->items[i].isnum) {
+				nc = snprintf(s, e-s, "/%zu", p->items[i].u.num);
+			} else {
+				size_t len = p->items[i].u.str.len;
+				const char *str = p->items[i].u.str.s;
+
+				if (len > INT_MAX) {
+					// XXX - handle error more gracefully?
+					fprintf(stderr, "path element is too long:");
+					fwrite(str, 1, len, stderr);
+					fprintf(stderr, "\n");
+					abort();
+				}
+
+				nc = snprintf(s, e-s, "/%.*s", (int)len, str);
+			}
+
+			if (nc < 0) {
+				// XXX - handle error more gracefully?
+				perror("building path string");
+				abort();
+			}
+
+			if (nc > e-s) {
+				// XXX - handle error more gracefully?
+				fprintf(stderr, "path is too long: %s\n", path);
+				abort();
+			}
+
+			s += nc;
+		}
+
+		// fprintf(stderr, "path: %s\n", path);
+		result.len = s-path;
+		result.s = xstrndup(path, result.len);
+		return result;
 	}
+
+	static void add_all_ids(struct ast_schema *ast, struct path *p)
+        {
+		/* ast->path = current_path(p); */
+                path_add_all_ids(p, ast);
+        }
 
 	#define CURRENT_TERMINAL act_state->t.type
 	#define ERROR_TERMINAL   SJP_TOK_NONE /* XXX: NONE is not an error */
@@ -307,9 +368,12 @@
         static void
         set_schema_list(struct ast_schema_set **varp, ast_schema_list_t list, const char *name)
         {
-                
+                assert(varp != NULL);
                 assert(list->head != NULL);
 
+		while (*varp != NULL) {
+			varp = &(*varp)->next;
+		}
                 *varp = list->head;
 
 		if (debug & DEBUG_ACT) {
@@ -327,6 +391,8 @@
 	typedef struct ast_schema * ast;
 	typedef struct act_state * act_state;
 	typedef struct sjp_lexer * lex_state;
+	typedef struct path * path;
+	typedef struct json_string string;
 
 @};
 
@@ -355,16 +421,44 @@
 
 %actions%
 
+        <path-set-baseuri>:     (s :string) -> () = @{
+                path_set_baseid(&path->items[0], &path->items[0], @s);
+        @};
+
+	<path-push-empty>:	() -> () = @{
+                path_push_empty(path);
+        @};
+
+	<path-push-str>: (s :string) -> () = @{
+		path_push_str(path, @s);
+	@};
+
+	<path-push-num-zero> = @{
+		path_push_num_zero(path);
+	@};
+
+	<path-push-num-next> = @{
+		path_push_num_next(path);
+	@};
+
+	<path-pop> = @{
+		path_pop(path);
+	@};
+
 	<kw-lookup>: (s :string) -> (k :kw) = @{
 		if (debug & DEBUG_ACT) {
 			fprintf(stderr, "<kw-lookup>: \"%.*s\"\n", (int) @s.len, @s.s);
 		}
 
 		@k = kw_lookup(&@s);
+
+		/* schema are allowed to have anything ... */
+		/*
 		if (@k == 0) {
 			xerr(lex_state, 0, "Unrecognised keyword: \"%s\"", @s.s);
 			@!;
 		}
+		*/
 	@};
 
 	<type-lookup>: (s :string) -> (t :type) = @{
@@ -444,18 +538,46 @@
         @};
 
         <append-list-of-props>:     (head: ast-prop-schema,entry: ast-prop-schema) -> () = @{
-                struct ast_property_schema tmp;
-                tmp = *(@head);
-                *(@head) = *(@entry);
-                *(@entry) = tmp;
-                @head->next = @entry;
+                struct ast_property_schema *ps, **pspp;
+
+		if (debug & DEBUG_ACT) {
+                        struct ast_property_schema *head, *entry;
+			head = @head;
+			entry = @entry;
+
+                        // XXX - make this useful!
+			fprintf(stderr, "<append-list-of-props>: %p %p\n", (void *)head, (void *)entry);
+		}
+
+                ps = @head;
+                for (pspp = &ps; *pspp != NULL; pspp = &(*pspp)->next) {
+                        continue;
+                }
+                *pspp = @entry;
         @};
 
         <parse-schema>: () -> (sch: ast-schema) = @{
                 static struct ast_schema zero = { 0 };
-                @sch = xmalloc(sizeof *@sch);
-                *@sch = zero;
-                p_schema(lex_state, act_state, @sch);
+		struct ast_schema *sch;
+                sch = xmalloc(sizeof *sch);
+                *sch = zero;
+                p_schema(lex_state, act_state, sch, path);
+                add_all_ids(sch, path);
+		@sch = sch;
+        @};
+
+        <set-path>:             () -> () = @{
+                add_all_ids(ast, path);
+        @};
+
+        <set-ref>:              (s :string) -> () = @{
+		struct json_string s = @s;
+		ast->ref = path_ref(path,s);
+                ast->kws |= KWS_HAS_REF;
+		if (debug & DEBUG_ACT) {
+                        // XXX - make this useful!
+			fprintf(stderr, "<set-ref>: %.*s\n", (int)s.len, s.s);
+		}
         @};
 
         <set-schema-true>:          () -> () = @{
@@ -476,8 +598,31 @@
                 ps = @ps;
 
 		if (debug & DEBUG_ACT) {
+                        struct ast_property_schema *itm;
+
                         // XXX - make this useful!
 			fprintf(stderr, "<set-properties>: %p\n", (void *) ps);
+                        for (itm = ps; itm != NULL; itm = itm->next) {
+                                int len;
+
+                                len = itm->pattern.str.len < INT_MAX ?  (int)itm->pattern.str.len : INT_MAX;
+
+                                fprintf(stderr, "  --> ");
+                                switch (itm->pattern.dialect) {
+                                case RE_LITERAL:
+                                        fprintf(stderr, "\"%.*s\"\n", len, itm->pattern.str.s);
+                                        break;
+
+                                case RE_NATIVE:
+                                        fprintf(stderr, "/%.*s/\n", len, itm->pattern.str.s);
+                                        break;
+
+                                default:
+                                        fprintf(stderr, "regexp(0x%02x,\"%.*s\")\n",
+                                                itm->pattern.dialect, len, itm->pattern.str.s);
+                                        break;
+                                }
+                        }
 		}
 
                 // search for end
@@ -587,6 +732,16 @@
                 set_schema_list(&ast->items, items, "set-items-list");
         @};
 
+	<add-to-definitions>:	(sch :ast-schema) -> () = @{
+		ast_add_definitions(ast, @sch);
+	@};
+
+        <set-definitions>:          (lst :ast-schema-list) -> () = @{
+		ast_schema_list_t defs;
+		defs = @lst;
+		set_schema_list(&ast->definitions, defs, "set-definitions");
+	@};
+
 	<set-min-items>: (n :number) -> () = @{
                 ast_count c;
 
@@ -665,7 +820,15 @@
 			fprintf(stderr, "<set-id>: \"%.*s\"\n", (int) @s.len, @s.s);
 		}
 
-		ast->id = @s;
+                /* set the id of the parent */
+                {
+                        struct path_element *ptop, *pparent;
+                        assert(path->len > 1);
+                        ptop = &path->items[0];
+                        pparent = &path->items[path->len-2]; /* -1 for current, -2 for parent */
+                        path_set_baseid(ptop,pparent, @s);
+                }
+		/* ast->id = @s; */
 	@};
 
 	<set-multiple-of>: (n :number) -> () = @{
@@ -851,7 +1014,7 @@
 
 	<new-string-set>: () -> (ss :ast-string-set) = @{
 		struct string_set *ss;
-		ss = malloc(sizeof *ss);
+		ss = xmalloc(sizeof *ss);
 		ss->head = NULL;
 		ss->tail = &ss->head;
 		@ss = ss;
@@ -861,7 +1024,7 @@
 		struct string_set *ss = @ss;
 		struct ast_string_set *item;
 
-		item = malloc(sizeof *item);
+		item = xmalloc(sizeof *item);
 		item->str = @s;
 		item->next = NULL;
 		*ss->tail = item;
@@ -874,7 +1037,7 @@
 
 		ss = @ss;
 
-		pn = malloc(sizeof *pn);
+		pn = xmalloc(sizeof *pn);
 		pn->pattern.dialect = RE_LITERAL;
 		pn->pattern.str = @n;
 		pn->set = ss->head;
@@ -889,7 +1052,7 @@
 
 		sch = @sch;
 
-		ps = malloc(sizeof *ps);
+		ps = xmalloc(sizeof *ps);
 		ps->pattern.dialect = RE_LITERAL;
 		ps->pattern.str = @n;
 		ps->schema = sch;
@@ -901,7 +1064,7 @@
 	/* XXX - overlap with enum constraint... */
         <set-const>: (v :ast-json-value) -> () = @{
 		struct ast_value_set *v, **it;
-		v = malloc(sizeof *v);
+		v = xmalloc(sizeof *v);
 		v->value = @v;
 		v->next = NULL;
 
@@ -915,7 +1078,7 @@
 	/* XXX - overlap with const constraint... */
         <add-enum>: (v :ast-json-value) -> () = @{
 		struct ast_value_set *v, **it;
-		v = malloc(sizeof *v);
+		v = xmalloc(sizeof *v);
 		v->value = @v;
 		v->next = NULL;
 
@@ -933,7 +1096,7 @@
 
 	<ast-json-new-property-list>: () -> (l :ast-json-property-list) = @{
 		struct ast_json_plist *pl;
-		pl = malloc(sizeof *pl);
+		pl = xmalloc(sizeof *pl);
 		pl->head = NULL;
 		pl->tail = &pl->head;
 		@l = pl;
@@ -946,7 +1109,7 @@
 	@};
 
 	<ast-json-free-property-list-and-properties>: (l :ast-json-property-list) -> () = @{
-		struct ast_json_plist *pl, *next;
+		struct ast_json_plist *pl;
 		pl = @l;
 		ast_json_free_properties(pl->head);
 		free(pl);
@@ -960,8 +1123,8 @@
 		pn = @n;
 		pv = @v;
 
-		pp = malloc(sizeof *pp);
-		pp->name = copy_json_string(pn);
+		pp = xmalloc(sizeof *pp);
+		pp->name = json_strdup(pn);
 		pp->value = pv;
 
 		@pair = pp;
@@ -991,7 +1154,7 @@
 
 	<ast-json-new-item-list>: () -> (l :ast-json-item-list) = @{
 		struct ast_json_ilist *l;
-		l = malloc(sizeof *l);
+		l = xmalloc(sizeof *l);
 		l->head = NULL;
 		l->tail = &l->head;
 		@l = l;
@@ -1019,7 +1182,7 @@
 		l = @l;
 		v = @v;
 
-		elt = malloc(sizeof *elt);
+		elt = xmalloc(sizeof *elt);
 		elt->value = v;
 		elt->next = NULL;
 
@@ -1044,7 +1207,7 @@
 
 		s = @s;
 		v.type = JSON_VALUE_STRING;
-		v.u.str = copy_json_string(s);
+		v.u.str = json_strdup(s);
 
 		@v = v;
 	@};
@@ -1112,22 +1275,23 @@
 %trailer% @{
 
 	void
-	parse(struct sjp_lexer *lex_state, struct ast_schema *ast)
+	parse(struct sjp_lexer *lex_state, struct ast_schema *ast, struct json_string base_uri)
 	{
 		struct act_state a, *act_state = &a;
+		struct path p = { 0 };
 
 		assert(lex_state != NULL);
 		assert(ast != NULL);
 
 		ADVANCE_LEXER;
 
-		p_file(lex_state, act_state, ast);
+		p_file(lex_state, act_state, ast, &p, base_uri);
 	}
 
 @}, @{
 
 	void
-	parse(struct sjp_lexer *lex_state, struct ast_schema *ast);
+	parse(struct sjp_lexer *lex_state, struct ast_schema *ast, struct json_string base_uri);
 
 @};
 

@@ -21,6 +21,7 @@ enum {
 	DEBUG_OPCODES          = 1 << 10,
 	DEBUG_VMPROG           = 1 << 11,
         DEBUG_VMOP             = 1 << 12,
+        DEBUG_VMTOK            = 1 << 13,
 };
 
 extern unsigned debug;

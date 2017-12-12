@@ -47,11 +47,13 @@ static struct ast_value_set ar_ast_vsets[NUM_TEST_THINGS];
 
 static struct jvst_cnode ar_cnodes[NUM_TEST_THINGS];
 static struct jvst_cnode_matchset ar_cnode_matchsets[NUM_TEST_THINGS];
+static struct id_pair ar_id_pairs[NUM_TEST_THINGS];
 
 static struct jvst_ir_stmt ar_ir_stmts[NUM_TEST_THINGS];
 static struct jvst_ir_expr ar_ir_exprs[NUM_TEST_THINGS];
 static struct jvst_ir_mcase ar_ir_mcases[NUM_TEST_THINGS];
 static size_t ar_ir_splitinds[NUM_TEST_THINGS];
+static struct ir_pair ar_ir_pairs[NUM_TEST_THINGS];
 
 static struct jvst_op_program ar_op_prog[NUM_TEST_THINGS];
 static struct jvst_op_proc ar_op_proc[NUM_TEST_THINGS];
@@ -68,36 +70,35 @@ static uint32_t ar_vm_code[NUM_TEST_THINGS];
 
 // Returns a constant empty schema
 struct ast_schema *
-empty_schema(void)
+empty_schema(struct arena_info *A)
 {
-	static struct ast_schema empty = {0};
-	return &empty;
+	return newschema(A, 0);
 }
 
 struct ast_schema *
-true_schema(void)
+true_schema(struct arena_info *A)
 {
-	static struct ast_schema true_schema= {
-		.kws = KWS_VALUE,
-		.value = {
-			.type = JSON_VALUE_BOOL,
-			.u = { .v = true },
-		},
-	};
-	return &true_schema;
+	struct ast_schema *sch;
+
+	sch = newschema(A, 0);
+	sch->kws = KWS_VALUE;
+	sch->value.type = JSON_VALUE_BOOL;
+	sch->value.u.v = true;
+
+	return sch;
 }
 
 struct ast_schema *
-false_schema(void)
+false_schema(struct arena_info *A)
 {
-	static struct ast_schema false_schema= {
-		.kws = KWS_VALUE,
-		.value = {
-			.type = JSON_VALUE_BOOL,
-			.u = { .v = false },
-		},
-	};
-	return &false_schema;
+	struct ast_schema *sch;
+
+	sch = newschema(A, 0);
+	sch->kws = KWS_VALUE;
+	sch->value.type = JSON_VALUE_BOOL;
+	sch->value.u.v = false;
+
+	return sch;
 }
 
 struct json_string
@@ -414,6 +415,22 @@ newschema_p(struct arena_info *A, int types, ...)
 			divisor = va_arg(args, double);
 			s->multiple_of = divisor;
 			s->kws |= KWS_MULTIPLE_OF;
+		} else if (strcmp(pname, "id") == 0 || strcmp(pname, "path") == 0) {
+			const char *id;
+			struct ast_string_set **sspp;
+
+			id = va_arg(args, const char *);
+			for (sspp = &s->all_ids; *sspp != NULL; sspp = &(*sspp)->next) {
+				continue;
+			}
+
+			*sspp = stringset(A, id, NULL);
+		} else if (strcmp(pname, "$ref") == 0) {
+			const char *id;
+			id = va_arg(args, const char *);
+			s->kws |= KWS_HAS_REF;
+			s->ref.s = id;
+			s->ref.len = strlen(id);
 		} else {
 			// okay to abort() a test if the test writer forgot to add a
 			// property to the big dumb if-else chain
@@ -952,9 +969,7 @@ newcnode_contains(struct arena_info *A, struct jvst_cnode *top)
 struct jvst_cnode *
 newcnode_required(struct arena_info *A, struct ast_string_set *sset)
 {
-	struct ast_string_set **spp;
 	struct jvst_cnode *node;
-	va_list args;
 
 	node = newcnode(A, JVST_CNODE_OBJ_REQUIRED);
 	node->u.required = sset;
@@ -1101,6 +1116,90 @@ newmatchset(struct arena_info *A, ...)
 	va_end(args);
 
 	return head;
+}
+
+struct jvst_cnode *
+newcnode_ref(struct arena_info *A, const char *id)
+{
+	struct jvst_cnode *node;
+
+	node = newcnode(A, JVST_CNODE_REF);
+	node->u.ref = newstr(id);
+
+	return node;
+}
+
+struct id_pair *
+new_idpairs(struct id_pair *first, ...)
+{
+	struct id_pair **idpp;
+	va_list args;
+
+	idpp = &first->next;
+	va_start(args, first);
+	for (;;) {
+		struct id_pair *pair;
+
+		pair = va_arg(args, struct id_pair *);
+		if (pair == NULL) {
+			break;
+		}
+
+		*idpp = pair;
+		while ((*idpp)->next != NULL) {
+			idpp = &(*idpp)->next;
+		}
+	}
+	va_end(args);
+
+	return first;
+}
+
+struct id_pair *
+new_idpair(struct arena_info *A, const char *id, struct jvst_cnode *ctree)
+{
+	size_t i, max;
+	struct id_pair *pair;
+
+	i   = A->nids++;
+	max = ARRAYLEN(ar_id_pairs);
+	if (A->nexpr >= max) {
+		fprintf(stderr, "too many id pairs: %zu max\n", max);
+		abort();
+	}
+
+	pair = &ar_id_pairs[i];
+	memset(pair, 0, sizeof *pair);
+	pair->id = id;
+	pair->cnode = ctree;
+
+	return pair;
+}
+
+struct id_pair *
+new_idpair_manyids(struct arena_info *A, struct jvst_cnode *ctree, ...)
+{
+	struct id_pair *p, **pp;
+	va_list args;
+
+	p = NULL;
+	pp = &p;
+
+	va_start(args, ctree);
+	for (;;) {
+		const char *id;
+
+		id = va_arg(args, const char *);
+		if (id == NULL) {
+			break;
+		}
+
+		*pp = new_idpair(A, id, ctree);
+		pp = &(*pp)->next;
+	}
+	va_end(args);
+
+	return p;
 }
 
 struct jvst_ir_expr *
@@ -1589,6 +1688,19 @@ newir_call(struct arena_info *A, size_t frame_ind)
 	return stmt;
 }
 
+struct jvst_ir_stmt *
+newir_callid(struct arena_info *A, const char *id)
+{
+	struct jvst_ir_stmt *stmt;
+
+	assert(id != NULL);
+
+	stmt = newir_stmt(A,JVST_IR_STMT_CALL_ID);
+	stmt->u.call_id.id = newstr(id);
+
+	return stmt;
+}
+
 struct jvst_ir_mcase *
 newir_case(struct arena_info *A, size_t ind, struct jvst_cnode_matchset *mset, struct jvst_ir_stmt *frame)
 {
@@ -1979,6 +2091,61 @@ newsplits(struct arena_info *A, struct jvst_op_proc **sv, size_t n)
 	}
 
 	return splits;
+}
+
+struct ir_pair *
+new_irpair(struct arena_info *A, const char *id, struct jvst_ir_stmt *ir)
+{
+	size_t i, max;
+	struct ir_pair *pair;
+
+	i   = A->nirpairs++;
+	max = ARRAYLEN(ar_ir_pairs);
+	if (A->nexpr >= max) {
+		fprintf(stderr, "too many ir pairs: %zu max\n", max);
+		abort();
+	}
+
+	pair = &ar_ir_pairs[i];
+	memset(pair, 0, sizeof *pair);
+	pair->id = id;
+	pair->ir = ir;
+
+	return pair;
+}
+
+struct ir_pair *
+new_irpairs(struct arena_info *A, ...)
+{
+	struct ir_pair *head;
+	struct ir_pair **idpp;
+	va_list args;
+
+	head = NULL;
+	idpp = &head;
+
+	va_start(args, A);
+	for (;;) {
+		const char *id;
+		struct jvst_ir_stmt *ir;
+		struct ir_pair *pair;
+
+		id = va_arg(args, const char *);
+		if (id == NULL) {
+			break;
+		}
+
+		ir = va_arg(args, struct jvst_ir_stmt *);
+		assert(ir != NULL);
+
+		pair = new_irpair(A, id, ir);
+
+		*idpp = pair;
+		idpp = &pair->next;
+	}
+	va_end(args);
+
+	return head;
 }
 
 struct jvst_op_program *
@@ -2864,6 +3031,84 @@ buffer_diff(FILE *f, const char *buf1, const char *buf2, size_t n)
 
 		break;
 	}
+}
+
+void
+print_buffer_with_lines(FILE *f, const char *buf, size_t n)
+{
+    size_t i,l;
+
+    l = 1;
+    fprintf(f, "%3zu | ", l);
+    for (i=0; (i < n) && buf[i] != '\0'; i++) {
+      fputc(buf[i], f);
+      if (buf[i] == '\n') {
+        l++;
+        fprintf(f, "%3zu | ", l);
+      }
+    }
+    fprintf(f, "\n");
+}
+
+// n1 is actual, n2 is expected
+int cnode_trees_equal(const char *fname, struct jvst_cnode *n1, struct jvst_cnode *n2)
+{
+  size_t n;
+  int ret, failed;
+  static char buf1[65536];
+  static char buf2[65536];
+  size_t i, linenum, beg, off;
+
+  STATIC_ASSERT(sizeof buf1 == sizeof buf2, buffer_size_not_equal);
+
+  memset(buf1, 0, sizeof buf1);
+  memset(buf2, 0, sizeof buf2);
+
+  // kind of dumb but mostly reliable way to do deep equals...  generate
+  // text dumps and compare
+  // 
+  // XXX - replace with an actual comparison
+  if (jvst_cnode_dump(n1, buf1, sizeof buf1) != 0) {
+    fprintf(stderr, "buffer for node 1 not large enough (currently %zu bytes)\n",
+        sizeof buf1);
+  }
+
+  if (jvst_cnode_dump(n2, buf2, sizeof buf2) != 0) {
+    fprintf(stderr, "buffer for node 2 not large enough (currently %zu bytes)\n",
+        sizeof buf2);
+  }
+
+  if (strncmp(buf1, buf2, sizeof buf1) == 0) {
+    // fprintf(stderr, "TREE:\n%s\n", buf1);
+    return 1;
+  }
+
+  /*
+  fprintf(stderr,
+      "test %s cnode trees are not equal:\n"
+      "Expected tree:\n%s\n\n"
+      "Actual tree:\n%s\n",
+      fname, buf2,buf1);
+      */
+
+  fprintf(stderr, "test %s cnode trees are not equal:\n", fname);
+  {
+    size_t i,n,l;
+
+    fprintf(stderr, "Expected tree:\n");
+    print_buffer_with_lines(stderr, buf2, sizeof buf2);
+    fprintf(stderr, "\n");
+
+    fprintf(stderr, "Actual tree:\n");
+    print_buffer_with_lines(stderr, buf1, sizeof buf1);
+    fprintf(stderr, "\n");
+  }
+  fprintf(stderr, "\n\n");
+
+  // difference
+  buffer_diff(stderr, buf1, buf2, sizeof buf1);
+
+  return 0;
 }
 
 /* vim: set tabstop=8 shiftwidth=8 noexpandtab: */

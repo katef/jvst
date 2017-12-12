@@ -5,6 +5,7 @@ SRC += src/jdom.c
 SRC += src/kw.c
 SRC += src/main.c
 SRC += src/parser.c
+SRC += src/parserutils.c
 SRC += src/xalloc.c
 
 SRC += src/sjp_lexer.c
@@ -16,7 +17,12 @@ CFLAGS.${src} += -I share/git/sjp
 DFLAGS.${src} += -I share/git/sjp
 .endfor
 
-.for src in ${SRC:Msrc/ast.c} ${SRC:Msrc/sjp_lexer.c} ${SRC:Msrc/parser.c} ${SRC:Msrc/main.c}
+.for src in ${SRC:Msrc/main.c} ${SRC:Msrc/parser.c} ${SRC:Msrc/parserutils.c}
+CFLAGS.${src} += -I include
+DFLAGS.${src} += -I include
+.endfor
+
+.for src in ${SRC:Msrc/ast.c} ${SRC:Msrc/sjp_lexer.c} ${SRC:Msrc/parser.c} ${SRC:Msrc/main.c} ${SRC:Msrc/parserutils.c}
 CFLAGS.${src} += -std=c99 -Wno-missing-field-initializers
 DFLAGS.${src} += -std=c99
 .endfor
@@ -27,13 +33,16 @@ CFLAGS.${src} += -Wno-unused-parameter
 
 VALID_SRC += src/validate_sbuf.c
 VALID_SRC += src/validate_constraints.c
-# VALID_SRC += src/validate_testing.c
 VALID_SRC += src/validate_ir.c
 VALID_SRC += src/validate_op.c
 VALID_SRC += src/validate_vm.c
 VALID_SRC += src/sjp_parser.c
 VALID_SRC += src/sjp_testing.c
 VALID_SRC += src/compile.c
+
+VALID_SRC += src/idtbl.c
+VALID_SRC += src/hmap.c
+VALID_SRC += src/xxhash.c
 
 .for src in ${VALID_SRC:Msrc/*.c}
 CFLAGS.${src} += -std=c99 -Wno-missing-field-initializers -Wno-unused

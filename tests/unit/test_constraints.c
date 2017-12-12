@@ -7,6 +7,8 @@
 
 #include "jvst_macros.h"
 
+#define BASE_URI "http://example.com"
+
 enum TEST_OP {
   STOP = 0,
   TRANSLATE,
@@ -25,11 +27,19 @@ struct cnode_test {
   struct jvst_cnode *expected;
 };
 
-static int cnode_trees_equal(const char *fname, struct jvst_cnode *n1, struct jvst_cnode *n2);
-
 static int run_test(const char *fname, const struct cnode_test *t)
 {
+  static const struct ast_string_set zero;
+
   struct jvst_cnode *result;
+  struct json_string base_uri;
+  struct ast_string_set sset;
+
+  base_uri.s = BASE_URI;
+  base_uri.len = strlen(base_uri.s);
+
+  sset = zero;
+  sset.str = base_uri;
 
   assert(t->expected != NULL);
 
@@ -43,6 +53,10 @@ static int run_test(const char *fname, const struct cnode_test *t)
     case TRANSLATE:
       assert(t->ast != NULL);
       assert(t->expected != NULL);
+      if (t->ast->all_ids == NULL) {
+        t->ast->all_ids = &sset;
+      }
+
       result = jvst_cnode_translate_ast(t->ast);
       break;
 
@@ -72,137 +86,6 @@ static int run_test(const char *fname, const struct cnode_test *t)
   return cnode_trees_equal(fname, result, t->expected);
 }
 
-// n1 is actual, n2 is expected
-static int cnode_trees_equal(const char *fname, struct jvst_cnode *n1, struct jvst_cnode *n2)
-{
-  size_t n;
-  int ret, failed;
-  static char buf1[65536];
-  static char buf2[65536];
-  size_t i, linenum, beg, off;
-
-  STATIC_ASSERT(sizeof buf1 == sizeof buf2, buffer_size_not_equal);
-
-  memset(buf1, 0, sizeof buf1);
-  memset(buf2, 0, sizeof buf2);
-
-  // kind of dumb but mostly reliable way to do deep equals...  generate
-  // text dumps and compare
-  // 
-  // XXX - replace with an actual comparison
-  if (jvst_cnode_dump(n1, buf1, sizeof buf1) != 0) {
-    fprintf(stderr, "buffer for node 1 not large enough (currently %zu bytes)\n",
-        sizeof buf1);
-  }
-
-  if (jvst_cnode_dump(n2, buf2, sizeof buf2) != 0) {
-    fprintf(stderr, "buffer for node 2 not large enough (currently %zu bytes)\n",
-        sizeof buf2);
-  }
-
-  if (strncmp(buf1, buf2, sizeof buf1) == 0) {
-    // fprintf(stderr, "TREE:\n%s\n", buf1);
-    return 1;
-  }
-
-  /*
-  fprintf(stderr,
-      "test %s cnode trees are not equal:\n"
-      "Expected tree:\n%s\n\n"
-      "Actual tree:\n%s\n",
-      fname, buf2,buf1);
-      */
-
-  fprintf(stderr, "test %s cnode trees are not equal:\n", fname);
-  {
-    size_t i,n,l;
-
-    fprintf(stderr, "Expected tree:\n");
-    l = 1;
-    fprintf(stderr, "%3zu | ", l);
-    for (i=0; (i < sizeof buf2) && buf2[i] != '\0'; i++) {
-      fputc(buf2[i], stderr);
-      if (buf2[i] == '\n') {
-        l++;
-        fprintf(stderr, "%3zu | ", l);
-      }
-    }
-    fprintf(stderr, "\n\n");
-
-    fprintf(stderr, "Actual tree:\n");
-    l = 1;
-    fprintf(stderr, "%3zu | ", l);
-    for (i=0; (i < sizeof buf1) && buf1[i] != '\0'; i++) {
-      fputc(buf1[i], stderr);
-      if (buf1[i] == '\n') {
-        l++;
-        fprintf(stderr, "%3zu | ", l);
-      }
-    }
-  }
-  fprintf(stderr, "\n\n");
-
-  // slightly tedious job of finding first difference and printing out
-  // both up to that point...
-  for (i=0, linenum=1, off=0; i < sizeof buf1; i++) {
-    size_t j;
-    char line1[256], line2[256];
-
-    if (buf1[i] == buf2[i]) {
-      if (buf1[i] == '\0') {
-        fprintf(stderr, "INTERNAL ERROR: cannot find difference.\n");
-        abort();
-      }
-
-      if (buf1[i] == '\n') {
-        size_t n;
-        n = i-off;
-        if (n >= sizeof line1) {
-          n = sizeof line1 - 1;
-        }
-        if (n > 0) {
-          memcpy(line1,&buf1[off],n);
-          memcpy(line2,&buf2[off],n);
-        }
-        line1[n] = '\0';
-        line2[n] = '\0';
-
-        fprintf(stderr, "%3zu | %-40.40s | %-40.40s\n",
-            linenum, line1, line2);
-
-        linenum++;
-        off = i+1;
-      }
-
-      continue;
-    }
-
-    // difference
-    fprintf(stderr, "difference at line %zu, column %zu:\n", linenum, i-off+1);
-    fprintf(stderr, "EXPECTED: ");
-    for(j=off; j < sizeof buf2 && buf2[j] != '\n'; j++) {
-      fputc(buf2[j], stderr);
-    }
-    fprintf(stderr, "\n");
-
-    fprintf(stderr, "ACTUAL  : ");
-    for(j=off; j < sizeof buf1 && buf1[j] != '\n'; j++) {
-      fputc(buf1[j], stderr);
-    }
-    fprintf(stderr, "\n");
-
-    fprintf(stderr, "DIFF    : ");
-    for(j=off; j < i; j++) {
-      fputc(' ', stderr);
-    }
-    fprintf(stderr, "^\n");
-
-    break;
-  }
-
-  return 0;
-}
-
 #define RUNTESTS(testlist) runtests(__func__, (testlist))
 static void runtests(const char *testname, const struct cnode_test tests[])
 {
@@ -223,7 +106,7 @@ static void test_xlate_empty_schema(void)
   struct arena_info A = {0};
 
   const struct cnode_test tests[] = {
-    { TRANSLATE, empty_schema(), NULL, newcnode_switch(&A, 1, SJP_NONE) },
+    { TRANSLATE, empty_schema(&A), NULL, newcnode_switch(&A, 1, SJP_NONE) },
     { STOP },
   };
 
@@ -235,8 +118,8 @@ static void test_xlate_true_false_schemas(void)
   struct arena_info A = {0};
 
   const struct cnode_test tests[] = {
-    { TRANSLATE, true_schema(), NULL, newcnode_switch(&A, 1, SJP_NONE) },
-    { TRANSLATE, false_schema(), NULL, newcnode_switch(&A, 0, SJP_NONE) },
+    { TRANSLATE, true_schema(&A), NULL, newcnode_switch(&A, 1, SJP_NONE) },
+    { TRANSLATE, false_schema(&A), NULL, newcnode_switch(&A, 0, SJP_NONE) },
     { STOP },
   };
 
@@ -792,8 +675,8 @@ void test_xlate_required(void)
   struct arena_info A = {0};
   struct ast_schema *schema = newschema_p(&A, 0,
       "properties", newprops(&A,
-        "foo", empty_schema(),
-        "bar", empty_schema(),
+        "foo", empty_schema(&A),
+        "bar", empty_schema(&A),
         NULL),
       "required", stringset(&A, "foo", NULL),
       NULL);
@@ -3719,6 +3602,66 @@ static void test_canonify_propertynames(void)
   RUNTESTS(tests);
 }
 
+static void test_canonify_length_constraints(void)
+{
+  struct arena_info A = {0};
+
+  const struct cnode_test tests[] = {
+    {
+      CANONIFY, NULL,
+        newcnode_switch(&A, 0,
+          SJP_OBJECT_BEG, newcnode_propset(&A,
+                            newcnode_prop_match(&A, RE_LITERAL, "description",
+                              newcnode_switch(&A, 0,
+                                SJP_STRING, newcnode_counts(&A, JVST_CNODE_LENGTH_RANGE, 3, 30, true),
+                                SJP_NONE)),
+                            newcnode_prop_match(&A, RE_LITERAL, "quantity",
+                              newcnode_switch(&A, 0,
+                                SJP_NUMBER, newcnode_bool(&A, JVST_CNODE_AND,
+                                              newcnode(&A,JVST_CNODE_NUM_INTEGER),
+                                              newcnode_range(&A, JVST_CNODE_RANGE_MIN|JVST_CNODE_RANGE_MAX, 0.0, 100.0),
+                                              NULL),
+                                SJP_NONE)),
+                            NULL),
+          SJP_NONE),
+
+        newcnode_switch(&A, 0,
+          SJP_OBJECT_BEG, newcnode_mswitch(&A,
+                            // default case
+                            newcnode_valid(),
+
+                            newcnode_mcase(&A,
+                              newmatchset(&A, RE_LITERAL, "description", -1),
+                              newcnode_switch(&A, 0,
+                                SJP_STRING, newcnode_mswitch(&A,
+                                              // default case
+                                              newcnode_mcase_namecons(&A,
+                                                NULL,
+                                                newcnode_counts(&A, JVST_CNODE_LENGTH_RANGE, 3, 30, true),
+                                                newcnode_valid()),
+                                              NULL),
+                                SJP_NONE)),
+
+                            newcnode_mcase(&A,
+                              newmatchset(&A, RE_LITERAL, "quantity", -1),
+                              newcnode_switch(&A, 0,
+                                SJP_NUMBER, newcnode_bool(&A, JVST_CNODE_AND,
+                                              newcnode_range(&A, JVST_CNODE_RANGE_MIN|JVST_CNODE_RANGE_MAX, 0.0, 100.0),
+                                              newcnode(&A,JVST_CNODE_NUM_INTEGER),
+                                              NULL),
+                                SJP_NONE)),
+
+                            NULL),
+
+          SJP_NONE),
+    },
+
+    { STOP },
+  };
+
+  RUNTESTS(tests);
+}
+
 void test_canonify_required(void)
 {
   struct arena_info A = {0};
@@ -4321,6 +4264,44 @@ static void test_xlate_enum(void)
   RUNTESTS(tests);
 }
 
+static void test_xlate_ref(void)
+{
+  struct arena_info A = {0};
+
+  const struct cnode_test tests[] = {
+    {
+      TRANSLATE,
+      newschema_p(&A, 0,
+        "id", "#",
+        "properties", newprops(&A, 
+          "foo", newschema_p(&A, 0, "$ref", "#", NULL),
+          NULL),
+        "additionalProperties", false_schema(&A),
+        NULL),
+
+      NULL,
+
+      newcnode_switch(&A, 1,
+        SJP_OBJECT_BEG, newcnode_bool(&A,JVST_CNODE_AND,
+                          newcnode_prop_default(&A, 
+                            newcnode_switch(&A, 0, SJP_NONE)),
+                          newcnode_bool(&A,JVST_CNODE_AND,
+                            newcnode_propset(&A,
+                              newcnode_prop_match(&A, RE_LITERAL, "foo",
+                                newcnode_ref(&A, "#")),
+                              NULL),
+                            newcnode_valid(),
+                            NULL),
+                          NULL),
+        SJP_NONE)
+    },
+
+    { STOP },
+  };
+
+  RUNTESTS(tests);
+}
+
 int main(void)
 {
   test_xlate_empty_schema();
@@ -4362,6 +4343,8 @@ int main(void)
   test_xlate_const();
   test_xlate_enum();
 
+  test_xlate_ref();
+
   test_simplify_ands();
   test_simplify_ored_schema();
   test_simplify_propsets();
@@ -4381,6 +4364,7 @@ int main(void)
   test_canonify_ored_schema();
   test_canonify_propsets();
   test_canonify_propertynames();
+  test_canonify_length_constraints();
   test_canonify_required();
   test_canonify_patterns();
 

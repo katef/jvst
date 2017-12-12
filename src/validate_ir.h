@@ -5,6 +5,7 @@
 #include <stdint.h>
 #include <stdio.h>
 
+#include "jdom.h"
 #include "sjp_parser.h"
 
 // IR has two components: statements and expressions
@@ -25,6 +26,7 @@ enum jvst_ir_stmt_type {
 	JVST_IR_STMT_BREAK,		// BREAK(name). Exits named loop.
 
 	JVST_IR_STMT_TOKEN,		// requests the next token
+	JVST_IR_STMT_UNTOKEN,		// "ungets" the current token
 	JVST_IR_STMT_CONSUME,		// consumes the next value, including whole objects and arrays
 
 	/*
@@ -59,6 +61,8 @@ enum jvst_ir_stmt_type {
 
 	JVST_IR_STMT_SPLITVEC,		// Splits the validator, stores
 					// results for each subvalidator in a bitvec
+
+	JVST_IR_STMT_CALL_ID,		// Calls a named IR frame
 
 	JVST_IR_STMT_BLOCK,
 	JVST_IR_STMT_BRANCH,
@@ -158,6 +162,7 @@ jvst_invalid_msg(enum jvst_invalid_code code);
 
 struct jvst_ir_expr;
 struct jvst_ir_label;
+struct jvst_cnode_matchset;
 
 struct jvst_ir_mcase {
 	struct jvst_ir_mcase *next;
@@ -316,6 +321,14 @@ struct jvst_ir_stmt {
 		struct {
 			struct jvst_ir_stmt *frame;
 		} call;
+
+		struct {
+			struct json_string id;
+
+			// temporary used for keeping track of call_id
+			// lists
+			struct jvst_ir_stmt *next_call;
+		} call_id;
 	} u;
 };
 
@@ -430,6 +443,37 @@ jvst_ir_debug(struct jvst_ir_stmt *node);
 
 void
 jvst_ir_print(FILE *f, struct jvst_ir_stmt *node);
+
+struct jvst_ir_id_table;
+
+// IR forests: used to assemble cnode forests into initial IR trees. An
+// IR forest is then linearized into an IR program.
+struct jvst_ir_forest {
+	size_t len;
+	struct jvst_ir_stmt **trees;
+
+	struct jvst_ir_id_table *refs;
+};
+
+struct jvst_cnode_forest;
+
+// Translates a forest of cnodes into a forest of IR trees
+struct jvst_ir_forest *
+jvst_ir_translate_forest(struct jvst_cnode_forest *ctrees);
+
+// Translates a forest of IR trees into a single linearized IR
+// representation of the program
+struct jvst_ir_stmt *
+jvst_ir_linearize_forest(struct jvst_ir_forest *ir);
+
+void
+jvst_ir_forest_free(struct jvst_ir_forest *ir_forest);
+
+void
+jvst_ir_print_forest(FILE *f, struct jvst_ir_forest *ir_forest);
+
+void
+jvst_ir_debug_forest(struct jvst_ir_forest *ir_forest);
 
 #endif /* JVST_VALIDATE_IR_H */
 

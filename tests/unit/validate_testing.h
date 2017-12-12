@@ -32,12 +32,15 @@ struct arena_info {
 	/* cnode related */
 	size_t ncnode;
 	size_t nmatchsets;
+	size_t nids;
 
         /* IR related */
         size_t nstmt;
         size_t nexpr;
 	size_t nmcases;
 	size_t nsplitinds;
+
+	size_t nirpairs;
 
 	/* OP related */
 	size_t nprog;
@@ -52,14 +55,29 @@ struct arena_info {
 	size_t nvmcode;
 };
 
-struct ast_schema *
-empty_schema(void);
+struct id_pair {
+	struct id_pair *next;
+	const char *id;
+	struct jvst_cnode *cnode;
+};
+
+struct ir_pair {
+	struct ir_pair *next;
+	const char *id;
+	struct jvst_ir_stmt *ir;
+};
+
+
+/** AST related **/
 
 struct ast_schema *
-true_schema(void);
+empty_schema(struct arena_info *A);
 
 struct ast_schema *
-false_schema(void);
+true_schema(struct arena_info *A);
+
+struct ast_schema *
+false_schema(struct arena_info *A);
 
 struct ast_schema *
 newschema(struct arena_info *A, int types);
@@ -108,7 +126,9 @@ newjson_bool(struct arena_info *A, int b);
 struct json_value *
 newjson_null(struct arena_info *A);
 
-/** cnodes **/
+
+/** cnodes related **/
+
 struct jvst_cnode *
 newcnode(struct arena_info *A, enum jvst_cnode_type type);
 
@@ -185,8 +205,22 @@ newcnode_mcase_namecons(struct arena_info *A, struct jvst_cnode_matchset *mset,
 struct jvst_cnode_matchset *
 newmatchset(struct arena_info *A, ...);
 
+struct jvst_cnode *
+newcnode_ref(struct arena_info *A, const char *id);
 
-/* IR-related */
+/** cnode id related **/
+struct id_pair *
+new_idpair(struct arena_info *A, const char *id, struct jvst_cnode *ctree);
+
+struct id_pair *
+new_idpair_manyids(struct arena_info *A, struct jvst_cnode *ctree, ...);
+
+struct id_pair *
+new_idpairs(struct id_pair *first, ...);
+
+
+/** IR-related **/
+
 extern const struct jvst_ir_stmt *const frameindex;
 extern const struct jvst_ir_stmt *const splitlist;
 
@@ -259,6 +293,15 @@ newir_move(struct arena_info *A, struct jvst_ir_expr *tmp, struct jvst_ir_expr *
 struct jvst_ir_stmt *
 newir_call(struct arena_info *A, size_t frame_ind);
 
+struct jvst_ir_stmt *
+newir_callid(struct arena_info *A, const char *id);
+
+struct ir_pair *
+new_irpair(struct arena_info *A, const char *id, struct jvst_ir_stmt *ir);
+
+struct ir_pair *
+new_irpairs(struct arena_info *A, ...);
+
 struct jvst_ir_mcase *
 newir_case(struct arena_info *A, size_t ind, struct jvst_cnode_matchset *mset, struct jvst_ir_stmt *frame);
 
@@ -311,6 +354,9 @@ newir_eseq(struct arena_info *A, struct jvst_ir_stmt *stmt, struct jvst_ir_expr 
 
 struct jvst_ir_expr *
 newir_ematch(struct arena_info *A, size_t mind);
+
+
+/* OP related */
 
 struct jvst_op_program *
 newop_program(struct arena_info *A, ...);
@@ -388,6 +434,8 @@ oparg_tok(enum SJP_EVENT evt) { return oparg_make(JVST_VM_ARG_TOKTYPE,evt); }
 static inline struct jvst_op_arg 
 oparg_slot(int n) { return oparg_make(JVST_VM_ARG_SLOT,n); }
 
+
+/* VM opcode related */
 enum {
 	VM_END    = -1,
 	VM_LABEL  = -2,
@@ -407,6 +455,12 @@ report_tests(void);
 
 void
 buffer_diff(FILE *f, const char *buf1, const char *buf2, size_t n);
+
+void
+print_buffer_with_lines(FILE *f, const char *buf, size_t n);
+
+int
+cnode_trees_equal(const char *fname, struct jvst_cnode *n1, struct jvst_cnode *n2);
 
 #endif /* TESTING_H */
 

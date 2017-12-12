@@ -50,7 +50,7 @@ JSON_SUITES += dependencies.json
 JSON_SUITES += const.json
 JSON_SUITES += enum.json
 
-# JSON_SUITES += ref.json
+JSON_SUITES += ref.json
 # JSON_SUITES += definitions.json
 # JSON_SUITES += refRemote.json
 

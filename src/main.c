@@ -15,6 +15,8 @@
 #include <stdio.h>
 #include <string.h>
 
+#include <uriparser/Uri.h>
+
 #include "sjp_lexer.h"
 #include "sjp_testing.h"
 
@@ -105,6 +107,7 @@ debug_flags(const char *s)
 		case 'o': e = DEBUG_OPCODES;          break;
 		case 'p': e = DEBUG_VMPROG;           break;
 		case 'v': e = DEBUG_VMOP;             break;
+		case 'T': e = DEBUG_VMTOK;            break;
 
 		default:
 			fprintf(stderr, "-d: unrecognised flag '%c'\n", *s);
@@ -126,21 +129,62 @@ enum jvst_lang {
 	JVST_LANG_C,
 };
 
+static struct json_string
+uri_from_filename(const char *fname)
+{
+	struct json_string uri;
+	char *path;
+	char *buf;
+	size_t nbuf;
+
+	assert(fname != NULL);
+
+	path = realpath(fname, NULL);
+	if (path == NULL) {
+		perror("setting base URI from path");
+		exit(EXIT_FAILURE);
+	}
+
+	nbuf = 7 + 3*strlen(path) + 1;
+	buf = xmalloc(nbuf);
+
+	if (uriUnixFilenameToUriStringA(path, buf) != URI_SUCCESS) {
+		fprintf(stderr, "error converting path to base URI\n");
+		exit(EXIT_FAILURE);
+	}
+
+	uri.s = buf;
+	uri.len = strlen(buf);
+
+	free(path);
+
+	return uri;
+}
+
 int
 main(int argc, char *argv[])
 {
+	static const struct json_string szero;
 	static const struct ast_schema ast_default;
 	int r;
 	int compile=0, runvm=0;
 	struct jvst_vm_program *prog = NULL;
-	struct jvst_ir_stmt *ir;
+	struct jvst_ir_forest *ir_forest;
 	enum jvst_lang lang = JVST_LANG_VM;
+	struct json_string base_uri;
+
+	base_uri = szero;
 
 	{
 		int c;
 
-		while (c = getopt(argc, argv, "l:rcd:"), c != -1) {
+		while (c = getopt(argc, argv, "b:l:rcd:"), c != -1) {
 			switch (c) {
+			case 'b':
+				base_uri.s = xstrdup(optarg);
+				base_uri.len = strlen(base_uri.s);
+				break;
+
 			case 'c':
 				compile = 1;
 				break;
@@ -179,8 +223,7 @@ main(int argc, char *argv[])
 		/* Prepare IR tree (all output languages) */
 
 		FILE *f_schema;
-		char *p;
-		size_t n;
+		const char *schema_filename = NULL;
 
 		if (argc < 1) {
 			// TODO: genc does not... when we add that,
@@ -189,74 +232,87 @@ main(int argc, char *argv[])
 			goto usage;
 		}
 
-		f_schema = fopen(argv[0], "r");
+		schema_filename = argv[0];
+		argc--;
+		argv++;
+
+		f_schema = fopen(schema_filename, "r");
 		if (f_schema == NULL) {
 			fprintf(stderr, "error opening schema '%s': %s\n",
 					argv[0], strerror(errno));
 			exit(EXIT_FAILURE);
 		}
-		argc--;
-		argv++;
 
 		struct sjp_lexer l;
 		struct ast_schema ast = ast_default;
-		struct jvst_cnode *ctree, *simplified, *canonified;
+		struct jvst_cnode_forest *ctrees;
 
-		sjp_lexer_init(&l);
+		{
+			char *p;
+			size_t n;
 
-		/* TODO: until sjp gets various streamed IO interfaces */
-		p = readfile(f_schema, &n);
-		if (f_schema != stdin) {
-			fclose(f_schema);
+			/* TODO: until sjp gets various streamed IO interfaces */
+			p = readfile(f_schema, &n);
+			if (f_schema != stdin) {
+				fclose(f_schema);
+			}
+			if (p == NULL) {
+				perror("readfile");
+				exit(EXIT_FAILURE);
+			}
+
+			if (base_uri.len == 0) {
+				if (schema_filename == NULL) {
+					fprintf(stderr, "must specify a base URI with -b when reading schema from stdin\n");
+					exit(EXIT_FAILURE);
+				}
+
+				base_uri = uri_from_filename(schema_filename);
+			}
+
+			sjp_lexer_init(&l);
+			sjp_lexer_more(&l, p, n);
+			parse(&l, &ast, base_uri);
+
+			if (debug & DEBUG_PARSED_SCHEMA) {
+				ast_dump(stdout, &ast);
+			}
+
+			r = sjp_lexer_close(&l);
+			if (SJP_ERROR(r)) {
+				/* TODO: make this better */
+				fprintf(stderr, "sjp error B (%d): encountered %s\n", r, ret2name(r));
+				exit(EXIT_FAILURE);
+			}
+
+			free(p);
 		}
-		if (p == NULL) {
-			perror("readfile");
-			exit(EXIT_FAILURE);
-		}
 
-		sjp_lexer_more(&l, p, n);
-
-		parse(&l, &ast);
-
-		if (debug & DEBUG_PARSED_SCHEMA) {
-			ast_dump(stdout, &ast);
-		}
-
-		r = sjp_lexer_close(&l);
-		if (SJP_ERROR(r)) {
-			/* TODO: make this better */
-			fprintf(stderr, "sjp error B (%d): encountered %s\n", r, ret2name(r));
-			exit(EXIT_FAILURE);
-		}
-
-		free(p);
-		n = 0;
-
-		ctree = jvst_cnode_translate_ast(&ast);
+		ctrees = jvst_cnode_translate_ast_with_ids(&ast);
 		if (debug & DEBUG_INITIAL_CNODE) {
 			printf("Initial cnode tree\n");
-			jvst_cnode_print(stdout, ctree);
+			jvst_cnode_print_forest(stdout, ctrees);
 			printf("\n");
 		}
 
-		simplified = jvst_cnode_simplify(ctree);
+		jvst_cnode_simplify_forest(ctrees);
 		if (debug & DEBUG_SIMPLIFIED_CNODE) {
 			printf("Simplified cnode tree\n");
-			jvst_cnode_print(stdout, simplified);
+			jvst_cnode_print_forest(stdout, ctrees);
 			printf("\n");
 		}
 
-		canonified = jvst_cnode_canonify(simplified);
+		jvst_cnode_canonify_forest(ctrees);
 		if (debug & DEBUG_CANONIFIED_CNODE) {
 			printf("Canonified cnode tree\n");
-			jvst_cnode_print(stdout, canonified);
+			jvst_cnode_print_forest(stdout, ctrees);
 			printf("\n");
 		}
 
-		ir = jvst_ir_translate(canonified);
+		ir_forest = jvst_ir_translate_forest(ctrees);
 		if (debug & DEBUG_IR) {
 			printf("Initial IR\n");
-			jvst_ir_print(stdout, ir);
+			jvst_ir_print_forest(stdout, ir_forest);
 			printf("\n");
 		}
 	}
@@ -269,7 +325,7 @@ main(int argc, char *argv[])
 				struct jvst_ir_stmt *linearized, *flattened;
 				struct jvst_op_program *op_prog;
 
-				linearized = jvst_ir_linearize(ir);
+				linearized = jvst_ir_linearize_forest(ir_forest);
 				if (debug & DEBUG_LINEAR_IR) {
 					printf("Linearized IR\n");
 					jvst_ir_print(stdout, linearized);
@@ -374,6 +430,9 @@ usage:
 			"             jvst        generates jvst VM bytecode (default)\n"
 			"             c           generates C\n"
 			"\n"
+			"  -b <uri>\n"
+			"           sets the base URI for the json schema\n"
+			"\n"
 			"  -c       compile schema to jvst VM code\n"
 			"\n"
 			"  -r       run jvst VM code on json\n"
@@ -394,6 +453,7 @@ usage:
 			"           o   print opcodes\n"
 			"           p   print final VM program\n"
 			"           v   print VM instructions while executing\n"
+			"           T   print tokens as read (during VM run)\n"
 			"\n");
 
 	return 1;

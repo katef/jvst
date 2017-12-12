@@ -13,6 +13,9 @@ xrealloc(void *p, size_t sz);
 char *
 xstrndup(const char *s, size_t n);
 
+char *
+xstrdup(const char *s);
+
 void *
 xmalloc(size_t n);
 

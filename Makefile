@@ -18,6 +18,7 @@ PKG += libre
 PKG += libfsm
 
 # layout
+SUBDIR += src/uriparser
 SUBDIR += src
 SUBDIR += tests/unit
 SUBDIR += tests/jvst

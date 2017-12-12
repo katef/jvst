@@ -346,6 +346,13 @@ enum {
 	JVST_VM_PARSER_BUFSIZE = 4096,
 };
 
+enum jvst_vm_tokstate {
+	JVST_VM_TOKEN_CONSUMED,
+	JVST_VM_TOKEN_FETCH,
+	JVST_VM_TOKEN_READY,
+	JVST_VM_TOKEN_BUFFERED,
+};
+
 union jvst_vm_stackval {
 	int64_t  i;
 	uint64_t u;
@@ -379,8 +386,7 @@ struct jvst_vm {
 	enum SJP_RESULT pret;
 	int error;
 	int dfa_st;
-	int consumed; // flag if a token has been consumed or not
-	int nexttok;  // flag if a new token has been requested
+	enum jvst_vm_tokstate tokstate;
 	int needtok;  // flag if the next call to vm_run_next should have a token
 
 	char pstack[JVST_VM_PARSER_STKSIZE];

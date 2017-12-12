@@ -109,91 +109,17 @@ ir_trees_equal(const char *fname, struct jvst_ir_stmt *n1, struct jvst_ir_stmt *
 
 	fprintf(stderr, "test %s ir trees are not equal:\n", fname);
 	{
-		size_t i,n,l;
-
 		fprintf(stderr, "Expected tree:\n");
-		l = 1;
-		fprintf(stderr, "%3zu | ", l);
-		for (i=0; (i < sizeof buf2) && buf2[i] != '\0'; i++) {
-			fputc(buf2[i], stderr);
-			if (buf2[i] == '\n') {
-				l++;
-				fprintf(stderr, "%3zu | ", l);
-			}
-		}
-		fprintf(stderr, "\n\n");
+		print_buffer_with_lines(stderr, buf2, sizeof buf2);
+		fprintf(stderr, "\n");
 
 		fprintf(stderr, "Actual tree:\n");
-		l = 1;
-		fprintf(stderr, "%3zu | ", l);
-		for (i=0; (i < sizeof buf1) && buf1[i] != '\0'; i++) {
-			fputc(buf1[i], stderr);
-			if (buf1[i] == '\n') {
-				l++;
-				fprintf(stderr, "%3zu | ", l);
-			}
-		}
+		print_buffer_with_lines(stderr, buf1, sizeof buf1);
+		fprintf(stderr, "\n");
 	}
 	fprintf(stderr, "\n\n");
 
-	// slightly tedious job of finding first difference and printing out
-	// both up to that point...
-	for (i=0, linenum=1, off=0; i < sizeof buf1; i++) {
-		size_t j;
-		char line1[256], line2[256];
-
-		if (buf1[i] == buf2[i]) {
-			if (buf1[i] == '\0') {
-				fprintf(stderr, "INTERNAL ERROR: cannot find difference.\n");
-				abort();
-			}
-
-			if (buf1[i] == '\n') {
-				size_t n;
-				n = i-off;
-				if (n >= sizeof line1) {
-					n = sizeof line1 - 1;
-				}
-				if (n > 0) {
-					memcpy(line1,&buf1[off],n);
-					memcpy(line2,&buf2[off],n);
-				}
-				line1[n] = '\0';
-				line2[n] = '\0';
-
-				fprintf(stderr, "%3zu | %-40.40s | %-40.40s\n",
-						linenum, line1, line2);
-
-				linenum++;
-				off = i+1;
-			}
-
-			continue;
-		}
-
-		// difference
-		fprintf(stderr, "difference at line %zu, column %zu:\n", linenum, i-off+1);
-		fprintf(stderr, "EXPECTED: ");
-		for(j=off; j < sizeof buf2 && buf2[j] != '\n'; j++) {
-			fputc(buf2[j], stderr);
-		}
-		fprintf(stderr, "\n");
-
-		fprintf(stderr, "ACTUAL  : ");
-		for(j=off; j < sizeof buf1 && buf1[j] != '\n'; j++) {
-			fputc(buf1[j], stderr);
-		}
-		fprintf(stderr, "\n");
-
-		fprintf(stderr, "DIFF    : ");
-		for(j=off; j < i; j++) {
-			fputc(' ', stderr);
-		}
-		fprintf(stderr, "^\n");
-
-		break;
-	}
-
+	buffer_diff(stderr, buf1, buf2, sizeof buf1);
 	return 0;
 }
 

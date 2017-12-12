@@ -129,27 +129,12 @@ static void report_prog_diff(const char *fname, enum op_test_type type, const ch
     size_t i,n,l;
 
     fprintf(stderr, "Expected program:\n");
-    l = 1;
-    fprintf(stderr, "%3zu | ", l);
-    for (i=0; (i < n2) && buf2[i] != '\0'; i++) {
-      fputc(buf2[i], stderr);
-      if (buf2[i] == '\n') {
-        l++;
-        fprintf(stderr, "%3zu | ", l);
-      }
-    }
-    fprintf(stderr, "\n\n");
+    print_buffer_with_lines(stderr, buf2, n2);
+    fprintf(stderr, "\n");
 
     fprintf(stderr, "Actual program:\n");
-    l = 1;
-    fprintf(stderr, "%3zu | ", l);
-    for (i=0; (i < n1) && buf1[i] != '\0'; i++) {
-      fputc(buf1[i], stderr);
-      if (buf1[i] == '\n') {
-        l++;
-        fprintf(stderr, "%3zu | ", l);
-      }
-    }
+    print_buffer_with_lines(stderr, buf1, n1);
+    fprintf(stderr, "\n");
   }
   fprintf(stderr, "\n\n");
 

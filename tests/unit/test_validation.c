@@ -13,6 +13,8 @@
 
 #define PROTOTYPE 0
 
+#define BASE_URI "http://example.com"
+
 struct validation_test {
   bool succeeds;
   const char *json;
@@ -75,11 +77,21 @@ static int run_prototype_test(const struct validation_test *t)
 
 static int run_vm_test(const struct validation_test *t)
 {
+  static const struct ast_string_set zero;
   struct jvst_vm_program *prog;
   struct jvst_vm vm;
   char buf[4096];
   size_t n;
   int ret, failed;
+  struct ast_string_set sset;
+
+  if (t->schema->all_ids == NULL) {
+    sset = zero;
+
+    sset.str.s = BASE_URI;
+    sset.str.len = strlen(sset.str.s);
+    t->schema->all_ids = &sset;
+  }
 
   prog = jvst_compile_schema(t->schema);
 
@@ -108,6 +120,10 @@ static int run_vm_test(const struct validation_test *t)
 
   jvst_vm_finalize(&vm);
   jvst_vm_program_free(prog);
+
+  if (t->schema->all_ids == &sset) {
+    t->schema->all_ids = NULL;
+  }
 
   return !failed;
 }
@@ -140,16 +156,18 @@ static void runtests(const char *testname, const struct validation_test tests[])
 /* test to get us off the ground */
 void test_empty_schema(void)
 {
+  struct arena_info A = { 0 };
+
   const struct validation_test tests[] = {
-    { true, "{}", empty_schema() },
-    { true, "[]", empty_schema() },
-    { true, "{ \"foo\" : \"bar\" }", empty_schema() },
+    { true, "{}", empty_schema(&A) },
+    { true, "[]", empty_schema(&A) },
+    { true, "{ \"foo\" : \"bar\" }", empty_schema(&A) },
 
     // lots of embedded stuff
-    { true, "{ \"foo\" : { \"bar\" : { \"quux\" : [ 1, 2, 3, {}, { \"this\" : [] } ], \"foo\" : [ {}, {}, [ {} ] ] } } }", empty_schema() },
+    { true, "{ \"foo\" : { \"bar\" : { \"quux\" : [ 1, 2, 3, {}, { \"this\" : [] } ], \"foo\" : [ {}, {}, [ {} ] ] } } }", empty_schema(&A) },
 
     // one to make sure that we're checking for valid json
-    { false, "{ 12 : \"bar\" }", empty_schema() },
+    { false, "{ 12 : \"bar\" }", empty_schema(&A) },
 
     { false, NULL, NULL },
   };
@@ -159,8 +177,13 @@ void test_empty_schema(void)
 
 void test_type_integer(void)
 {
+  struct ast_string_set ids = {
+    .str = { .s = BASE_URI, .len = strlen(BASE_URI) }
+  };
+
   struct ast_schema schema = {
     .types = JSON_VALUE_INTEGER,
+    .all_ids = &ids,
   };
 
   const struct validation_test tests[] = {
@@ -208,8 +231,13 @@ void test_type_integer(void)
 
 void test_type_number(void)
 {
+  struct ast_string_set ids = {
+    .str = { .s = BASE_URI, .len = strlen(BASE_URI) }
+  };
+
   struct ast_schema schema = {
     .types = JSON_VALUE_NUMBER,
+    .all_ids = &ids,
   };
 
   const struct validation_test tests[] = {
@@ -245,8 +273,13 @@ void test_type_number(void)
 
 void test_type_object(void)
 {
+  struct ast_string_set ids = {
+    .str = { .s = BASE_URI, .len = strlen(BASE_URI) }
+  };
+
   struct ast_schema schema = {
     .types = JSON_VALUE_OBJECT,
+    .all_ids = &ids,
   };
 
   const struct validation_test tests[] = {
@@ -281,13 +314,18 @@ void test_properties(void)
 {
   struct arena_info A = {0};
 
+  struct ast_string_set ids = {
+    .str = { .s = BASE_URI, .len = strlen(BASE_URI) }
+  };
+
   struct ast_schema schema = {
     .properties = {
       .set = newprops(&A,
           "foo", newschema(&A, JSON_VALUE_NUMBER), // XXX - JSON_VALUE_INTEGER
           "bar", newschema(&A, JSON_VALUE_STRING),
           NULL)
-    }
+    },
+    .all_ids = &ids,
   };
 
   const struct validation_test tests[] = {
@@ -561,8 +599,8 @@ void test_required(void)
   struct arena_info A = {0};
   struct ast_schema *schema = newschema_p(&A, 0,
       "properties", newprops(&A,
-        "foo", empty_schema(),
-        "bar", empty_schema(),
+        "foo", empty_schema(&A),
+        "bar", empty_schema(&A),
         NULL),
       "required", stringset(&A, "foo", NULL),
       NULL);

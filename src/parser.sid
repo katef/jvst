@@ -12,6 +12,9 @@
 
 	kw;
 	type;
+
+	!path; /* path is a persistent and currently does not appear explicitly */
+
         ast-schema;
         ast-schema-list;
         ast-prop-schema;
@@ -75,6 +78,14 @@
 	/* some helpers */
 	<new-string-set>: () -> (:ast-string-set);
 	<append-string-set>: (:ast-string-set, :string) -> ();
+
+	/* id helpers */
+        <path-set-baseuri>:     (:string) -> ();
+	<path-push-empty>:	() -> ();
+	<path-push-str>:	(:string) -> ();
+	<path-push-num-zero>:	() -> ();
+	<path-push-num-next>:	() -> ();
+	<path-pop>:		() -> ();
 
 	/*** schema keywords ***/
 
@@ -158,6 +169,9 @@
         <set-any-of>:               (:ast-schema-list) -> ();
         <set-one-of>:               (:ast-schema-list) -> ();
 
+	<add-to-definitions>:	    (:ast-schema) -> ();
+        <set-definitions>:          (:ast-schema-list) -> ();
+
         <new-regexp>:               (:re-dialect, :string) -> (:regexp);
         <re-literal>:               () -> (:re-dialect);
         <re-pattern>:               () -> (:re-dialect);
@@ -176,6 +190,9 @@
         <free-schema-list>:         (:ast-schema-list) -> ();
 
         <parse-schema>:             () -> (:ast-schema);
+        <set-path>:             () -> ();
+
+        <set-ref>:              (:string) -> ();
 
         <set-schema-true>:          () -> ();
         <set-schema-false>:         () -> ();
@@ -335,7 +352,10 @@
 	};
 
 	directive-ref = {
-		placeholder;
+                s = STRING;
+                <set-ref>(s);
+	##
+		<err-expected-string>;
 	};
 
 	directive-id = {
@@ -453,11 +473,44 @@
 		<err-expected-type>;
 	};
 
+        directive-definitions: () -> () [
+                def-schema: () -> (sch :ast-schema) = {
+                        s = STRING;
+                        colon;
+			<path-push-str>(s);
+                        sch = <parse-schema>;
+			<path-pop>;
+                };
+
+                list-of-definitions: (l :ast-schema-list) -> () = {
+			s = def-schema;
+			<append-schema-to-list>(l,s);
+                        {
+                                comma;
+				list-of-definitions(l);
+                        ||
+                                $;
+                        };
+                };
+        ] = {
+                OCURLY;
+		{
+			l = <new-schema-list>;
+			list-of-definitions(l);
+			<set-definitions>(l);
+		||
+			$;
+		};
+                CCURLY;
+        };
+
         directive-properties: (dialect :re-dialect) -> () [
                 prop-schema: (dialect :re-dialect) -> (ps :ast-prop-schema) = {
                         s = STRING;
                         colon;
+			<path-push-str>(s);
                         sch = <parse-schema>;
+			<path-pop>;
                         re = <new-regexp>(dialect,s);
                         ps = <new-prop-schema>(re,sch);
                 };
@@ -519,7 +572,9 @@
 				ss = string-deps;
 				<add-string-dependency>(n,ss);
 			||
+				<path-push-str>(n);
 				sch = <parse-schema>;
+				<path-pop>;
 				<add-schema-dependency>(n,sch);
 			};
 		};
@@ -574,6 +629,7 @@
                         next-schema(lst);
                         {
                                 comma;
+				<path-push-num-next>;
                                 list-of-schema(lst);
                         ||
                                 $;
@@ -581,9 +637,11 @@
                 };
         ] = {
                 lst = <new-schema-list>;
+		<path-push-num-zero>;
                 OBRACKET;
                 list-of-schema(lst);
                 CBRACKET;
+		<path-pop>;
         };
 
         directive-items = {
@@ -780,7 +838,7 @@
 		directive-title;
 	||
 		? = <kw-definitions>(k);
-		placeholder;
+		directive-definitions;
 	||
 		? = <kw-description>(k);
 		directive-description;
@@ -790,6 +848,12 @@
 	||
 		? = <kw-examples>(k);
 		placeholder;
+	||
+		{
+			/* non-directives function like 'definitions' */
+			sch = <parse-schema>;
+			<add-to-definitions>(sch);
+		};
 	##
 		<err-expected-directive>;
 	};
@@ -797,8 +861,10 @@
 	list-of-directives = {
 		s = STRING;
 		k = <kw-lookup>(s);
+		<path-push-str>(s);
 		colon;
 		directive(k);
+		<path-pop>;
 		{
 			comma;
 			list-of-directives;
@@ -841,9 +907,13 @@
 		<err-expected-schema>;
 	};
 
-	file = {
+	file: (baseuri :string) -> () = {
+		<path-push-empty>;
+                <path-set-baseuri>(baseuri);
 		schema;
+                <set-path>;
 		EOS;
+		<path-pop>;
 	##
 		<err-syntax>;
 	};
