@@ -22,7 +22,6 @@ DFLAGS.${src} += -std=c99
 .endfor
 
 VALID_SRC += src/validate_sbuf.c
-VALID_SRC += src/validate.c
 VALID_SRC += src/validate_constraints.c
 # VALID_SRC += src/validate_testing.c
 VALID_SRC += src/validate_ir.c
