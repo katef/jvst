@@ -1,0 +1,6 @@
+test NOT on arrays
+0	empty array is valid
+1       array with one non-integer is valid
+2       array with integer is invalid
+3       array with one string is invalid
+4       array with two non-integers is invalid

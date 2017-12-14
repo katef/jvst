@@ -1,0 +1,6 @@
+test NOT(NOT(cond)) situation
+0	"foo" is valid
+1       "fob" is valid
+2       "fbo" is invalid
+3       empty string is invalid
+4       number is invalid

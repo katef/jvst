@@ -1704,6 +1704,19 @@ cnode_translate_ast_with_ids(const struct ast_schema *ast, struct ast_translator
 		node = top_jxn;
 	}
 
+	if (ast->not != NULL) {
+		struct jvst_cnode *top_jxn, *not_jxn, **conds;
+		struct ast_schema_set *sset;
+
+		not_jxn = jvst_cnode_alloc(JVST_CNODE_NOT);
+		not_jxn->u.ctrl = cnode_translate_ast_with_ids(ast->not, xl);
+
+		top_jxn = jvst_cnode_alloc(JVST_CNODE_AND);
+		top_jxn->u.ctrl = not_jxn;
+		not_jxn->next = node;
+		node = top_jxn;
+	}
+
 	if (ast->xenum != NULL) {
 		struct ast_value_set *v;
 		struct jvst_cnode *top_jxn, *cons, **jpp;
@@ -4381,6 +4394,15 @@ cnode_simplify_not(struct jvst_cnode *top)
 	assert(top->u.ctrl != NULL);
 	assert(top->u.ctrl->next == NULL);
 
+	// Eliminate double negatives: NOT(NOT(cond)) --> cond
+	if (top->u.ctrl->type == JVST_CNODE_NOT) {
+		struct jvst_cnode *not_not_cond;
+		not_not_cond = top->u.ctrl->u.ctrl;
+		assert(not_not_cond != NULL);
+		assert(not_not_cond->next == NULL);
+		return jvst_cnode_simplify(not_not_cond);
+	}
+
 	if (top->u.ctrl->type == JVST_CNODE_SWITCH) {
 		// fast exit if then child node is a SWITCH node: the NOT is pushed into
 		// each case of the switch, so there's no further simplification to be
@@ -4405,6 +4427,15 @@ cnode_simplify_not(struct jvst_cnode *top)
 			/* nop */
 			break;
 		}
+	}
+
+	if (top->type == JVST_CNODE_NOT) {
+		struct jvst_cnode *simplified;
+
+		simplified = jvst_cnode_alloc(JVST_CNODE_NOT);
+		simplified->u.ctrl = jvst_cnode_simplify(top->u.ctrl);
+
+		return simplified;
 	}
 
 	return top;

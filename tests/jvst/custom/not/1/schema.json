@@ -1,0 +1,9 @@
+{
+  "type" : "array",
+  "items" : [
+    { "type" : "number",
+      "not" : { "type" : "integer" }
+    }
+  ],
+  "additionalItems" : false
+}

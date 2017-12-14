@@ -49,7 +49,7 @@ struct arena_info {
 	size_t nfloat;
 	size_t nconst;
 	size_t nsplit;
-	size_t nsplitmax;
+	size_t nsplitoff;
 
 	size_t nvmprog;
 	size_t nvmcode;

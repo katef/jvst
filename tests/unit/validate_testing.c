@@ -62,7 +62,7 @@ static struct jvst_op_instr ar_op_instr[NUM_TEST_THINGS];
 static double ar_op_float[NUM_TEST_THINGS];
 static int64_t ar_op_iconst[NUM_TEST_THINGS];
 static struct jvst_op_proc *ar_op_splits[NUM_TEST_THINGS];
-static size_t ar_op_splitmax[NUM_TEST_THINGS];
+static size_t ar_op_splitoff[NUM_TEST_THINGS];
 
 enum { NUM_VM_PROGRAMS = 64 };
 static struct jvst_vm_program ar_vm_progs[NUM_VM_PROGRAMS];
@@ -2047,26 +2047,26 @@ newconsts(struct arena_info *A, int64_t *cv, size_t n)
 }
 
 static size_t *
-newsplitmax(struct arena_info *A, size_t *smv, size_t n)
+newsplitoff(struct arena_info *A, size_t *smv, size_t n)
 {
 	size_t i,off,max;
-	size_t *splitmax;
+	size_t *splitoff;
 
-	off = A->nsplitmax;
-	max = ARRAYLEN(ar_op_splitmax);
+	off = A->nsplitoff;
+	max = ARRAYLEN(ar_op_splitoff);
 	if (off + n > max) {
 		fprintf(stderr, "%s:%d (%s) too many splits (%zu max)\n",
 			__FILE__, __LINE__, __func__, max);
 		abort();
 	}
-	A->nsplitmax += n;
+	A->nsplitoff += n;
 
-	splitmax = &ar_op_splitmax[off];
+	splitoff = &ar_op_splitoff[off];
 	for (i=0; i < n; i++) {
-		splitmax[i] = smv[i];
+		splitoff[i] = smv[i];
 	}
 
-	return splitmax;
+	return splitoff;
 }
 
 static struct jvst_op_proc **
@@ -2159,7 +2159,7 @@ newop_program(struct arena_info *A, ...)
 	size_t nsplit = 0;
 	double flt[16] = { 0.0 };
 	int64_t iconsts[16] = { 0 };
-	size_t splitmax[16] = { 0 };
+	size_t splitoff[16] = { 0 };
 	struct jvst_op_proc *splits[64] = { NULL };
 	va_list args;
 
@@ -2214,14 +2214,14 @@ newop_program(struct arena_info *A, ...)
 			struct jvst_op_proc *spl, **splpp;
 
 			ind = nsplit++;
-			if (nsplit>= ARRAYLEN(splitmax)) {
+			if (nsplit>= ARRAYLEN(splitoff)) {
 				fprintf(stderr, "%s:%d (%s) too many splits ! (max is %zu)\n",
-					__FILE__, __LINE__, __func__, ARRAYLEN(splitmax));
+					__FILE__, __LINE__, __func__, ARRAYLEN(splitoff));
 				abort();
 			}
 
 			n = va_arg(args, int);
-			off = (ind>0) ? splitmax[ind-1] : 0;
+			off = (ind>0) ? splitoff[ind-1] : 0;
 
 			if (off+n >= (int)ARRAYLEN(splits)) {
 				fprintf(stderr, "%s:%d (%s) too many total split functions ! (max is %zu)\n",
@@ -2229,7 +2229,7 @@ newop_program(struct arena_info *A, ...)
 				abort();
 			}
 
-			splitmax[ind] = off+n;
+			splitoff[ind] = off+n;
 
 			for (j=0; j < n; j++) {
 				int pind;
@@ -2266,8 +2266,8 @@ newop_program(struct arena_info *A, ...)
 	}
 
 	if (nsplit > 0) {
-		prog->splitmax = newsplitmax(A, splitmax, nsplit);
-		prog->splits = newsplits(A, splits, splitmax[nsplit-1]);
+		prog->splitoff = newsplitoff(A, splitoff, nsplit);
+		prog->splits = newsplits(A, splits, splitoff[nsplit-1]);
 		prog->nsplit = nsplit;
 	}
 

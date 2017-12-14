@@ -1,0 +1,9 @@
+{
+  "type" : "array",
+  "anyOf" : [
+    { "items" : [ { "type" : "string" }, { "type" : "integer" } ] },
+    { "items" : [ { "type" : "integer" }, { "type" : "string" } ] },
+    { "items" : [ { "type" : "integer" } ], "additionalItems" : false }
+  ]
+}
+

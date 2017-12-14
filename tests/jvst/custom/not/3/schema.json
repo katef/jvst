@@ -1,0 +1,12 @@
+{
+  "type" : "array",
+  "not" : {
+    "items" : [
+      { "type" : "integer" },
+      { "type" : "string" },
+      { "type" : "boolean" }
+    ],
+    "contains" : { "const" : true },
+    "additionalItems" : false
+  }
+}

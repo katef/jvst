@@ -135,6 +135,7 @@
 
 	<set-const>:		    (:ast-json-value) -> ();
 	<add-enum>:		    (:ast-json-value) -> ();
+	<add-example>:		    (:ast-json-value) -> ();
 	<set-schema>:               (:string) -> ();
 	<set-id>:                   (:string) -> ();
 	<set-multiple-of>:          (:number) -> ();
@@ -168,6 +169,7 @@
         <set-all-of>:               (:ast-schema-list) -> ();
         <set-any-of>:               (:ast-schema-list) -> ();
         <set-one-of>:               (:ast-schema-list) -> ();
+        <set-not>:                  (:ast-schema)      -> ();
 
 	<add-to-definitions>:	    (:ast-schema) -> ();
         <set-definitions>:          (:ast-schema-list) -> ();
@@ -695,6 +697,11 @@
                 <free-schema-list>(lst);
         };
 
+        directive-not = {
+                sch = <parse-schema>;
+                <set-not>(sch);
+        };
+
 	directive-title = {
 		s = STRING;
 		<set-title>(s);
@@ -712,6 +719,27 @@
 	directive-const = {
 		v = json-value;
 		<set-const>(v);
+	};
+
+	directive-examples [
+		single-value = {
+			v = json-value;
+			<add-example>(v);
+		};
+
+		list-of-values = {
+			single-value;
+			{
+				comma;
+				list-of-values;
+			||
+				$;
+			};
+		};
+	] = {
+		OBRACKET;
+		list-of-values;
+		CBRACKET;
 	};
 
 	directive-enum [
@@ -832,7 +860,7 @@
                 directive-one-of;
 	||
 		? = <kw-not>(k);
-		placeholder;
+		directive-not;
 	||
 		? = <kw-title>(k);
 		directive-title;
@@ -847,7 +875,7 @@
 		placeholder;
 	||
 		? = <kw-examples>(k);
-		placeholder;
+                directive-examples;
 	||
 		{
 			/* non-directives function like 'definitions' */

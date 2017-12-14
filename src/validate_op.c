@@ -407,11 +407,11 @@ jvst_op_dump_inner(struct sbuf *buf, struct jvst_op_program *prog, int indent)
 		size_t si,off,max;
 		size_t c;
 
-		assert(prog->splitmax != NULL);
+		assert(prog->splitoff != NULL);
 		assert(prog->splits   != NULL);
 
-		off = (i > 0) ? prog->splitmax[i-1] : 0;
-		max = prog->splitmax[i];
+		off = (i > 0) ? prog->splitoff[i-1] : 0;
+		max = prog->splitoff[i];
 
 		sbuf_indent(buf, indent+2);
 		sbuf_snprintf(buf, "SPLIT(%zu)\t", i);
@@ -471,6 +471,7 @@ jvst_op_dump(struct jvst_op_program *prog, char *buf, size_t nb)
 enum addr_fixup_type {
 	FIXUP_ARG,
 	FIXUP_PROC,
+	FIXUP_SPLIT,
 };
 
 struct asm_addr_fixup {
@@ -480,6 +481,10 @@ struct asm_addr_fixup {
 	union {
 		struct jvst_op_arg *arg;
 		struct jvst_op_proc **procp;
+		struct {
+			struct jvst_op_program *prog;
+			size_t split_ind;
+		} split;
 	} u;
 
 	enum addr_fixup_type type;
@@ -533,6 +538,21 @@ asm_addr_fixup_add_dest(struct asm_addr_fixup_list *l,
 }
 
 static void
+asm_addr_fixup_add_split(struct asm_addr_fixup_list *l,
+	struct jvst_op_instr *instr, struct jvst_op_program *prog, size_t split_ind, struct jvst_ir_stmt *ir)
+{
+	struct asm_addr_fixup *fixup;
+
+	fixup = asm_addr_fixup_alloc(l);
+
+	fixup->type    = FIXUP_SPLIT;
+	fixup->instr   = instr;
+	fixup->ir      = ir;
+	fixup->u.split.prog = prog;
+	fixup->u.split.split_ind = split_ind;
+}
+
+static void
 asm_addr_fixup_add_proc(struct asm_addr_fixup_list *l,
 	struct jvst_op_instr *instr, struct jvst_op_proc **procp, struct jvst_ir_stmt *ir)
 {
@@ -570,11 +590,29 @@ asm_fixup_addr(struct asm_addr_fixup *fix)
 
 	case JVST_OP_SPLIT:
 	case JVST_OP_SPLITV:
-		assert(fix->ir != NULL);
-		assert(fix->ir->type == JVST_IR_STMT_FRAME);
-		assert(fix->ir->data != NULL);
-		assert(fix->type == FIXUP_PROC);
-		*fix->u.procp = fix->ir->data;
+		{
+			size_t ind, max;
+			struct jvst_op_program *prog;
+
+			assert(fix->ir != NULL);
+			assert(fix->ir->type == JVST_IR_STMT_FRAME);
+			assert(fix->ir->data != NULL);
+			assert(fix->type == FIXUP_SPLIT);
+
+			prog = fix->u.split.prog;
+			ind = fix->u.split.split_ind;
+
+			assert(prog != NULL);
+			assert(prog->splits != NULL);
+			assert(prog->splitoff != NULL);
+			assert(prog->nsplit > 0);
+
+			max = prog->splitoff[prog->nsplit-1];
+
+			assert(ind < max);
+
+			prog->splits[ind] = fix->ir->data;
+		}
 		return;
 
 		fprintf(stderr, "%s:%d (%s) address fixup for op %s not yet implemented\n",
@@ -643,12 +681,26 @@ struct op_assembler {
 	int64_t *cdata;
 	size_t maxconst;
 
-	/* split lists */
+	/* split lists
+	 *
+	 * lists are maintained with two structures:
+	 *   1) master list of pointers to procs used in a split
+	 *   2) list of offsets into the master list
+	 *
+	 * To find the procs for split k:
+	 *   i0 = splitoff[k-1] 	for k > 0
+	 *        0			for k = 0
+	 *
+	 *   i1 = splitoff[k]
+	 *
+	 * The procs for split k are then:
+	 * 	splits[i0], splits[i0+1], ..., splits[i1-1]
+	 */
 	struct jvst_op_proc **splits;
-	size_t maxsplit;
+	size_t maxsplits;
 
-	size_t *splitmax;
-	size_t maxsplitmax;
+	size_t *splitoff;
+	size_t maxsplitoff;
 
 	/* dfa list */
 	size_t maxdfa;
@@ -789,25 +841,25 @@ proc_add_split(struct op_assembler *opasm, struct jvst_op_instr *instr, struct j
 	assert(prog != NULL);
 
 	n=splitlist->u.split_list.nframes;
-	if (prog->nsplit >= opasm->maxsplit) {
-		opasm->splitmax = xenlargevec(opasm->splitmax,
-			&opasm->maxsplitmax, 1, sizeof opasm->splitmax[0]);
-		prog->splitmax = opasm->splitmax;
+	if (prog->nsplit >= opasm->maxsplitoff) {
+		opasm->splitoff = xenlargevec(opasm->splitoff,
+			&opasm->maxsplitoff, 1, sizeof opasm->splitoff[0]);
+		prog->splitoff = opasm->splitoff;
 	}
 
 	ind = prog->nsplit++;
-	assert(ind < opasm->maxsplitmax);
-	off = (ind > 0) ? prog->splitmax[ind-1] : 0;
+	assert(ind < opasm->maxsplitoff);
+	off = (ind > 0) ? prog->splitoff[ind-1] : 0;
 	max = off + n;
-	prog->splitmax[ind] = max;
+	prog->splitoff[ind] = max;
 
-	if (max > opasm->maxsplit) {
+	if (max > opasm->maxsplits) {
 		opasm->splits = xenlargevec(opasm->splits,
-			&opasm->maxsplit, max, sizeof opasm->splits[0]);
+			&opasm->maxsplits, max, sizeof opasm->splits[0]);
 		prog->splits = opasm->splits;
 	}
 
-	assert(max <= opasm->maxsplit);
+	assert(max <= opasm->maxsplits);
 
 	frames = opasm->ir->u.program.frames;
 	for (i=0; i < n; i++) {
@@ -840,7 +892,7 @@ proc_add_split(struct op_assembler *opasm, struct jvst_op_instr *instr, struct j
 		if (fr->data != NULL) {
 			*plist = fr->data;
 		} else {
-			asm_addr_fixup_add_proc(opasm->fixups, instr, plist, fr);
+			asm_addr_fixup_add_split(opasm->fixups, instr, prog, i+off, fr);
 		}
 	}
 
@@ -1064,19 +1116,22 @@ op_assemble_frame(struct op_assembler *opasm, struct jvst_ir_stmt *top)
 	// XXX - allocate storage for floats, dfas, splits
 	op_assemble_seq(&frame_opasm, top->u.frame.stmts);
 
-	opasm->procpp = frame_opasm.procpp;
+	opasm->procpp    = frame_opasm.procpp;
 
-	opasm->fdata    = frame_opasm.fdata;
-	opasm->maxfloat = frame_opasm.maxfloat;
+	opasm->fdata     = frame_opasm.fdata;
+	opasm->maxfloat  = frame_opasm.maxfloat;
 
-	opasm->cdata    = frame_opasm.cdata;
-	opasm->maxconst = frame_opasm.maxconst;
+	opasm->cdata     = frame_opasm.cdata;
+	opasm->maxconst  = frame_opasm.maxconst;
 
-	opasm->splits   = frame_opasm.splits;
-	opasm->maxsplit = frame_opasm.maxsplit;
+	opasm->splits    = frame_opasm.splits;
+	opasm->maxsplits = frame_opasm.maxsplits;
 
-	opasm->dfas     = frame_opasm.dfas;
-	opasm->maxdfa   = frame_opasm.maxdfa;
+	opasm->splitoff  = frame_opasm.splitoff;
+	opasm->maxsplitoff = frame_opasm.maxsplitoff;
+
+	opasm->dfas      = frame_opasm.dfas;
+	opasm->maxdfa    = frame_opasm.maxdfa;
 
 	return proc;
 }
@@ -2324,14 +2379,14 @@ jvst_op_encode(struct jvst_op_program *prog)
 		size_t i, nentries, nsdata, off;
 		uint32_t *sdata;
 
-		nentries = prog->splitmax[prog->nsplit-1];
+		nentries = prog->splitoff[prog->nsplit-1];
 		nsdata = prog->nsplit + 1 + nentries;
 
 		sdata = xmalloc(nsdata * sizeof *sdata);
 
 		sdata[0] = 0;
 		for (i=0; i < prog->nsplit; i++) {
-			sdata[i+1] = prog->splitmax[i];
+			sdata[i+1] = prog->splitoff[i];
 		}
 
 		off = prog->nsplit+1;

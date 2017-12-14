@@ -46,6 +46,11 @@
 		__FILE__, __LINE__, __func__, jvst_cnode_type_name((node)->type));    \
 	abort(); } while(0)
 
+#define INVALID_CNODE(node) do { \
+	fprintf(stderr, "%s:%d (%s) invalid cnode type %s\n", \
+		__FILE__, __LINE__, __func__, jvst_cnode_type_name((node)->type));    \
+	abort(); } while(0)
+
 #define UNKNOWN_STMT(type) do { \
 	fprintf(stderr, "%s:%d (%s) unknown statement type %d\n", \
 		__FILE__, __LINE__, __func__, (type)); 	   \
@@ -217,7 +222,7 @@ ir_stmt_valid(void)
 	return ir_stmt_new(JVST_IR_STMT_VALID);
 }
 
-static inline struct jvst_ir_stmt *
+static struct jvst_ir_stmt *
 ir_consume_and_valid(void)
 {
 	struct jvst_ir_stmt *seq, **spp;
@@ -230,6 +235,58 @@ ir_consume_and_valid(void)
 	*spp = ir_stmt_valid();
 	spp = &(*spp)->next;
 	return seq;
+}
+
+static inline struct jvst_ir_stmt *
+ir_stmt_frame(void)
+{
+	struct jvst_ir_stmt *frame;
+	frame = ir_stmt_new(JVST_IR_STMT_FRAME);
+	frame->u.frame.nloops    = 0;
+	frame->u.frame.ncounters = 0;
+	frame->u.frame.nbitvecs  = 0;
+
+	frame->u.frame.blockind = 0;
+	frame->u.frame.ntemps  = 0;
+
+	frame->u.frame.blocks = NULL;
+	frame->u.frame.stmts = NULL;
+	return frame;
+}
+
+/* constructs a frame of two statements: CONSUME, VALID.  This is used
+ * in a few places to keep the token stream in sync on a SPLIT
+ */
+static struct jvst_ir_stmt *
+ir_consume_and_valid_frame(void)
+{
+	struct jvst_ir_stmt *fr, **spp;
+	fr = ir_stmt_frame();
+	spp = &fr->u.frame.stmts;
+
+	*spp = ir_stmt_new(JVST_IR_STMT_CONSUME);
+	spp = &(*spp)->next;
+
+	*spp = ir_stmt_valid();
+	spp = &(*spp)->next;
+
+	return fr;
+}
+
+static struct jvst_ir_stmt *
+ir_consume_and_invalid_frame(enum jvst_invalid_code errcode)
+{
+	struct jvst_ir_stmt *fr, **spp;
+	fr = ir_stmt_frame();
+	spp = &fr->u.frame.stmts;
+
+	*spp = ir_stmt_new(JVST_IR_STMT_CONSUME);
+	spp = &(*spp)->next;
+
+	*spp = ir_stmt_invalid(errcode);
+	spp = &(*spp)->next;
+
+	return fr;
 }
 
 static inline struct jvst_ir_stmt *
@@ -251,23 +308,6 @@ ir_stmt_callid(struct json_string id)
 
 	call->u.call_id.id = json_strdup(id);
 	return call;
-}
-
-static inline struct jvst_ir_stmt *
-ir_stmt_frame(void)
-{
-	struct jvst_ir_stmt *frame;
-	frame = ir_stmt_new(JVST_IR_STMT_FRAME);
-	frame->u.frame.nloops    = 0;
-	frame->u.frame.ncounters = 0;
-	frame->u.frame.nbitvecs  = 0;
-
-	frame->u.frame.blockind = 0;
-	frame->u.frame.ntemps  = 0;
-
-	frame->u.frame.blocks = NULL;
-	frame->u.frame.stmts = NULL;
-	return frame;
 }
 
 static inline struct jvst_ir_stmt *
@@ -555,12 +595,6 @@ ir_expr_tmp(struct jvst_ir_stmt *frame, struct jvst_ir_expr *expr)
 
 	case JVST_IR_EXPR_SEQ:
 		return ir_expr_tmp(frame, expr->u.seq.expr);
-
-		/*
-		fprintf(stderr, "%s:%d (%s) condition %s not yet implemented\n",
-			__FILE__, __LINE__, __func__, jvst_ir_expr_type_name(expr->type));
-		abort();
-		*/
 
 	case JVST_IR_EXPR_NONE:
 		fprintf(stderr, "%s:%d (%s) cannot assign temporary to expression %s\n",
@@ -1041,9 +1075,8 @@ jvst_ir_dump_expr(struct sbuf *buf, const struct jvst_ir_expr *expr, int indent)
 	case JVST_IR_EXPR_NOT:
 		{
 			sbuf_snprintf(buf, "NOT(\n");
-			jvst_ir_dump_expr(buf,expr->u.and_or.left,indent+2);
-			sbuf_snprintf(buf, ",\n");
-			jvst_ir_dump_expr(buf,expr->u.and_or.right,indent+2);
+			jvst_ir_dump_expr(buf,expr->u.not_,indent+2);
+			sbuf_snprintf(buf, "\n");
 			sbuf_indent(buf, indent);
 			sbuf_snprintf(buf, ")");
 		}
@@ -1719,6 +1752,26 @@ ir_translate_number(struct jvst_cnode *top, struct jvst_ir_stmt *frame)
 		*spp = ir_stmt_invalid(JVST_INVALID_UNEXPECTED_TOKEN);
 		break;
 
+	case JVST_CNODE_NOT:
+		{
+			struct jvst_ir_stmt *br;
+			struct jvst_ir_expr *cond;
+			enum jvst_invalid_code ecode;
+
+			assert(top->u.ctrl != NULL);
+			assert(top->u.ctrl->next == NULL);
+
+			cond = ir_translate_number_expr(top->u.ctrl);
+			ecode = JVST_INVALID_NUMBER;
+
+			br = ir_stmt_if(cond,
+				// ir_stmt_valid(),
+				ir_stmt_invalid(ecode),
+				ir_consume_and_valid());
+			*spp = br;
+		}
+		break;
+
 	case JVST_CNODE_AND:
 	case JVST_CNODE_OR:
 	case JVST_CNODE_NUM_INTEGER:
@@ -1785,12 +1838,6 @@ ir_translate_number(struct jvst_cnode *top, struct jvst_ir_stmt *frame)
 
 		}
 		break;
-
-	case JVST_CNODE_NOT:
-		fprintf(stderr, "[%s:%d] cnode %s not yet implemented\n",
-				__FILE__, __LINE__, 
-				jvst_cnode_type_name(top->type));
-		abort();
 
 	default:
 		fprintf(stderr, "[%s:%d] invalid cnode type %s for $NUMBER\n",
@@ -2433,7 +2480,7 @@ struct split_gather_data {
 // Separates children of a control node into two separate linked lists:
 // one control and one non-control. Returns opp when finished so the
 // linked lists can be easily merged
-struct jvst_cnode **
+static struct jvst_cnode **
 separate_control_nodes(struct jvst_cnode *top, struct jvst_cnode **cpp, struct jvst_cnode **opp)
 {
 	struct jvst_cnode *node, *next;
@@ -2497,6 +2544,251 @@ separate_control_nodes(struct jvst_cnode *top, struct jvst_cnode **cpp, struct j
 
 static struct jvst_ir_expr *
 split_gather(struct jvst_cnode *top, struct split_gather_data *data,
+	struct jvst_ir_stmt *(*xlatefunc)(struct jvst_cnode *, struct jvst_ir_stmt *));
+
+static struct jvst_ir_expr *
+split_gather_and_noncontrol_children(struct jvst_cnode *other, struct split_gather_data *data,
+	struct jvst_ir_stmt *(*xlatefunc)(struct jvst_cnode *, struct jvst_ir_stmt *))
+{
+	struct jvst_ir_stmt *fr;
+	struct jvst_ir_expr *e_btest;
+	size_t b0;
+	struct jvst_cnode *tmp_top;
+
+	assert(other != NULL);
+	assert(data != NULL);
+	assert(xlatefunc != NULL);
+
+	b0 = data->boff++;
+	data->nframe++;
+
+	// translate the list of nodes in 'other'.  If 'other' has more
+	// than one node, create a temporary AND on top.  Otherwise,
+	// just translate 'other'
+
+	if (other->next != NULL) {
+		tmp_top = jvst_cnode_alloc(JVST_CNODE_AND);
+		// XXX - GC: register tmp_top as root
+		tmp_top->u.ctrl = other;
+	} else {
+		tmp_top = other;
+	}
+
+	fr = ir_stmt_frame();
+	fr->u.frame.stmts = xlatefunc(tmp_top, fr);
+	*data->fpp = fr;
+	data->fpp = &fr->next;
+
+	e_btest = ir_expr_new(JVST_IR_EXPR_BTEST);
+	e_btest->u.btest.frame = data->bvec->u.bitvec.frame;
+	e_btest->u.btest.bitvec = data->bvec;
+	e_btest->u.btest.b0 = b0;
+	e_btest->u.btest.b1 = b0;
+
+	if (tmp_top != other) {
+		// XXX - GC: unregister tmp_top as root
+	}
+
+	return e_btest;
+}
+
+static struct jvst_ir_expr *
+split_gather_or_noncontrol_children(struct jvst_cnode *other, struct split_gather_data *data,
+	struct jvst_ir_stmt *(*xlatefunc)(struct jvst_cnode *, struct jvst_ir_stmt *))
+{
+	struct jvst_cnode *node;
+	struct jvst_ir_expr *e_btest;
+	size_t b0;
+
+	b0 = data->boff;
+
+	// 2. Create frames for all non-control nodes.
+	for (node = other; node != NULL; node = node->next) {
+		struct jvst_ir_stmt *fr;
+
+		data->boff++;
+		data->nframe++;
+
+		fr = ir_stmt_frame();
+		fr->u.frame.stmts = xlatefunc(node, fr);
+		*data->fpp = fr;
+		data->fpp = &fr->next;
+
+	}
+
+	e_btest = ir_expr_new(JVST_IR_EXPR_BTESTANY);
+	e_btest->u.btest.frame = data->bvec->u.bitvec.frame;
+	e_btest->u.btest.bitvec = data->bvec;
+	e_btest->u.btest.b0 = b0;
+	e_btest->u.btest.b1 = data->boff-1;
+
+	return e_btest;
+}
+
+static struct jvst_ir_expr **
+split_gather_control_children(struct jvst_cnode *ctrl, struct split_gather_data *data,
+	enum jvst_ir_expr_type jxntype,
+	struct jvst_ir_expr **epp,
+	struct jvst_ir_stmt *(*xlatefunc)(struct jvst_cnode *, struct jvst_ir_stmt *))
+{
+	struct jvst_cnode *node;
+
+	for (node = ctrl; node != NULL; node = node->next) {
+		struct jvst_ir_expr *e_ctrl;
+		e_ctrl = split_gather(node, data, xlatefunc);
+		if (node->next == NULL) {
+			*epp = e_ctrl;
+		} else {
+			struct jvst_ir_expr *e_jxn;
+			e_jxn = ir_expr_new(jxntype);
+			e_jxn->u.and_or.left = e_ctrl;
+			*epp = e_jxn;
+			epp = &e_jxn->u.and_or.right;
+		}
+	}
+
+	return epp;
+}
+
+static struct jvst_ir_expr *
+split_gather_and_or(struct jvst_cnode *top, struct split_gather_data *data,
+	struct jvst_ir_stmt *(*xlatefunc)(struct jvst_cnode *, struct jvst_ir_stmt *))
+{
+	struct jvst_cnode *ctrl, *other, **opp;
+	struct jvst_ir_expr *expr, **epp;
+	enum jvst_ir_expr_type jxntype;
+
+	switch (top->type) {
+	case JVST_CNODE_OR:
+		jxntype = JVST_IR_EXPR_OR;
+		break;
+
+	case JVST_CNODE_AND:
+		jxntype = JVST_IR_EXPR_AND;
+		break;
+
+	default:
+		INVALID_CNODE(top);
+	}
+
+	// 1. Separate nodes into control and non-control nodes.
+	ctrl = NULL;
+	other = NULL;
+	opp = separate_control_nodes(top, &ctrl, &other);
+
+	// AND subnodes that are not control nodes (OR, XOR,
+	// NOT) can be evaluated simultaneously in the same
+	// validator and do not require a split.
+	//
+	// OR subnodes must all be evaluated
+	// separately, but we can use BTESTANY to
+	// evaluate children that are not control nodes.
+	if (top->type == JVST_CNODE_OR || ctrl != NULL) {
+		data->nctrl++;
+	}
+
+	expr = NULL;
+	epp = &expr;
+
+	top->u.ctrl = other;
+
+	// 2. Create a single frame for all non-control nodes.
+	//    - Create a temporary AND junction for the IR frame
+	//    - Create the IR frame
+	if (other != NULL) {
+		struct jvst_ir_expr *e_btest;
+
+		switch (top->type) {
+		case JVST_CNODE_OR:
+			e_btest = split_gather_or_noncontrol_children(other, data, xlatefunc);
+			break;
+
+		case JVST_CNODE_AND:
+			e_btest = split_gather_and_noncontrol_children(other, data, xlatefunc);
+			break;
+
+		default:
+			INVALID_CNODE(top);
+		}
+
+		if (ctrl != NULL) {
+			struct jvst_ir_expr *e_jxn;
+			e_jxn = ir_expr_new(jxntype);
+			e_jxn->u.and_or.left = e_btest;
+			*epp = e_jxn;
+			epp = &e_jxn->u.and_or.right;
+		} else {
+			*epp = e_btest;
+		}
+	}
+
+	// don't lose children of AND node
+	*opp = ctrl;
+
+	// 3. Create separate frames for all control nodes.
+	epp = split_gather_control_children(ctrl, data, jxntype, epp, xlatefunc);
+
+	assert(expr != NULL);
+	return expr;
+}
+
+static struct jvst_ir_expr *
+split_gather_not(struct jvst_cnode *top, struct split_gather_data *data,
+	struct jvst_ir_stmt *(*xlatefunc)(struct jvst_cnode *, struct jvst_ir_stmt *))
+{
+	struct jvst_cnode *node;
+	struct jvst_ir_expr *e_not, *expr;
+
+	assert(top->type == JVST_CNODE_NOT);
+
+	data->nctrl++;
+	node = top->u.ctrl;
+
+	assert(node != NULL);
+	assert(node->next == NULL);
+
+	// NOT requires that the JSON value be invalid wrt to the NOT
+	// schema.  This requires some care; the schema may not consume
+	// the whole value before returning INVALID.
+	//
+	// To ensure that the whole JSON value is consumed, we construct
+	// an additional split frame that consumes the input (and then
+	// returns invalid).
+	//
+	// The frame returns INVALID so we can test for NOT by comparing
+	// the number of valid SPLITs to 0.
+	data->boff++;   // split uses one bit for NOT sync frame, although we don't check it
+	data->nframe++;
+	*data->fpp = ir_consume_and_invalid_frame(JVST_INVALID_JSON);
+	data->fpp = &(*data->fpp)->next;
+
+	switch (node->type) {
+	case JVST_CNODE_AND:
+	case JVST_CNODE_OR:
+	case JVST_CNODE_XOR:
+		expr = split_gather(node, data, xlatefunc);
+		break;
+
+	case JVST_CNODE_NOT:
+		// NOT(NOT(cond)) cases should be simplified in the
+		// cnode tree
+		fprintf(stderr, "%s:%d (%s) unsimplified NOT(NOT(...)) encountered\n",
+			__FILE__, __LINE__, __func__);
+		abort();
+
+	default:
+		expr = split_gather_and_noncontrol_children(node, data, xlatefunc);
+		break;
+	}
+
+	e_not = ir_expr_new(JVST_IR_EXPR_NOT);
+	e_not->u.not_ = expr;
+
+	return e_not;
+}
+
+static struct jvst_ir_expr *
+split_gather(struct jvst_cnode *top, struct split_gather_data *data,
 	struct jvst_ir_stmt *(*xlatefunc)(struct jvst_cnode *, struct jvst_ir_stmt *))
 {
 	struct jvst_cnode *node;
@@ -2510,163 +2802,13 @@ split_gather(struct jvst_cnode *top, struct split_gather_data *data,
 
 	switch (top->type) {
 	case JVST_CNODE_AND:
-		{
-			struct jvst_cnode *next, *ctrl, *other, **opp;
-			struct jvst_ir_expr *expr, **epp;
-			size_t b0;
-
-			// AND subnodes that are not control nodes (OR, XOR,
-			// NOT) can be evaluated simultaneously in the same
-			// validator and do not require a split.
-			//
-			// 1. Separate nodes into control and non-control nodes.
-			ctrl = NULL;
-			other = NULL;
-			opp = separate_control_nodes(top, &ctrl, &other);
-
-			expr = NULL;
-			epp = &expr;
-
-			top->u.ctrl = other;
-
-			// 2. Create a single frame for all non-control nodes.
-			//    - Create a temporary AND junction for the IR frame
-			//    - Create the IR frame
-			if (other != NULL) {
-				struct jvst_ir_stmt *fr;
-				struct jvst_ir_expr *e_and, *e_btest;
-
-				b0 = data->boff++;
-				data->nframe++;
-
-				fr = ir_stmt_frame();
-				fr->u.frame.stmts = xlatefunc(top, fr);
-				*data->fpp = fr;
-				data->fpp = &fr->next;
-
-				e_btest = ir_expr_new(JVST_IR_EXPR_BTEST);
-				e_btest->u.btest.frame = data->bvec->u.bitvec.frame;
-				e_btest->u.btest.bitvec = data->bvec;
-				e_btest->u.btest.b0 = b0;
-				e_btest->u.btest.b1 = b0;
-
-				if (ctrl != NULL) {
-					e_and = ir_expr_new(JVST_IR_EXPR_AND);
-					e_and->u.and_or.left = e_btest;
-					*epp = e_and;
-					epp = &e_and->u.and_or.right;
-				} else {
-					*epp = e_btest;
-				}
-			}
-
-			// don't lose children of AND node
-			*opp = ctrl;
-
-			if (ctrl != NULL) {
-				data->nctrl++;
-			}
-
-			// 3. Create separate frames for all control nodes.
-			for (node = ctrl; node != NULL; node = node->next) {
-				struct jvst_ir_expr *e_ctrl;
-				e_ctrl = split_gather(node, data, ir_translate_object_inner);
-				if (node->next == NULL) {
-					*epp = e_ctrl;
-				} else {
-					struct jvst_ir_expr *e_and;
-					e_and = ir_expr_new(JVST_IR_EXPR_AND);
-					e_and->u.and_or.left = e_ctrl;
-					*epp = e_and;
-					epp = &e_and->u.and_or.right;
-				}
-			}
-			assert(expr != NULL);
-			return expr;
-		}
-
 	case JVST_CNODE_OR:
-		{
-			struct jvst_cnode *next, *ctrl, *other, **opp;
-			struct jvst_ir_expr *expr, **epp;
+		return split_gather_and_or(top,data,xlatefunc);
 
-			// OR and XOR subnodes must all be evaluated
-			// separately, but we can use BTESTANY to
-			// evaluate children that are not control nodes.
-
-			data->nctrl++;
-
-			// 1. Separate nodes into control and non-control nodes.
-			ctrl = NULL;
-			other = NULL;
-			opp = separate_control_nodes(top, &ctrl, &other);
-
-			expr = NULL;
-			epp = &expr;
-
-			top->u.ctrl = other;
-
-			if (other != NULL) {
-				struct jvst_ir_expr *e_btest;
-				size_t b0;
-
-				b0 = data->boff;
-
-				// 2. Create frames for all non-control nodes.
-				for (node = other; node != NULL; node = node->next) {
-					struct jvst_ir_stmt *fr;
-
-					data->boff++;
-					data->nframe++;
-
-					fr = ir_stmt_frame();
-					fr->u.frame.stmts = xlatefunc(node, fr);
-					*data->fpp = fr;
-					data->fpp = &fr->next;
-
-				}
-
-				e_btest = ir_expr_new(JVST_IR_EXPR_BTESTANY);
-				e_btest->u.btest.frame = data->bvec->u.bitvec.frame;
-				e_btest->u.btest.bitvec = data->bvec;
-				e_btest->u.btest.b0 = b0;
-				e_btest->u.btest.b1 = data->boff-1;
-
-				if (ctrl != NULL) {
-					struct jvst_ir_expr *e_or;
-					e_or = ir_expr_new(JVST_IR_EXPR_OR);
-					e_or->u.and_or.left = e_btest;
-					*epp = e_or;
-					epp = &e_or->u.and_or.right;
-				} else {
-					*epp = e_btest;
-				}
-			}
-
-			// don't lose children of OR/XOR node
-			*opp = ctrl;
-
-			// 3. Create separate frames for all control nodes.
-			for (node = ctrl; node != NULL; node = node->next) {
-				struct jvst_ir_expr *e_ctrl;
-				e_ctrl = split_gather(node, data, ir_translate_object_inner);
-				if (node->next == NULL) {
-					*epp = e_ctrl;
-				} else {
-					struct jvst_ir_expr *e_or;
-					e_or = ir_expr_new(JVST_IR_EXPR_OR);
-					e_or->u.and_or.left = e_ctrl;
-					*epp = e_or;
-					epp = &e_or->u.and_or.right;
-				}
-			}
-
-			assert(expr != NULL);
-			return expr;
-		}
+	case JVST_CNODE_NOT:
+		return split_gather_not(top,data,xlatefunc);
 
 	case JVST_CNODE_XOR:
-	case JVST_CNODE_NOT:
 		// fail if the node type isn't handled in the switch
 		fprintf(stderr, "%s:%d cnode %s not yet implemented in %s\n",
 			__FILE__, __LINE__, jvst_cnode_type_name(top->type), __func__);
@@ -3231,7 +3373,7 @@ ir_translate_string_inner(struct jvst_cnode *top, struct ir_str_builder *builder
 			struct jvst_cnode *n;
 			struct jvst_ir_stmt *stmt;
 			int all_length_range;
-			
+
 			all_length_range = 1;
 			for (n = top->u.ctrl; n != NULL; n = n->next) {
 				if (n->type != JVST_CNODE_LENGTH_RANGE) {
@@ -3251,8 +3393,16 @@ ir_translate_string_inner(struct jvst_cnode *top, struct ir_str_builder *builder
 		}
 		return;
 
-	case JVST_CNODE_XOR:
 	case JVST_CNODE_NOT:
+		{
+			struct jvst_ir_stmt *stmt;
+
+			stmt = ir_translate_split(top, builder->frame, ir_translate_string);
+			*builder->ipp = stmt;
+		}
+		return;
+
+	case JVST_CNODE_XOR:
 		fprintf(stderr, "[%s:%d] string translation for cnode %s not yet implemented\n",
 				__FILE__, __LINE__, 
 				jvst_cnode_type_name(top->type));
@@ -3363,20 +3513,10 @@ arr_translate_contains(struct jvst_ir_stmt *arr_item, struct ir_arr_builder *bui
 	if (arr_item != NULL) {
 		*frp = arr_item;
 	} else {
-		struct jvst_ir_stmt *vfr, **spp;
 		// need to construct a frame that returns valid to ensure
 		// that the split will be correctly synchronized, even if
 		// 'contains' constraint is invalid for an item
-		vfr = ir_stmt_frame();
-		spp = &vfr->u.frame.stmts;
-
-		*spp = ir_stmt_new(JVST_IR_STMT_CONSUME);
-		spp = &(*spp)->next;
-
-		*spp = ir_stmt_valid();
-		spp = &(*spp)->next;
-
-		*frp = vfr;
+		*frp = ir_consume_and_valid_frame();
 	}
 
 	*ilpp = splv;
@@ -3439,6 +3579,11 @@ ir_translate_array(struct jvst_cnode *top, struct jvst_ir_stmt *frame)
 {
 	struct ir_arr_builder builder = { 0 };
 	struct jvst_ir_stmt *stmt, **spp, *it, *next, *outer_loop, *ctmp, *cres;
+	size_t nc;
+
+	if (nc = 0, cnode_count_splits(top, &nc) > 0) {
+		return ir_translate_split(top, frame, ir_translate_array);
+	}
 
 	builder.frame = frame;
 
@@ -5360,6 +5505,9 @@ ir_linearize_cond(struct op_linearizer *oplin, struct jvst_ir_expr *cond, struct
 		}
 
 	case JVST_IR_EXPR_NOT:
+		// for NOT(cond), we flip true/false branch and linearize cond
+		return ir_linearize_cond(oplin, cond->u.not_, bfalse, btrue);
+
 	case JVST_IR_EXPR_SEQ:
 		fprintf(stderr, "%s:%d (%s) complex condition %s not yet implemented\n",
 				__FILE__, __LINE__, __func__,

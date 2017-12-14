@@ -89,7 +89,7 @@ struct jvst_op_program {
 	struct jvst_vm_dfa *dfas;
 
 	size_t nsplit;
-	size_t *splitmax;
+	size_t *splitoff;
 	struct jvst_op_proc **splits;
 };
 
