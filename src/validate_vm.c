@@ -669,9 +669,13 @@ load_slots_from_token(struct jvst_vm *vm, uint32_t fp)
 	vm->stack[fp+JVST_VM_TLEN].i = 0;
 
 	vm->stack[fp+JVST_VM_TT].i = vm->evt.type;
-	vm->stack[fp+JVST_VM_TLEN].i += vm->evt.n;
+	if (vm->evt.type == SJP_STRING) {
+		vm->stack[fp+JVST_VM_TLEN].i += vm->evt.extra.ncp;
+	} else {
+		vm->stack[fp+JVST_VM_TLEN].i += vm->evt.n;
+	}
 	if (vm->evt.type == SJP_NUMBER) {
-		vm->stack[fp+JVST_VM_TNUM].f = vm->evt.d;
+		vm->stack[fp+JVST_VM_TNUM].f = vm->evt.extra.d;
 	}
 }
 

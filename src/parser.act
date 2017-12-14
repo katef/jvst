@@ -351,7 +351,7 @@
 				break;
 
 			case SJP_TOK_NUMBER:
-				fprintf(stderr, "<NUMBER: %f>\n", t->dbl);
+				fprintf(stderr, "<NUMBER: %f>\n", t->extra.dbl);
 				break;
 
 			case SJP_TOK_EOS:
@@ -408,7 +408,7 @@
 	NUMBER: () -> (n :number) = @{
 		assert(act_state->t.type == @$NUMBER);
 
-		@n = act_state->t.dbl;
+		@n = act_state->t.extra.dbl;
 	@};
 
 	TRUE: () -> (v :bool) = @{
