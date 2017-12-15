@@ -4,12 +4,13 @@
  * See LICENCE for the full copyright terms.
  */
 
-#define _POSIX_C_SOURCE 2
+#define _XOPEN_SOURCE 500
 
 #include <unistd.h>
 
 #include <assert.h>
 #include <errno.h>
+#include <limits.h>
 #include <stdlib.h>
 #include <stdint.h>
 #include <stdio.h>
