@@ -1,0 +1,9 @@
+Tests allOf for strings
+0       "zzfoo" is valid
+1       "foozz" is valid
+2       "foobarbaz1234567" is valid
+3       "foo" is invalid (too short)
+4       "foobarbaz12345678" is invalid
+5       "barbaz" is invalid
+6       object is invalid
+7       number is invalid

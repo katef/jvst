@@ -1369,11 +1369,11 @@ static void test_xlate_items_1(void)
 
       newcnode_switch(&A, 1,
           SJP_ARRAY_BEG, newcnode_bool(&A, JVST_CNODE_AND,
-                           newcnode_additional_items(&A,
+                           newcnode_items(&A,
                              newcnode_switch(&A, 0,
                                SJP_NUMBER, newcnode(&A,JVST_CNODE_NUM_INTEGER),
-                               SJP_NONE)
-                           ),
+                               SJP_NONE),
+                             NULL),
                            newcnode_valid(),
                            NULL),
             SJP_NONE)
@@ -1393,22 +1393,18 @@ static void test_xlate_items_1(void)
 
       newcnode_switch(&A, 1,
           SJP_ARRAY_BEG, newcnode_bool(&A, JVST_CNODE_AND,
-                           newcnode_additional_items(&A,
+                           newcnode_items(&A,
                              newcnode_switch(&A, 0,
                                SJP_NUMBER, newcnode(&A,JVST_CNODE_NUM_INTEGER),
-                               SJP_NONE)
-                             ),
-                           newcnode_bool(&A, JVST_CNODE_AND,
-                             newcnode_items(&A,
-                               newcnode_switch(&A, 0,
-                                 SJP_STRING, newcnode_valid(),
-                                 SJP_NONE),
-                               newcnode_switch(&A, 0,
-                                 SJP_STRING, newcnode_valid(),
-                                 SJP_NONE),
-                               NULL),
-                             newcnode_valid(),
+                               SJP_NONE),
+                             newcnode_switch(&A, 0,
+                               SJP_STRING, newcnode_valid(),
+                               SJP_NONE),
+                             newcnode_switch(&A, 0,
+                               SJP_STRING, newcnode_valid(),
+                               SJP_NONE),
                              NULL),
+                           newcnode_valid(),
                            NULL),
             SJP_NONE)
     },
@@ -2836,6 +2832,135 @@ void test_simplify_xored_counts(void)
   RUNTESTS(tests);
 }
 
+void test_simplify_anded_items(void)
+{
+  struct arena_info A = {0};
+
+  const struct cnode_test tests[] = {
+    {
+      SIMPLIFY,
+      /*
+      newschema_p(&A, 0,
+        "oneOf", schema_set(&A, 
+          newschema(&A, JSON_VALUE_INTEGER),
+          newschema(&A, JSON_VALUE_STRING),
+          NULL),
+        NULL),
+      */
+
+      NULL,
+
+      newcnode_bool(&A, JVST_CNODE_AND,
+        newcnode_switch(&A, 0,
+	  SJP_ARRAY_BEG, newcnode_items(&A,
+	  		   NULL,
+	  		   newcnode_switch(&A, 0, SJP_STRING, newcnode_valid(), SJP_NONE),
+			   newcnode_switch(&A, 0, SJP_NUMBER, newcnode(&A,JVST_CNODE_NUM_INTEGER), SJP_NONE),
+			   NULL),
+	  SJP_NONE),
+        newcnode_switch(&A, 0,
+	  SJP_ARRAY_BEG, newcnode_items(&A,
+	  		   NULL,
+		           newcnode_switch(&A, 0,
+			           SJP_STRING, newcnode_counts(&A, JVST_CNODE_LENGTH_RANGE, 12, 0, false),
+			           SJP_NONE),
+			   newcnode_switch(&A, 0,
+			           SJP_NUMBER, newcnode_range(&A, JVST_CNODE_RANGE_MIN, 1.0, 0.0),
+			           SJP_NONE),
+			   NULL),
+	  SJP_NONE),
+        newcnode_switch(&A, 0,
+	  SJP_ARRAY_BEG, newcnode_items(&A,
+	  		   NULL,
+		           newcnode_switch(&A, 0,
+			           SJP_STRING, newcnode_counts(&A, JVST_CNODE_LENGTH_RANGE, 0, 24, true),
+			           SJP_NONE),
+			   newcnode_switch(&A, 0,
+			           SJP_NUMBER, newcnode_range(&A, JVST_CNODE_RANGE_MAX, 0.0, 10.0),
+			           SJP_NONE),
+			   NULL),
+	  SJP_NONE),
+	NULL),
+
+      newcnode_switch(&A, 0,
+	SJP_ARRAY_BEG, newcnode_items(&A,
+	  		   NULL,
+	  		   newcnode_switch(&A, 0,
+			     SJP_STRING, newcnode_counts(&A, JVST_CNODE_LENGTH_RANGE, 12, 24, true),
+			     SJP_NONE),
+	  		   newcnode_switch(&A, 0,
+			     SJP_NUMBER, newcnode_bool(&A, JVST_CNODE_AND,
+			                   newcnode(&A,JVST_CNODE_NUM_INTEGER),
+                                           newcnode_range(&A, JVST_CNODE_RANGE_MIN, 1.0, 0.0),
+                                           newcnode_range(&A, JVST_CNODE_RANGE_MAX, 0.0, 10.0),
+                                           NULL),
+			     SJP_NONE),
+			   NULL),
+	SJP_NONE),
+    },
+
+    // ANDs ARR_ITEM nodes with different numbers of item constraints,
+    // checks that additional items are added to the ones with fewer
+    // item constraints
+    {
+      SIMPLIFY,
+      NULL,
+
+      newcnode_bool(&A, JVST_CNODE_AND,
+        newcnode_switch(&A, 0,
+	  SJP_ARRAY_BEG, newcnode_items(&A,
+	  		   newcnode_switch(&A, 0, SJP_NUMBER, newcnode(&A,JVST_CNODE_NUM_INTEGER), SJP_NONE),
+	  		   newcnode_switch(&A, 0, SJP_STRING, newcnode_valid(), SJP_NONE),
+			   NULL),
+	  SJP_NONE),
+        newcnode_switch(&A, 0,
+	  SJP_ARRAY_BEG, newcnode_items(&A,
+	  		   newcnode_switch(&A, 0, SJP_NONE),  // no additional items
+		           newcnode_switch(&A, 0,
+			           SJP_STRING, newcnode_counts(&A, JVST_CNODE_LENGTH_RANGE, 12, 0, false),
+			           SJP_NONE),
+			   newcnode_switch(&A, 0,
+			           SJP_NUMBER, newcnode_range(&A, JVST_CNODE_RANGE_MIN, 1.0, 0.0),
+			           SJP_NONE),
+			   NULL),
+	  SJP_NONE),
+        newcnode_switch(&A, 0,
+	  SJP_ARRAY_BEG, newcnode_items(&A,
+			   newcnode_switch(&A, 0,
+			           SJP_NUMBER, newcnode_range(&A, JVST_CNODE_RANGE_MAX, 0.0, 10.0),
+			           SJP_NONE),
+		           newcnode_switch(&A, 0,
+			           SJP_STRING, newcnode_counts(&A, JVST_CNODE_LENGTH_RANGE, 0, 24, true),
+			           SJP_NONE),
+			   NULL),
+	  SJP_NONE),
+	NULL),
+
+      newcnode_switch(&A, 0,
+	SJP_ARRAY_BEG, newcnode_items(&A,
+	  		   newcnode_switch(&A, 0, SJP_NONE),  // no additional items
+	  		   newcnode_switch(&A, 0,
+			     SJP_STRING, newcnode_counts(&A, JVST_CNODE_LENGTH_RANGE, 12, 24, true),
+			     SJP_NONE),
+	  		   newcnode_switch(&A, 0,
+			     SJP_NUMBER, newcnode_bool(&A, JVST_CNODE_AND,
+			                   newcnode(&A,JVST_CNODE_NUM_INTEGER),
+                                           newcnode_range(&A, JVST_CNODE_RANGE_MIN, 1.0, 0.0),
+                                           newcnode_range(&A, JVST_CNODE_RANGE_MAX, 0.0, 10.0),
+                                           NULL),
+			     SJP_NONE),
+			   NULL),
+	SJP_NONE),
+
+
+    },
+
+    { STOP },
+  };
+
+  RUNTESTS(tests);
+}
+
 void test_simplify_oneof_2(void)
 {
   struct arena_info A = {0};
@@ -3912,11 +4037,11 @@ static void test_xlate_minmax_items(void)
           SJP_ARRAY_BEG, newcnode_bool(&A, JVST_CNODE_AND,
                            newcnode_counts(&A, JVST_CNODE_ITEM_RANGE, 0, 5, true),
                            newcnode_bool(&A, JVST_CNODE_AND, 
-                             newcnode_additional_items(&A,
+                             newcnode_items(&A,
                                newcnode_switch(&A, 0,
                                  SJP_NUMBER, newcnode(&A,JVST_CNODE_NUM_INTEGER),
-                                 SJP_NONE)
-                             ),
+                                 SJP_NONE),
+                               NULL),
                              newcnode_valid(),
                              NULL),
                            NULL),
@@ -3941,22 +4066,18 @@ static void test_xlate_minmax_items(void)
           SJP_ARRAY_BEG, newcnode_bool(&A, JVST_CNODE_AND,
                            newcnode_counts(&A, JVST_CNODE_ITEM_RANGE, 1, 7, true),
                            newcnode_bool(&A, JVST_CNODE_AND,
-                             newcnode_additional_items(&A,
+                             newcnode_items(&A,
                                newcnode_switch(&A, 0,
                                  SJP_NUMBER, newcnode(&A,JVST_CNODE_NUM_INTEGER),
-                                 SJP_NONE)
-                               ),
-                             newcnode_bool(&A, JVST_CNODE_AND,
-                               newcnode_items(&A,
-                                 newcnode_switch(&A, 0,
-                                   SJP_STRING, newcnode_valid(),
-                                   SJP_NONE),
-                                 newcnode_switch(&A, 0,
-                                   SJP_STRING, newcnode_valid(),
-                                   SJP_NONE),
-                                 NULL),
-                               newcnode_valid(),
+                                 SJP_NONE),
+                               newcnode_switch(&A, 0,
+                                 SJP_STRING, newcnode_valid(),
+                                 SJP_NONE),
+                               newcnode_switch(&A, 0,
+                                 SJP_STRING, newcnode_valid(),
+                                 SJP_NONE),
                                NULL),
+                             newcnode_valid(),
                              NULL),
                            NULL),
             SJP_NONE)
@@ -4111,26 +4232,21 @@ static void test_xlate_const(void)
 
       newcnode_bool(&A, JVST_CNODE_AND,
         newcnode_switch(&A, 0,
-            SJP_ARRAY_BEG, newcnode_bool(&A, JVST_CNODE_AND,
-                             newcnode_additional_items(&A,
-                               newcnode_switch(&A, 0, SJP_NONE)
-                             ),
-
-                             newcnode_items(&A,
-                               newcnode_switch(&A, 0,
-                                 SJP_NUMBER, newcnode_range(&A,
-                                               JVST_CNODE_RANGE_MIN|JVST_CNODE_RANGE_MAX,
-                                               1.0, 1.0),
-                                 SJP_NONE),
-                               newcnode_switch(&A, 0,
-                                 SJP_NUMBER, newcnode_range(&A,
-                                               JVST_CNODE_RANGE_MIN|JVST_CNODE_RANGE_MAX,
-                                               2.0, 2.0),
-                                 SJP_NONE),
-                               newcnode_switch(&A, 0,
-                                 SJP_STRING, newcnode_strmatch(&A, RE_LITERAL, "foo"),
-                                 SJP_NONE),
-                               NULL),
+            SJP_ARRAY_BEG, newcnode_items(&A,
+                             newcnode_switch(&A, 0, SJP_NONE),
+                             newcnode_switch(&A, 0,
+                               SJP_NUMBER, newcnode_range(&A,
+                                             JVST_CNODE_RANGE_MIN|JVST_CNODE_RANGE_MAX,
+                                             1.0, 1.0),
+                               SJP_NONE),
+                             newcnode_switch(&A, 0,
+                               SJP_NUMBER, newcnode_range(&A,
+                                             JVST_CNODE_RANGE_MIN|JVST_CNODE_RANGE_MAX,
+                                             2.0, 2.0),
+                               SJP_NONE),
+                             newcnode_switch(&A, 0,
+                               SJP_STRING, newcnode_strmatch(&A, RE_LITERAL, "foo"),
+                               SJP_NONE),
                              NULL),
             SJP_NONE),
         newcnode_switch(&A, 1, SJP_NONE),
@@ -4217,19 +4333,14 @@ static void test_xlate_enum(void)
             SJP_STRING, newcnode_strmatch(&A, RE_LITERAL, "zebra"),
             SJP_NONE),
           newcnode_switch(&A, 0,
-            SJP_ARRAY_BEG, newcnode_bool(&A, JVST_CNODE_AND,
-                             newcnode_additional_items(&A,
-                               newcnode_switch(&A, 0, SJP_NONE)
-                             ),
-
-                             newcnode_items(&A,
-                               newcnode_switch(&A, 0,
-                                 SJP_STRING, newcnode_strmatch(&A, RE_LITERAL, "first"),
-                                 SJP_NONE),
-                               newcnode_switch(&A, 0,
-                                 SJP_STRING, newcnode_strmatch(&A, RE_LITERAL, "second"),
-                                 SJP_NONE),
-                               NULL),
+            SJP_ARRAY_BEG, newcnode_items(&A,
+                             newcnode_switch(&A, 0, SJP_NONE),
+                             newcnode_switch(&A, 0,
+                               SJP_STRING, newcnode_strmatch(&A, RE_LITERAL, "first"),
+                               SJP_NONE),
+                             newcnode_switch(&A, 0,
+                               SJP_STRING, newcnode_strmatch(&A, RE_LITERAL, "second"),
+                               SJP_NONE),
                              NULL),
             SJP_NONE),
           newcnode_switch(&A, 0,
@@ -4361,6 +4472,7 @@ int main(void)
   test_simplify_not_counts();
   test_simplify_xored_counts();
 
+  test_simplify_anded_items();
   test_canonify_ored_schema();
   test_canonify_propsets();
   test_canonify_propertynames();

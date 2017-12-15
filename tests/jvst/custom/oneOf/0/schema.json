@@ -1,0 +1,8 @@
+{
+  "type" : "string",
+  "oneOf" : [
+    { "pattern" : ".*foo.*" },
+    { "pattern" : ".*bar.*" },
+    { "minLength" : 12 }
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "allOf" : [
+    {
+      "type" : "string",
+      "minLength" : 5
+    },
+    {
+      "type" : "string",
+      "maxLength" : 16
+    },
+    {
+      "type" : "string",
+      "pattern" : ".*foo.*"
+    }
+  ]
+}
+

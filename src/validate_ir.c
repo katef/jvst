@@ -46,6 +46,11 @@
 		__FILE__, __LINE__, __func__, jvst_cnode_type_name((node)->type));    \
 	abort(); } while(0)
 
+#define XLATE_UNIMPLEMENTED(kind,node) do { \
+	fprintf(stderr, "%s:%d (%s) " kind " translation for cnode %s is not yet implemented\n", \
+		__FILE__, __LINE__, __func__, jvst_cnode_type_name((node)->type));    \
+	abort(); } while(0)
+
 #define INVALID_CNODE(node) do { \
 	fprintf(stderr, "%s:%d (%s) invalid cnode type %s\n", \
 		__FILE__, __LINE__, __func__, jvst_cnode_type_name((node)->type));    \
@@ -2305,7 +2310,6 @@ ir_translate_obj_inner(struct jvst_cnode *top, struct ir_object_builder *builder
 		abort();
 
 	case JVST_CNODE_ARR_ITEM:
-	case JVST_CNODE_ARR_ADDITIONAL:
 	case JVST_CNODE_ARR_CONTAINS:
 	case JVST_CNODE_ARR_UNIQUE:
 	case JVST_CNODE_STR_MATCH:
@@ -2369,7 +2373,6 @@ cnode_and_requires_split(struct jvst_cnode *and_node)
 		case JVST_CNODE_OBJ_PROP_NAMES:
 		case JVST_CNODE_OBJ_REQUIRED:
 		case JVST_CNODE_ARR_ITEM:
-		case JVST_CNODE_ARR_ADDITIONAL:
 		case JVST_CNODE_ARR_CONTAINS:
 		case JVST_CNODE_ARR_UNIQUE:
 		case JVST_CNODE_OBJ_REQMASK:
@@ -2449,7 +2452,6 @@ cnode_count_splits(struct jvst_cnode *top, size_t *np)
 	case JVST_CNODE_OBJ_PROP_NAMES:
 	case JVST_CNODE_OBJ_REQUIRED:
 	case JVST_CNODE_ARR_ITEM:
-	case JVST_CNODE_ARR_ADDITIONAL:
 	case JVST_CNODE_ARR_CONTAINS:
 	case JVST_CNODE_ARR_UNIQUE:
 	case JVST_CNODE_OBJ_REQMASK:
@@ -2523,7 +2525,6 @@ separate_control_nodes(struct jvst_cnode *top, struct jvst_cnode **cpp, struct j
 		case JVST_CNODE_OBJ_PROP_NAMES:
 		case JVST_CNODE_OBJ_REQUIRED:
 		case JVST_CNODE_ARR_ITEM:
-		case JVST_CNODE_ARR_ADDITIONAL:
 		case JVST_CNODE_ARR_CONTAINS:
 		case JVST_CNODE_ARR_UNIQUE:
 		case JVST_CNODE_OBJ_REQMASK:
@@ -2788,6 +2789,53 @@ split_gather_not(struct jvst_cnode *top, struct split_gather_data *data,
 }
 
 static struct jvst_ir_expr *
+split_gather_xor(struct jvst_cnode *top, struct split_gather_data *data,
+	struct jvst_ir_stmt *(*xlatefunc)(struct jvst_cnode *, struct jvst_ir_stmt *))
+{
+	struct jvst_cnode *node;
+	struct jvst_ir_expr *e_bcount;
+	struct jvst_ir_expr *cond;
+	size_t b0;
+
+	/* split-gather for XOR is a bit different from AND/OR/NOT.
+	 *
+	 * For AND/OR/NOT: we want to gather all of the split frames
+	 *   together into a single split, if possible.  To do this, we
+	 *   separate further control nodes from non-control nodes,
+	 *   and descend the control nodes, to collect as many split
+	 *   frames as possible.
+	 *
+	 * For XOR: the XOR logic is harder to do this with, so we don't
+	 *   descend control nodes and instead just perform a SPLIT on
+	 *   all its children.  We can still pack the results into the
+	 *   same bitfield vector.
+	 */
+
+	data->nctrl++;
+	b0 = data->boff;
+
+	for (node = top->u.ctrl; node != NULL; node = node->next) {
+		struct jvst_ir_stmt *fr;
+
+		data->boff++;
+
+		fr = ir_stmt_frame();
+		fr->u.frame.stmts = xlatefunc(node, fr);
+		*data->fpp = fr;
+		data->fpp = &fr->next;
+	}
+
+	e_bcount = ir_expr_new(JVST_IR_EXPR_BCOUNT);
+	e_bcount->u.btest.frame = data->bvec->u.bitvec.frame;
+	e_bcount->u.btest.bitvec = data->bvec;
+	e_bcount->u.btest.b0 = b0;
+	e_bcount->u.btest.b1 = data->boff-1;
+
+	cond = ir_expr_op(JVST_IR_EXPR_EQ, e_bcount, ir_expr_size(1));
+	return cond;
+}
+
+static struct jvst_ir_expr *
 split_gather(struct jvst_cnode *top, struct split_gather_data *data,
 	struct jvst_ir_stmt *(*xlatefunc)(struct jvst_cnode *, struct jvst_ir_stmt *))
 {
@@ -2809,10 +2857,7 @@ split_gather(struct jvst_cnode *top, struct split_gather_data *data,
 		return split_gather_not(top,data,xlatefunc);
 
 	case JVST_CNODE_XOR:
-		// fail if the node type isn't handled in the switch
-		fprintf(stderr, "%s:%d cnode %s not yet implemented in %s\n",
-			__FILE__, __LINE__, jvst_cnode_type_name(top->type), __func__);
-		abort();
+		return split_gather_xor(top,data,xlatefunc);
 
 	case JVST_CNODE_INVALID:
 	case JVST_CNODE_VALID:
@@ -2831,7 +2876,6 @@ split_gather(struct jvst_cnode *top, struct split_gather_data *data,
 	case JVST_CNODE_OBJ_PROP_NAMES:
 	case JVST_CNODE_OBJ_REQUIRED:
 	case JVST_CNODE_ARR_ITEM:
-	case JVST_CNODE_ARR_ADDITIONAL:
 	case JVST_CNODE_ARR_CONTAINS:
 	case JVST_CNODE_ARR_UNIQUE:
 	case JVST_CNODE_OBJ_REQMASK:
@@ -2953,12 +2997,6 @@ ir_translate_split(struct jvst_cnode *top, struct jvst_ir_stmt *frame,
 }
 
 static struct jvst_ir_stmt *
-ir_translate_object_split(struct jvst_cnode *top, struct jvst_ir_stmt *frame)
-{
-	return ir_translate_split(top, frame, ir_translate_object_inner);
-}
-
-static struct jvst_ir_stmt *
 ir_translate_object_inner(struct jvst_cnode *top, struct jvst_ir_stmt *frame)
 {
 	struct jvst_ir_stmt *stmt, *pseq, **spp, **pseqpp, **matchpp;
@@ -3052,7 +3090,7 @@ ir_translate_object(struct jvst_cnode *top, struct jvst_ir_stmt *frame)
 	case JVST_CNODE_OR:
 	case JVST_CNODE_NOT:
 	case JVST_CNODE_XOR:
-		return ir_translate_object_split(top, frame);
+		return ir_translate_split(top, frame, ir_translate_object_inner);
 
 	default:
 		return ir_translate_object_inner(top,frame);
@@ -3393,6 +3431,7 @@ ir_translate_string_inner(struct jvst_cnode *top, struct ir_str_builder *builder
 		}
 		return;
 
+	case JVST_CNODE_XOR:
 	case JVST_CNODE_NOT:
 		{
 			struct jvst_ir_stmt *stmt;
@@ -3402,11 +3441,6 @@ ir_translate_string_inner(struct jvst_cnode *top, struct ir_str_builder *builder
 		}
 		return;
 
-	case JVST_CNODE_XOR:
-		fprintf(stderr, "[%s:%d] string translation for cnode %s not yet implemented\n",
-				__FILE__, __LINE__, 
-				jvst_cnode_type_name(top->type));
-		abort();
 
 	case JVST_CNODE_STR_MATCH:
 		fprintf(stderr, "[%s:%d] cnode %s should not be be present in canonified cnode tree\n",
@@ -3427,7 +3461,6 @@ ir_translate_string_inner(struct jvst_cnode *top, struct ir_str_builder *builder
 	case JVST_CNODE_OBJ_PROP_NAMES:
 	case JVST_CNODE_OBJ_REQUIRED:
 	case JVST_CNODE_ARR_ITEM:
-	case JVST_CNODE_ARR_ADDITIONAL:
 	case JVST_CNODE_ARR_CONTAINS:
 	case JVST_CNODE_ARR_UNIQUE:
 	case JVST_CNODE_OBJ_REQMASK:
@@ -3779,29 +3812,24 @@ ir_translate_array_inner(struct jvst_cnode *top, struct ir_arr_builder *builder)
 	case JVST_CNODE_VALID:
 		return ir_stmt_valid();
 
-	case JVST_CNODE_ARR_ADDITIONAL:
-		{
-			struct jvst_ir_stmt *additional;
-
-			assert(top->u.items != NULL);
-			assert(top->u.items->next == NULL);  // only one additional items
-
-			// additional = ir_translate_notoken(top->u.items);
-			additional = jvst_ir_translate(top->u.items);
-			builder->additional = additional;
-
-			return NULL;
-		}
-
 	case JVST_CNODE_ARR_ITEM:
 		{
 			struct jvst_cnode *it;
-			assert(top->u.items != NULL);
+			assert(top->u.items.items != NULL || top->u.items.additional != NULL);
 
-			for (it = top->u.items; it != NULL; it = it->next) {
+			if (top->u.items.additional != NULL) {
+				struct jvst_ir_stmt *additional;
+
+				assert(top->u.items.additional->next == NULL);  // only one additional items
+
+				// additional = ir_translate_notoken(top->u.items);
+				additional = jvst_ir_translate(top->u.items.additional);
+				builder->additional = additional;
+			}
+
+			for (it = top->u.items.items; it != NULL; it = it->next) {
 				struct jvst_ir_stmt *item;
 
-				// item = ir_translate_notoken(it);
 				item = jvst_ir_translate(it);
 				*builder->itemspp = item;
 				builder->itemspp = &item->next;

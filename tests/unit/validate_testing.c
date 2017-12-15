@@ -921,15 +921,17 @@ newcnode_strmatch(struct arena_info *A, enum re_dialect dialect, const char *pat
 }
 
 struct jvst_cnode *
-newcnode_items(struct arena_info *A, ...)
+newcnode_items(struct arena_info *A, struct jvst_cnode *additional, ...)
 {
 	struct jvst_cnode *node, **itpp;;
 	va_list args;
 
 	node = newcnode(A, JVST_CNODE_ARR_ITEM);
-	itpp = &node->u.items;
+	node->u.items.additional = additional;
 
-	va_start(args, A);
+	itpp = &node->u.items.items;
+
+	va_start(args, additional);
 	for (;;) {
 		struct jvst_cnode *it;
 
@@ -943,16 +945,6 @@ newcnode_items(struct arena_info *A, ...)
 	}
 	va_end(args);
 
-	return node;
-}
-
-struct jvst_cnode *
-newcnode_additional_items(struct arena_info *A, struct jvst_cnode *top)
-{
-	struct jvst_cnode *node;
-
-	node = newcnode(A, JVST_CNODE_ARR_ADDITIONAL);
-	node->u.items = top;
 	return node;
 }
 
