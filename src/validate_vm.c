@@ -39,22 +39,10 @@ jvst_op_name(enum jvst_vm_op op)
 	switch (op) {
 	case JVST_OP_NOP:	return "NOP";
 	case JVST_OP_PROC:	return "PROC";
-	case JVST_OP_ILT:       return "ILT";
-	case JVST_OP_ILE:       return "ILE";
-	case JVST_OP_IEQ:       return "IEQ";
-	case JVST_OP_IGE:       return "IGE";
-	case JVST_OP_IGT:       return "IGT";
-	case JVST_OP_INEQ:      return "INEQ";
-	case JVST_OP_FLT:       return "FLT";
-	case JVST_OP_FLE:       return "FLE";
-	case JVST_OP_FEQ:       return "FEQ";
-	case JVST_OP_FGE:       return "FGE";
-	case JVST_OP_FGT:       return "FGT";
-	case JVST_OP_FNEQ:      return "FNEQ";
+	case JVST_OP_ICMP:      return "ICMP";
+	case JVST_OP_FCMP:      return "FCMP";
 	case JVST_OP_FINT:      return "FINT";
-	case JVST_OP_BR:        return "BR";
-	case JVST_OP_CBT:       return "CBT";
-	case JVST_OP_CBF:      	return "CBF";
+	case JVST_OP_JMP:       return "JMP";
 	case JVST_OP_CALL:      return "CALL";
 	case JVST_OP_SPLIT:     return "SPLIT";
 	case JVST_OP_SPLITV:    return "SPLITV";
@@ -67,12 +55,30 @@ jvst_op_name(enum jvst_vm_op op)
 	case JVST_OP_INCR:      return "INCR";
 	case JVST_OP_BSET:      return "BSET";
 	case JVST_OP_BAND:      return "BAND";
-	case JVST_OP_VALID:     return "VALID";
-	case JVST_OP_INVALID:   return "INVALID";
+	case JVST_OP_RETURN:    return "RETURN";
 	}
 
 	fprintf(stderr, "Unknown OP %d\n", op);
 	abort();
+}
+
+const char *
+jvst_vm_br_cond_name(enum jvst_vm_br_cond brc)
+{
+	switch (brc) {
+	case 0x00: return "NV";
+	case 0x01: return "LT";
+	case 0x02: return "GT";
+	case 0x03: return "NE";
+	case 0x04: return "EQ";
+	case 0x05: return "LE";
+	case 0x06: return "GE";
+	case 0x07: return "AL";
+	default:
+	   fprintf(stderr, "%s:%d (%s) invalid JMP argument 0x%02x\n",
+		   __FILE__, __LINE__, __func__, (unsigned int)brc);
+	   abort();
+	}
 }
 
 static const char *
@@ -129,8 +135,6 @@ static void
 vm_dump_opcode(struct sbuf *buf, uint32_t pc, uint32_t c, int indent)
 {
 	const char *opname;
-	uint32_t barg;
-	long br;
 	enum jvst_vm_op op;
 	uint16_t a,b;
 
@@ -140,14 +144,21 @@ vm_dump_opcode(struct sbuf *buf, uint32_t pc, uint32_t c, int indent)
 
 	opname = jvst_op_name(op);
 	switch (op) {
-	case JVST_OP_BR:
-	case JVST_OP_CBT:
-	case JVST_OP_CBF:
+	case JVST_OP_JMP:
 	case JVST_OP_CALL:
-		barg = jvst_vm_decode_barg(c);
-		br = jvst_vm_tobarg(barg);
-		sbuf_snprintf(buf, "%05" PRIu32 "\t0x%08" PRIx32 "\t%s\t%-5ld\n",
-			pc, c, opname, br);
+		{
+			enum jvst_vm_br_cond brc;
+			uint32_t barg;
+			long br;
+
+			barg = jvst_vm_decode_barg(c);
+			brc  = jvst_vm_decode_bcond(c);
+			br = jvst_vm_tobarg(barg);
+			sbuf_snprintf(buf, "%05" PRIu32 "\t0x%08" PRIx32 "\t%s\t%3s %-5ld\n",
+				pc, c, opname, 
+				op == JVST_OP_JMP ? jvst_vm_br_cond_name(brc) : "",
+				br);
+		}
 		break;
 
 	default:
@@ -606,7 +617,7 @@ vm_fvalptr(struct jvst_vm *vm, uint32_t fp, uint32_t arg)
 }
 
 static inline int
-iopdiff(struct jvst_vm *vm, uint32_t fp, uint32_t opcode)
+iopcmp(struct jvst_vm *vm, uint32_t fp, uint32_t opcode)
 {
 	uint32_t a,b;
 	int64_t va,vb;
@@ -617,11 +628,11 @@ iopdiff(struct jvst_vm *vm, uint32_t fp, uint32_t opcode)
 	va = vm_ival(vm, fp, a);
 	vb = vm_ival(vm, fp, b);
 
-	return va-vb;
+	return (va > vb) - (va < vb);
 }
 
 static inline int
-fopdiff(struct jvst_vm *vm, uint32_t fp, uint32_t opcode)
+fopcmp(struct jvst_vm *vm, uint32_t fp, uint32_t opcode)
 {
 	uint32_t a,b;
 	double va,vb;
@@ -632,14 +643,7 @@ fopdiff(struct jvst_vm *vm, uint32_t fp, uint32_t opcode)
 	va = vm_fvalptr(vm, fp, a)[0];
 	vb = vm_fvalptr(vm, fp, b)[0];
 
-	va -= vb;
-	if (va > 0) {
-		return 1;
-	} else if (va < 0) {
-		return -1;
-	} else {
-		return 0;
-	}
+	return (va > vb) - (va < vb);
 }
 
 static inline int
@@ -1196,53 +1200,13 @@ loop:
 		NEXT;
 
 	/* integer comparisons */
-	case JVST_OP_ILT:
-		vm->r_flag = flag = iopdiff(vm, fp, opcode) < 0;
-		NEXT;
-
-	case JVST_OP_ILE:
-		vm->r_flag = flag = iopdiff(vm, fp, opcode) <= 0;
-		NEXT;
-
-	case JVST_OP_IEQ:
-		vm->r_flag = flag = iopdiff(vm, fp, opcode) == 0;
-		NEXT;
-
-	case JVST_OP_IGE:
-		vm->r_flag = flag = iopdiff(vm, fp, opcode) >= 0;
-		NEXT;
-
-	case JVST_OP_IGT:
-		vm->r_flag = flag = iopdiff(vm, fp, opcode) > 0;
-		NEXT;
-
-	case JVST_OP_INEQ:
-		vm->r_flag = flag = iopdiff(vm, fp, opcode) != 0;
+	case JVST_OP_ICMP:
+		vm->r_flag = flag = iopcmp(vm, fp, opcode);
 		NEXT;
 
 	/* floating point comparisons */
-	case JVST_OP_FLT:
-		vm->r_flag = flag = fopdiff(vm, fp, opcode) < 0;
-		NEXT;
-
-	case JVST_OP_FLE:
-		vm->r_flag = flag = fopdiff(vm, fp, opcode) <= 0;
-		NEXT;
-
-	case JVST_OP_FEQ:
-		vm->r_flag = flag = fopdiff(vm, fp, opcode) == 0;
-		NEXT;
-
-	case JVST_OP_FGE:
-		vm->r_flag = flag = fopdiff(vm, fp, opcode) >= 0;
-		NEXT;
-
-	case JVST_OP_FGT:
-		vm->r_flag = flag = fopdiff(vm, fp, opcode) > 0;
-		NEXT;
-
-	case JVST_OP_FNEQ:
-		vm->r_flag = flag = fopdiff(vm, fp, opcode) != 0;
+	case JVST_OP_FCMP:
+		vm->r_flag = flag = fopcmp(vm, fp, opcode);
 		NEXT;
 
 	case JVST_OP_FINT:
@@ -1272,18 +1236,25 @@ loop:
 		}
 		NEXT;
 
-	case JVST_OP_CBF:
-	case JVST_OP_CBT:
-		if (!!flag != (op == JVST_OP_CBT)) {
-			NEXT;
-		}
-
-		/* fallthrough */
-
-	case JVST_OP_BR:
+	case JVST_OP_JMP:
 		{
+			enum jvst_vm_br_cond brc;
 			uint32_t barg;
-			long br;
+			int fmask;
+
+			brc = jvst_vm_decode_bcond(opcode);
+			if (brc != JVST_VM_BR_ALWAYS) {
+				int mask;
+
+				// XXX - can we simplify / eliminate
+				// branches?
+				mask = (flag<0) | ((flag > 0) << 1) | ((flag == 0) << 2);
+
+				if ((brc & mask) == 0) {
+					NEXT;
+				}
+			}
+
 			barg = jvst_vm_decode_barg(opcode);
 			BRANCH(jvst_vm_tobarg(barg));
 		}
@@ -1319,39 +1290,41 @@ loop:
 		}
 		NEXT;
 
-	case JVST_OP_VALID:
-		// consume token, then return to previous frame or, if top of
-		// stack, return JVST_VALID
-		ret = consume_current_value(vm);
-		if (ret != JVST_VALID && ret != JVST_NEXT) {
-			return ret;
-		}
-
-		// value consumed... return to previous frame or finish
-		// if we're at the top of the stack
-		if (fp == 0) {
-			vm->r_pc = pc = 0;
-			ret = JVST_VALID;
-			goto finish;
-		}
-
-		vm->r_sp = sp = fp-2;
-		vm->r_pc = pc = vm->stack[fp-2].u;
-		vm->r_fp = fp = vm->stack[fp-1].u;
-		NEXT; // pc points to CALL, continue with next instruction
-
-	case JVST_OP_INVALID:
+	case JVST_OP_RETURN:
 		{
 			uint32_t arg0;
-			int ecode;
 
 			arg0 = jvst_vm_decode_arg0(opcode);
 			assert(jvst_vm_arg_islit(arg0));
 
-			vm->error = vm_ival(vm, fp, arg0);
-			assert(vm->error != 0);
-			ret = JVST_INVALID;
-			goto finish;
+			if (arg0 != 0) {
+				vm->error = vm_ival(vm, fp, arg0);
+				assert(vm->error != 0);
+				ret = JVST_INVALID;
+				goto finish;
+			}
+
+			// otherwise VALID return
+
+			// consume token, then return to previous frame or, if top of
+			// stack, return JVST_VALID
+			ret = consume_current_value(vm);
+			if (ret != JVST_VALID && ret != JVST_NEXT) {
+				return ret;
+			}
+
+			// value consumed... return to previous frame or finish
+			// if we're at the top of the stack
+			if (fp == 0) {
+				vm->r_pc = pc = 0;
+				ret = JVST_VALID;
+				goto finish;
+			}
+
+			vm->r_sp = sp = fp-2;
+			vm->r_pc = pc = vm->stack[fp-2].u;
+			vm->r_fp = fp = vm->stack[fp-1].u;
+			NEXT; // pc points to CALL, continue with next instruction
 		}
 
 	case JVST_OP_MOVE:
