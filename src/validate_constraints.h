@@ -55,6 +55,7 @@ enum jvst_cnode_type {
 
 	/* Constraint nodes */
 	JVST_CNODE_STR_MATCH,
+	JVST_CNODE_STR_LENGTH,
 
 	JVST_CNODE_NUM_RANGE,
 	JVST_CNODE_NUM_INTEGER,
@@ -153,8 +154,7 @@ struct jvst_cnode {
 
 		struct {
 			struct jvst_cnode_matchset *matchset;
-			struct jvst_cnode *name_constraint;
-			struct jvst_cnode *value_constraint;
+			struct jvst_cnode *constraint;
 
 			// temp storage used in duplication
 			void *tmp;

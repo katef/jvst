@@ -899,7 +899,8 @@ newcnode_counts(struct arena_info *A, enum jvst_cnode_type type,
 {
 	struct jvst_cnode *node;
 
-	assert(type == JVST_CNODE_LENGTH_RANGE || 
+	assert( type == JVST_CNODE_STR_LENGTH || 
+		type == JVST_CNODE_LENGTH_RANGE || 
 		type == JVST_CNODE_PROP_RANGE ||
 		type == JVST_CNODE_ITEM_RANGE);
 
@@ -1005,7 +1006,7 @@ newcnode_mswitch(struct arena_info *A, struct jvst_cnode *dft, ...)
 		dftcase = dft;
 	} else {
 		dftcase = newcnode(A, JVST_CNODE_MATCH_CASE);
-		dftcase->u.mcase.value_constraint = dft;
+		dftcase->u.mcase.constraint = dft;
 	}
 
 	node->u.mswitch.dft_case = dftcase;
@@ -1036,8 +1037,7 @@ newcnode_mswitch(struct arena_info *A, struct jvst_cnode *dft, ...)
 }
 
 struct jvst_cnode *
-newcnode_mcase_namecons(struct arena_info *A, struct jvst_cnode_matchset *mset,
-	struct jvst_cnode *nconstraint,
+newcnode_mcase(struct arena_info *A, struct jvst_cnode_matchset *mset,
 	struct jvst_cnode *vconstraint)
 {
 	struct jvst_cnode *node;
@@ -1046,17 +1046,9 @@ newcnode_mcase_namecons(struct arena_info *A, struct jvst_cnode_matchset *mset,
 
 	node = newcnode(A, JVST_CNODE_MATCH_CASE);
 	node->u.mcase.matchset = mset;
-	node->u.mcase.name_constraint = nconstraint;
-	node->u.mcase.value_constraint = vconstraint;
+	node->u.mcase.constraint = vconstraint;
 
 	return node;
-}
-
-struct jvst_cnode *
-newcnode_mcase(struct arena_info *A, struct jvst_cnode_matchset *mset,
-	struct jvst_cnode *vconstraint)
-{
-	return newcnode_mcase_namecons(A, mset, NULL, vconstraint);
 }
 
 static struct jvst_cnode_matchset *

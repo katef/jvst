@@ -194,11 +194,6 @@ struct jvst_cnode *
 newcnode_mcase(struct arena_info *A, struct jvst_cnode_matchset *mset,
 	struct jvst_cnode *vconstraint);
 
-struct jvst_cnode *
-newcnode_mcase_namecons(struct arena_info *A, struct jvst_cnode_matchset *mset,
-	struct jvst_cnode *nconstraint,
-	struct jvst_cnode *vconstraint);
-
 struct jvst_cnode_matchset *
 newmatchset(struct arena_info *A, ...);
 
