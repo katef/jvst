@@ -103,6 +103,9 @@ jvst_invalid_msg(enum jvst_invalid_code code)
 	case JVST_INVALID_STRING:
 		return "invalid string";
 
+	case JVST_INVALID_NOT_UNIQUE:
+		return "array elements are not unique";
+
 	case JVST_INVALID_JSON:
 		return "encountered invalid JSON";
 
@@ -618,6 +621,7 @@ ir_expr_tmp(struct jvst_ir_stmt *frame, struct jvst_ir_expr *expr)
 	case JVST_IR_EXPR_BTESTONE:
 	case JVST_IR_EXPR_BOOL:
 	case JVST_IR_EXPR_ISTOK:
+	case JVST_IR_EXPR_UNIQUE_OK:
 	case JVST_IR_EXPR_ISINT:
 	case JVST_IR_EXPR_MULTIPLE_OF:
 	case JVST_IR_EXPR_AND:
@@ -707,6 +711,7 @@ ir_expr_op(enum jvst_ir_expr_type op,
 	case JVST_IR_EXPR_BTESTONE:
 	case JVST_IR_EXPR_BCOUNT:
 	case JVST_IR_EXPR_ISTOK:
+	case JVST_IR_EXPR_UNIQUE_OK:
 	case JVST_IR_EXPR_ISINT:
 	case JVST_IR_EXPR_MULTIPLE_OF:
 	case JVST_IR_EXPR_NOT:
@@ -884,6 +889,12 @@ jvst_ir_stmt_type_name(enum jvst_ir_stmt_type type)
 		return "CALL";
 	case JVST_IR_STMT_CALL_ID:
 		return "CALL_ID";
+	case JVST_IR_STMT_UNIQUE_INIT:
+		return "UNIQUE_INIT";
+	case JVST_IR_STMT_UNIQUE_TOK:
+		return "UNIQUE_TOK";
+	case JVST_IR_STMT_UNIQUE_FINAL:
+		return "UNIQUE_FINAL";
 	case JVST_IR_STMT_PROGRAM:
 		return "PROGRAM";
 	}
@@ -930,6 +941,9 @@ jvst_ir_expr_type_name(enum jvst_ir_expr_type type)
 
 	case JVST_IR_EXPR_ISTOK:
 		return "ISTOK";
+
+	case JVST_IR_EXPR_UNIQUE_OK:
+		return "UNIQUE_OK";
 
 	case JVST_IR_EXPR_AND:
 		return "AND";
@@ -1039,8 +1053,10 @@ jvst_ir_dump_expr(struct sbuf *buf, const struct jvst_ir_expr *expr, int indent)
 	case JVST_IR_EXPR_TOK_TYPE:
 	case JVST_IR_EXPR_TOK_NUM:
 	case JVST_IR_EXPR_TOK_LEN:
+	case JVST_IR_EXPR_UNIQUE_OK:
 		sbuf_snprintf(buf, "%s", jvst_ir_expr_type_name(expr->type));
 		return;
+
 
 	case JVST_IR_EXPR_ISTOK:
 		sbuf_snprintf(buf, "ISTOK($%s)",
@@ -1244,6 +1260,9 @@ jvst_ir_dump_inner(struct sbuf *buf, struct jvst_ir_stmt *ir, int indent)
 	case JVST_IR_STMT_TOKEN:
 	case JVST_IR_STMT_UNTOKEN:
 	case JVST_IR_STMT_CONSUME:
+	case JVST_IR_STMT_UNIQUE_INIT:
+	case JVST_IR_STMT_UNIQUE_TOK:
+	case JVST_IR_STMT_UNIQUE_FINAL:
 		sbuf_snprintf(buf, "%s", jvst_ir_stmt_type_name(ir->type));
 		return;
 
@@ -3528,42 +3547,73 @@ struct ir_arr_builder {
 	struct jvst_ir_stmt *each;
 	struct jvst_ir_stmt *postloop;
 
-	struct jvst_ir_stmt *bvec_ctmp; // contains temp vec
+	size_t contains_bit_off;         // offset of first contains bit in bvec_uctmp
+	struct jvst_ir_stmt *bvec_uctmp; // contains temp vec
+
 	struct jvst_ir_stmt *bvec_cres; // contains result vec
 
 	struct jvst_ir_stmt **itemspp;
 	struct jvst_ir_stmt **containspp;
 	struct jvst_ir_stmt **eachpp;
 	struct jvst_ir_stmt **postpp;
+
+	int unique_items;
 };
 
 static struct jvst_ir_stmt *
 ir_translate_array_inner(struct jvst_cnode *top, struct ir_arr_builder *builder);
 
+static struct jvst_ir_stmt *
+ir_unique_item_frame(void)
+{
+	struct jvst_ir_stmt *fr, **spp;
+	fr = ir_stmt_frame();
+	spp = &fr->u.frame.stmts;
+
+	*spp = ir_stmt_new(JVST_IR_STMT_TOKEN);
+	spp = &(*spp)->next;
+
+	*spp = ir_stmt_new(JVST_IR_STMT_UNIQUE_TOK);
+	spp = &(*spp)->next;
+
+	return fr;
+}
+
+
+// This function adds SPLITV to handle unique/contains constraints to
+// each item and check the result of the split
+//
+// The code must build a new split (one for each item), and must add
+// logic to check the results of the split.
+
+// build.bvec_uctmp (unique/contains temp) holds the
+// result of the SPLITV at each item.
+//
+// At each split we need to evaluate the item
+// constraint, any unique constraints, and record
+// whether the item satisfies a contains constraint
 static struct jvst_ir_stmt **
-arr_translate_contains(struct jvst_ir_stmt *arr_item, struct ir_arr_builder *builder, struct jvst_ir_stmt **ilpp)
+arr_translate_contains_or_unique(struct jvst_ir_stmt *arr_item, struct ir_arr_builder *builder, struct jvst_ir_stmt **ilpp)
 {
 	struct jvst_ir_stmt *splv, **frp, *fr;
+	struct jvst_ir_stmt *cseq;
 	size_t i,n;
 
-	assert(builder->contains != NULL);
-	assert(builder->bvec_cres != NULL);
-	assert(builder->bvec_ctmp != NULL);
+	assert(builder->bvec_uctmp != NULL);
 
-	n = builder->bvec_cres->u.bitvec.nbits;
-
-	splv = ir_stmt_new(JVST_IR_STMT_SPLITVEC);
-	splv->u.splitvec.frame = builder->frame;
-	splv->u.splitvec.bitvec = builder->bvec_ctmp;
-	frp = &splv->u.splitvec.split_frames;
-
-	for (fr = builder->contains; fr != NULL; fr = fr->next) {
-		assert(fr->type == JVST_IR_STMT_FRAME);
-
-		*frp = jvst_ir_stmt_copy(fr);
-		frp = &(*frp)->next;
+	// number of contains constraints
+	n = 0;
+	if (builder->bvec_cres != NULL) {
+		n = builder->bvec_cres->u.bitvec.nbits;
 	}
 
+	// need to generate the SPLITV
+	splv = ir_stmt_new(JVST_IR_STMT_SPLITVEC);
+	splv->u.splitvec.frame = builder->frame;
+	splv->u.splitvec.bitvec = builder->bvec_uctmp;
+	frp = &splv->u.splitvec.split_frames;
+
+	// first bit is the item condition
 	if (arr_item != NULL) {
 		*frp = arr_item;
 	} else {
@@ -3572,45 +3622,79 @@ arr_translate_contains(struct jvst_ir_stmt *arr_item, struct ir_arr_builder *bui
 		// 'contains' constraint is invalid for an item
 		*frp = ir_consume_and_valid_frame();
 	}
+	frp = &(*frp)->next;
+
+	// the next bit should be the unique condition, if any...
+	if (builder->unique_items) {
+		*frp = ir_unique_item_frame();
+		frp = &(*frp)->next;
+	}
+
+	// now the constraints...
+	for (fr = builder->contains; fr != NULL; fr = fr->next) {
+		assert(fr->type == JVST_IR_STMT_FRAME);
+
+		*frp = jvst_ir_stmt_copy(fr);
+		frp = &(*frp)->next;
+	}
 
 	*ilpp = splv;
 	ilpp = &splv->next;
 
-	// Test non-contains condition
+	cseq = ir_stmt_new(JVST_IR_STMT_SEQ);
+	*ilpp = cseq;
+	ilpp = &cseq->u.stmt_list;
+
+	// Test the item constraint
 	if (arr_item != NULL) {
 		struct jvst_ir_expr *cond;
 		struct jvst_ir_stmt *br;
 
 		cond = ir_expr_new(JVST_IR_EXPR_BTEST);
 		cond->u.btest.frame = builder->frame;
-		cond->u.btest.bitvec = builder->bvec_ctmp;
-		cond->u.btest.b0 = n;
-		cond->u.btest.b1 = n;
+		cond->u.btest.bitvec = builder->bvec_uctmp;
+		cond->u.btest.b0 = 0;
+		cond->u.btest.b1 = 0;
 
 		// XXX - capture actual error from condition and report
 		// that 
-		br = ir_stmt_if(cond, NULL, ir_stmt_invalid(JVST_INVALID_ARRAY));
+		br = ir_stmt_if(cond,
+			ir_stmt_new(JVST_IR_STMT_NOP),
+			ir_stmt_invalid(JVST_INVALID_ARRAY));
 		*ilpp = br;
-		ilpp = &br->u.if_.br_true;
+		ilpp = &br->next;
+	}
+
+	if (builder->unique_items) {
+		struct jvst_ir_expr *cond;
+		struct jvst_ir_stmt *br;
+
+		// for each item, test that the item is unique
+		// SPLITV stores the result of the unique constraint at bit 1
+		cond = ir_expr_new(JVST_IR_EXPR_BTEST);
+		cond->u.btest.frame = builder->frame;
+		cond->u.btest.bitvec = builder->bvec_uctmp;
+		cond->u.btest.b0 = 1;
+		cond->u.btest.b1 = 1;
+
+		br = ir_stmt_if(cond,
+			ir_stmt_new(JVST_IR_STMT_NOP),
+			ir_stmt_invalid(JVST_INVALID_NOT_UNIQUE));
+		*ilpp = br;
+		ilpp = &br->next;
 	}
 
 	// Test contains conditions
 	{
-		struct jvst_ir_stmt *cseq;
-
-		cseq = ir_stmt_new(JVST_IR_STMT_SEQ);
-		*ilpp = cseq;
-		ilpp = &cseq->u.stmt_list;
-
 		for (i=0; i < n; i++) {
 			struct jvst_ir_stmt *br, *setbit;
 			struct jvst_ir_expr *cond;
 
 			cond = ir_expr_new(JVST_IR_EXPR_BTEST);
 			cond->u.btest.frame = builder->frame;
-			cond->u.btest.bitvec = builder->bvec_ctmp;
-			cond->u.btest.b0 = i;
-			cond->u.btest.b1 = i;
+			cond->u.btest.bitvec = builder->bvec_uctmp;
+			cond->u.btest.b0 = builder->contains_bit_off+i;
+			cond->u.btest.b1 = builder->contains_bit_off+i;
 
 			setbit = ir_stmt_new(JVST_IR_STMT_BSET);
 			setbit->u.bitop.frame  = builder->frame;
@@ -3618,7 +3702,7 @@ arr_translate_contains(struct jvst_ir_stmt *arr_item, struct ir_arr_builder *bui
 			setbit->u.bitop.bit    = i;
 
 			// XXX - capture actual error from condition and report
-			// that 
+			// that
 			br = ir_stmt_if(cond, setbit, ir_stmt_new(JVST_IR_STMT_NOP));
 			*ilpp = br;
 			ilpp = &br->next;
@@ -3627,6 +3711,13 @@ arr_translate_contains(struct jvst_ir_stmt *arr_item, struct ir_arr_builder *bui
 
 	return ilpp;
 }
+
+/*
+static struct jvst_ir_stmt **
+arr_translate_contains_or_unique(struct jvst_ir_stmt *arr_item, struct ir_arr_builder *builder, struct jvst_ir_stmt **ilpp)
+{
+}
+*/
 
 static struct jvst_ir_stmt *
 ir_translate_array(struct jvst_cnode *top, struct jvst_ir_stmt *frame)
@@ -3654,7 +3745,58 @@ ir_translate_array(struct jvst_cnode *top, struct jvst_ir_stmt *frame)
 		return stmt;
 	}
 
-	// put all the components together...
+	/***  put all the components together... ***/
+
+	stmt = ir_stmt_new(JVST_IR_STMT_SEQ);
+	spp = &stmt->u.stmt_list;
+
+	// with either unique or contains we need to SPLIT at each item
+	// and allocate bits for the item constraint, the contains
+	// constraints, and the unique constraint
+	//
+	// the number of bits to allocate should be 1 + U + NC,
+	// where:
+	//   NC: number of contains constraints (may be 0)
+	// and
+	//   U = 0: no unique constraint and 
+	//   U = 1: has unique constraint
+	//
+	// we could pre-allocate this, but we'll do it as we build up
+	// the IR for the unique and containts constraints
+	if (builder.unique_items || builder.contains != NULL) {
+		builder.bvec_uctmp = ir_stmt_bitvec(frame, "uniq_contains_split", 0); // determine nbits later
+	}
+
+	// For unique constraints, we need to:
+	//
+	// 1. allocate two bits for a SPLITV (one for the item
+	//    constraint, one for the unique constraint).
+	//
+	// 2. insert a UNIQUE_INIT instruction before we start
+	//    processing array items
+	//
+	// 3. add a UNIQUE_FINAL instruction after the loop
+	//
+	if (builder.unique_items) {
+		struct jvst_ir_stmt *seq, **seqpp;
+
+		// allocate the first two bits in bvec_uctmp:
+		// bit 0: item constraint
+		// bit 1: unique constraint
+		builder.bvec_uctmp->u.bitvec.nbits += 2;
+
+		*spp = ir_stmt_new(JVST_IR_STMT_UNIQUE_INIT);
+		spp = &(*spp)->next;
+
+
+		seq = ir_stmt_new(JVST_IR_STMT_SEQ);
+		seqpp = &seq->u.stmt_list;
+		*seqpp = ir_stmt_new(JVST_IR_STMT_UNIQUE_FINAL);
+		seqpp = &(*seqpp)->next;
+
+		*builder.postpp = seq;
+		builder.postpp = seqpp;
+	}
 
 	// If we have more than one thing to do each-item, wrap them in
 	// a SEQ.
@@ -3668,18 +3810,21 @@ ir_translate_array(struct jvst_cnode *top, struct jvst_ir_stmt *frame)
 		}
 	}
 
-	// LOOP here isn't really a loop.  we need a fast exit to the 
-	// end-of-array case, and there's currently no direct way to do
-	// this in the tree IR (maybe fix that?).
-	stmt = ir_stmt_new(JVST_IR_STMT_SEQ);
-	outer_loop = ir_stmt_loop(builder.frame, "ARR_OUTER");
-
-	builder.bvec_ctmp = NULL;
+	// for contains constraints, we need to check that the
+	// constraints were satisfied at the end of the array.
+	//
+	// bvec_cres is a bit vector that holds the result of all
+	// contains constraints on the array and check that all bits are
+	// set at the end of the loop.
+	//
+	// here we build the logic to check the constraints at the end
+	// of the loop over array elements
 	builder.bvec_cres = NULL;
 	if (builder.contains) {
 		struct jvst_ir_stmt *fr, **seqpp;
 		size_t i,n;
 
+		// count number of contains constraints...
 		for (n=0, fr=builder.contains; fr != NULL; n++, fr=fr->next) {
 			continue;
 		}
@@ -3687,8 +3832,16 @@ ir_translate_array(struct jvst_cnode *top, struct jvst_ir_stmt *frame)
 		assert(*builder.postpp == NULL);
 
 		builder.bvec_cres = ir_stmt_bitvec(frame, "contains", n);
-		builder.bvec_ctmp = ir_stmt_bitvec(frame, "contains_split", n+1);
+		if (builder.bvec_uctmp->u.bitvec.nbits == 0) {
+			builder.contains_bit_off = 1;
+			builder.bvec_uctmp->u.bitvec.nbits = n+1;
+		} else {
+			builder.contains_bit_off = builder.bvec_uctmp->u.bitvec.nbits;
+			builder.bvec_uctmp->u.bitvec.nbits += n;
+		}
 
+		// if more than one contains constraint, wrap the checks
+		// in a SEQ block
 		if (n > 1) {
 			struct jvst_ir_stmt *seq;
 			seq = ir_stmt_new(JVST_IR_STMT_SEQ);
@@ -3702,31 +3855,47 @@ ir_translate_array(struct jvst_cnode *top, struct jvst_ir_stmt *frame)
 			struct jvst_ir_stmt *br;
 			struct jvst_ir_expr *cond;
 
+			// build a check for each contains constraint
 			cond = ir_expr_new(JVST_IR_EXPR_BTEST);
 			cond->u.btest.frame = frame;
 			cond->u.btest.bitvec = builder.bvec_cres;
 			cond->u.btest.b0 = i;
 			cond->u.btest.b1 = i;
 
-			// XXX - capture actual error from condition and report
-			// that 
+			// XXX - ideally we'd capture actual error from condition
+			// and report that 
 			br = ir_stmt_if(cond, NULL, ir_stmt_invalid(JVST_INVALID_UNSATISFIED_CONTAINS));
 			*seqpp = br;
+
+			// chain constraints together as a cascading
+			// chain of if statements:
+			// if constraint1 then
+			//   if constraint2 then
+			//     ...
+			//   else
+			//     invalid
+			// else
+			//   invalid
 			seqpp = &br->u.if_.br_true;
 		}
 
 		builder.postpp = seqpp;
 	}
 
+	// LOOP here isn't really a loop.  we need a fast exit to the 
+	// end-of-array case, and there's currently no direct way to do
+	// this in the tree IR (maybe fix that?).
+	outer_loop = ir_stmt_loop(builder.frame, "ARR_OUTER");
+
 	if (*builder.postpp == NULL) {
 		*builder.postpp = ir_stmt_valid();
 	}
 	outer_loop->next = builder.postloop;
 
-	stmt->u.stmt_list = outer_loop;
-
+	// Now build the outer "loop" for constraints specified for
+	// items at particular indices
+	*spp = outer_loop;
 	spp = &outer_loop->u.loop.stmts;
-
 	for (it = builder.items; it != NULL; it = next) {
 		struct jvst_ir_stmt *seq, *each;
 
@@ -3746,6 +3915,8 @@ ir_translate_array(struct jvst_cnode *top, struct jvst_ir_stmt *frame)
 		*spp = seq;
 		spp = &seq->u.stmt_list;
 
+		// unget the token so the item constraint (or split) can
+		// check it
 		*spp = ir_stmt_new(JVST_IR_STMT_UNTOKEN);
 		spp = &(*spp)->next;
 
@@ -3757,16 +3928,20 @@ ir_translate_array(struct jvst_cnode *top, struct jvst_ir_stmt *frame)
 			spp = &each->next;
 		}
 
-		if (builder.contains == NULL) {
+		if (builder.contains != NULL || builder.unique_items) {
+			// add SPLITV and code to check its results
+			spp = arr_translate_contains_or_unique(it, &builder, spp);
+		} else {
+			// directly handle each item
 			*spp = it;
 			spp = &(*spp)->next;
-		} else {
-			spp = arr_translate_contains(it, &builder, spp);
 		}
 
 		*spp = NULL;
 	}
 
+	// now build the inner loop.  This is a real loop, and handles
+	// remaining items or an additionalItems constraint (if present)
 	{
 		struct jvst_ir_stmt *inner_loop, *stmts, **ilpp;
 
@@ -3792,16 +3967,21 @@ ir_translate_array(struct jvst_cnode *top, struct jvst_ir_stmt *frame)
 			ilpp = &builder.each->next;
 		}
 
-		if (builder.contains == NULL) {
+		if (builder.contains != NULL || builder.unique_items) {
+			// add SPLITv and code to check its results
+			ilpp = arr_translate_contains_or_unique(builder.additional, &builder, ilpp);
+		} else {
 			assert(builder.additional == NULL || builder.additional->next == NULL);
+
+			// if the schema has an additionalItems constraint, handle that,
+			// otherwise CONSUME the token
 			*ilpp = (builder.additional != NULL)
 				? builder.additional
 				: ir_stmt_new(JVST_IR_STMT_CONSUME);
-		} else {
-			ilpp = arr_translate_contains(builder.additional, &builder, ilpp);
 		}
 
 		assert(stmts != NULL);
+
 		{
 			struct jvst_ir_stmt *seq, **seqpp;
 
@@ -3824,8 +4004,6 @@ ir_translate_array(struct jvst_cnode *top, struct jvst_ir_stmt *frame)
 static struct jvst_ir_stmt *
 ir_translate_array_inner(struct jvst_cnode *top, struct ir_arr_builder *builder)
 {
-	(void)builder;
-
 	switch (top->type) {
 	case JVST_CNODE_INVALID:
 		return ir_stmt_invalid(JVST_INVALID_ARRAY);
@@ -3929,6 +4107,8 @@ ir_translate_array_inner(struct jvst_cnode *top, struct ir_arr_builder *builder)
 		}
 
 	case JVST_CNODE_ARR_UNIQUE:
+		builder->unique_items = 1;
+		return NULL;
 
 	case JVST_CNODE_OR:
 	case JVST_CNODE_XOR:
@@ -4150,6 +4330,7 @@ jvst_ir_expr_copy(struct jvst_ir_expr *ir, struct addr_fixup_list *fixups, struc
 	case JVST_IR_EXPR_TOK_TYPE:
 	case JVST_IR_EXPR_TOK_NUM:
 	case JVST_IR_EXPR_TOK_LEN:
+	case JVST_IR_EXPR_UNIQUE_OK:
 		return copy;
 
 	case JVST_IR_EXPR_NUM:
@@ -4401,6 +4582,9 @@ jvst_ir_stmt_copy_inner(struct jvst_ir_stmt *ir, struct addr_fixup_list *fixups,
 	case JVST_IR_STMT_TOKEN:
 	case JVST_IR_STMT_UNTOKEN:
 	case JVST_IR_STMT_CONSUME:
+	case JVST_IR_STMT_UNIQUE_INIT:
+	case JVST_IR_STMT_UNIQUE_TOK:
+	case JVST_IR_STMT_UNIQUE_FINAL:
 		return copy;
 
 	case JVST_IR_STMT_INVALID:
@@ -5622,6 +5806,7 @@ ir_linearize_rewrite_expr(struct jvst_ir_stmt *frame, struct jvst_ir_expr *expr)
 	case JVST_IR_EXPR_BTESTALL:
 	case JVST_IR_EXPR_BTESTANY:
 	case JVST_IR_EXPR_BTESTONE:
+	case JVST_IR_EXPR_UNIQUE_OK:
 		return expr;
 
 	case JVST_IR_EXPR_NE:
@@ -6081,6 +6266,9 @@ ir_linearize_stmt(struct op_linearizer *oplin, struct jvst_ir_stmt *stmt)
 
 	case JVST_IR_STMT_BCLEAR:
 	case JVST_IR_STMT_DECR:
+	case JVST_IR_STMT_UNIQUE_INIT:
+	case JVST_IR_STMT_UNIQUE_TOK:
+	case JVST_IR_STMT_UNIQUE_FINAL:
 		fprintf(stderr, "%s:%d (%s) linearizing IR statement %s not yet implemented\n",
 				__FILE__, __LINE__, __func__, 
 				jvst_ir_stmt_type_name(stmt->type));

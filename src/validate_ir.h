@@ -64,6 +64,10 @@ enum jvst_ir_stmt_type {
 
 	JVST_IR_STMT_CALL_ID,		// Calls a named IR frame
 
+	JVST_IR_STMT_UNIQUE_INIT,	// Initialize UNIQUE constraint state
+	JVST_IR_STMT_UNIQUE_TOK,	// Process token for UNIQUE constraint
+	JVST_IR_STMT_UNIQUE_FINAL,	// Finalize UNIQUE constraint state
+
 	JVST_IR_STMT_BLOCK,
 	JVST_IR_STMT_BRANCH,
 	JVST_IR_STMT_CBRANCH,
@@ -87,6 +91,8 @@ enum jvst_ir_expr_type {
 	JVST_IR_EXPR_TOK_TYPE,		// tok:  token type of the current token
 	JVST_IR_EXPR_TOK_NUM,		// num:  number value of the current token
 	JVST_IR_EXPR_TOK_LEN,		// size: length of current token
+
+	JVST_IR_EXPR_UNIQUE_OK,		// UNIQUE constraint has not been violated
 
 	JVST_IR_EXPR_COUNT, 		// counter value.  args: index; result: size
 	JVST_IR_EXPR_BCOUNT, 		// counts the number of bits set.  args: (bvec<index>, b0<size>, b1<size>
@@ -148,13 +154,14 @@ enum jvst_invalid_code {
 	JVST_INVALID_UNSATISFIED_CONTAINS = 0x0010,
 
 	JVST_INVALID_NOT_MULTIPLE     = 0x0011,
+	JVST_INVALID_NOT_UNIQUE       = 0x0012,
 
 	JVST_INVALID_JSON             = 0x0020,
 
-	JVST_INVALID_VM_BAD_PC		= 0xBAD0,
-	JVST_INVALID_VM_STACK_OVERFLOW	= 0xBAD1,
-	JVST_INVALID_VM_INVALID_ARG	= 0xBAD2,
-	JVST_INVALID_VM_INVALID_OP	= 0xBAD3,
+	JVST_INVALID_VM_BAD_PC		= 0xD0,
+	JVST_INVALID_VM_STACK_OVERFLOW	= 0xD1,
+	JVST_INVALID_VM_INVALID_ARG	= 0xD2,
+	JVST_INVALID_VM_INVALID_OP	= 0xD3,
 };
 
 const char *
