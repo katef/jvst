@@ -56,6 +56,7 @@ jvst_op_name(enum jvst_vm_op op)
 	case JVST_OP_BSET:      return "BSET";
 	case JVST_OP_BAND:      return "BAND";
 	case JVST_OP_RETURN:    return "RETURN";
+	case JVST_OP_UNIQUE:	return "UNIQUE";
 	}
 
 	fprintf(stderr, "Unknown OP %d\n", op);

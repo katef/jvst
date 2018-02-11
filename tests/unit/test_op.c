@@ -4698,6 +4698,229 @@ void test_op_dependencies(void)
   RUNTESTS(tests);
 }
 
+void test_op_unique_1(void)
+{
+  struct arena_info A = {0};
+
+  // initial schema is not reduced (additional constraints are ANDed
+  // together).  Reduction will occur on a later pass.
+  const struct op_test tests[] = {
+    {
+      ASSEMBLE,
+      newcnode_switch(&A, 1,
+          SJP_ARRAY_BEG, newcnode(&A, JVST_CNODE_ARR_UNIQUE),
+          SJP_NONE),
+
+      newir_frame(&A,
+        newir_bitvec(&A, 0, "uniq_contains_split", 2),
+        newir_stmt(&A, JVST_IR_STMT_TOKEN),
+        newir_if(&A, newir_istok(&A, SJP_OBJECT_END),
+          newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token"),
+          newir_if(&A, newir_istok(&A, SJP_ARRAY_BEG),
+            newir_seq(&A,
+              newir_stmt(&A, JVST_IR_STMT_UNIQUE_INIT),
+              newir_loop(&A, "ARR_OUTER", 0,
+                newir_loop(&A, "ARR_INNER", 1,
+                  newir_stmt(&A, JVST_IR_STMT_TOKEN),
+                  newir_if(&A, newir_istok(&A, SJP_ARRAY_END),
+                    newir_break(&A, "ARR_OUTER", 0),
+                    newir_seq(&A,
+                      newir_stmt(&A, JVST_IR_STMT_UNTOKEN),
+                      newir_splitvec(&A, 0, "uniq_contains_split",
+                        newir_frame(&A,
+                          newir_stmt(&A, JVST_IR_STMT_CONSUME),
+                          newir_stmt(&A, JVST_IR_STMT_VALID),
+                          NULL
+                        ),
+
+                        newir_frame(&A,
+                          newir_stmt(&A, JVST_IR_STMT_UNIQUE_TOK),
+                          NULL
+                        ),
+
+                        NULL
+                      ),
+
+                      newir_seq(&A,
+                        newir_if(&A, newir_btest(&A, 0, "uniq_contains_split", 1),
+                          newir_stmt(&A, JVST_IR_STMT_NOP),
+                          newir_invalid(&A, JVST_INVALID_NOT_UNIQUE, "array elements are not unique")
+                        ),
+
+                        NULL
+                      ),
+
+                      NULL
+                    )
+                  ),
+
+                  NULL
+                ),
+
+                NULL
+              ),
+
+              newir_seq(&A,
+                newir_stmt(&A, JVST_IR_STMT_UNIQUE_FINAL),
+                newir_stmt(&A, JVST_IR_STMT_VALID),
+                NULL
+              ),
+
+              NULL
+            ),
+
+            newir_if(&A, newir_istok(&A, SJP_ARRAY_END),
+              newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token"),
+              newir_seq(&A,
+                newir_stmt(&A, JVST_IR_STMT_CONSUME),
+                newir_stmt(&A, JVST_IR_STMT_VALID),
+                NULL
+              )
+            )
+          )
+        ),
+        NULL
+      ),
+
+      newop_program(&A,
+          opsplit, 2, 1, 2,
+
+          newop_proc(&A,
+            opslots, 2,
+
+            oplabel, "entry_0",
+            newop_instr(&A, JVST_OP_TOKEN),
+            newop_cmp(&A, JVST_OP_ICMP, oparg_tt(), oparg_tok(SJP_OBJECT_END)),
+            newop_br(&A, JVST_VM_BR_EQ, "invalid_1_3"),
+
+            oplabel, "false_4",
+            newop_cmp(&A, JVST_OP_ICMP, oparg_tt(), oparg_tok(SJP_ARRAY_BEG)),
+            newop_br(&A, JVST_VM_BR_EQ, "true_6"),
+
+            oplabel, "false_19",
+            newop_cmp(&A, JVST_OP_ICMP, oparg_tt(), oparg_tok(SJP_ARRAY_END)),
+            newop_br(&A, JVST_VM_BR_EQ, "invalid_1_3"),
+
+            oplabel, "false_22",
+            newop_instr(&A, JVST_OP_CONSUME),
+
+            oplabel, "valid_18",
+            newop_return(&A, 0),
+
+            oplabel, "true_6",
+            newop_instr2(&A, JVST_OP_UNIQUE, oparg_lit(JVST_VM_UNIQUE_INIT), oparg_lit(0)),
+
+            oplabel, "loop_10",
+            newop_instr(&A, JVST_OP_TOKEN),
+            newop_cmp(&A, JVST_OP_ICMP, oparg_tt(), oparg_tok(SJP_ARRAY_END)),
+            newop_br(&A, JVST_VM_BR_EQ, "loop_end_7"),
+
+            oplabel, "false_13",
+            newop_instr2(&A, JVST_OP_TOKEN, oparg_lit(0), oparg_lit(-1)),
+            newop_instr2(&A, JVST_OP_SPLITV, oparg_lit(0), oparg_slot(0)),
+            newop_load(&A, JVST_OP_MOVE, oparg_slot(1), oparg_slot(0)),
+            newop_instr2(&A, JVST_OP_BAND, oparg_slot(1), oparg_lit(2)),
+            newop_cmp(&A, JVST_OP_ICMP, oparg_slot(1), oparg_lit(2)),
+            newop_br(&A, JVST_VM_BR_EQ, "true_15"),
+
+            oplabel, "invalid_18_17",
+            newop_return(&A, 18),
+
+            oplabel, "true_15",
+            newop_br(&A, JVST_VM_BR_ALWAYS, "loop_10"),
+
+            oplabel, "loop_end_7",
+            newop_instr2(&A, JVST_OP_UNIQUE, oparg_lit(JVST_VM_UNIQUE_FINAL), oparg_lit(0)),
+            newop_br(&A, JVST_VM_BR_ALWAYS, "valid_18"),
+
+            oplabel, "invalid_1_3",
+            newop_return(&A, 1),
+
+            NULL
+          ),
+
+          newop_proc(&A,
+            opslots, 0,
+
+            oplabel, "entry_0",
+            newop_instr(&A, JVST_OP_CONSUME),
+
+            oplabel, "valid_1",
+            newop_return(&A, 0),
+
+            NULL
+          ),
+
+          newop_proc(&A,
+            opslots, 0,
+
+            oplabel, "entry_0",
+            newop_instr2(&A, JVST_OP_UNIQUE, oparg_lit(JVST_VM_UNIQUE_EVAL), oparg_lit(0)),
+
+            NULL
+          ),
+              
+          NULL
+      )
+    },
+
+    { STOP },
+  };
+
+  const struct op_test unfinished_tests[] = {
+    {
+      NONE,
+      // schema: {
+      //   "dependencies": {
+      //     "bar": {
+      //       "properties": {
+      //         "foo": {"type": "integer"},
+      //         "bar": {"type": "integer"}
+      //       }
+      //     }
+      //   }
+      // },
+      newcnode_bool(&A, JVST_CNODE_AND,
+          newcnode_switch(&A, 1, SJP_NONE),
+          newcnode_bool(&A, JVST_CNODE_OR,
+            newcnode_bool(&A, JVST_CNODE_AND,
+              newcnode_switch(&A, 0, 
+                SJP_OBJECT_BEG, newcnode_required(&A, stringset(&A, "bar", NULL)),
+                SJP_NONE),
+              newcnode_switch(&A, 1, 
+                SJP_OBJECT_BEG, newcnode_bool(&A, JVST_CNODE_AND,
+                                  newcnode_propset(&A,
+                                    newcnode_prop_match(&A, RE_LITERAL, "foo", 
+                                      newcnode_switch(&A, 0, 
+                                        SJP_NUMBER, newcnode(&A,JVST_CNODE_NUM_INTEGER),
+                                        SJP_NONE)),
+                                    newcnode_prop_match(&A, RE_LITERAL, "bar", 
+                                      newcnode_switch(&A, 0, 
+                                        SJP_NUMBER, newcnode(&A,JVST_CNODE_NUM_INTEGER),
+                                        SJP_NONE)),
+                                    NULL),
+                                  newcnode_valid(),
+                                  NULL),
+                SJP_NONE),
+              NULL),
+            newcnode_switch(&A, 1, 
+              SJP_OBJECT_BEG, newcnode_propset(&A,
+                                newcnode_prop_match(&A, RE_LITERAL, "bar", newcnode_invalid()),
+                                NULL),
+              SJP_NONE),
+            NULL),
+          NULL),
+
+      NULL
+    },
+
+    { STOP },
+  };
+
+  (void)unfinished_tests;
+  RUNTESTS(tests);
+}
+
 /* incomplete tests... placeholders for conversion from cnode tests */
 static void test_op_minproperties_3(void);
 static void test_op_maxproperties_1(void);
@@ -4727,6 +4950,8 @@ int main(void)
   test_op_required();
 
   test_op_dependencies();
+
+  test_op_unique_1();
 
   /* incomplete tests... placeholders for conversion from cnode tests */
   test_op_minproperties_3();

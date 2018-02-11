@@ -2399,6 +2399,7 @@ newop_cmp(struct arena_info *A, enum jvst_vm_op op,
 	case JVST_OP_BAND:
 	case JVST_OP_RETURN:
 	case JVST_OP_MOVE:
+	case JVST_OP_UNIQUE:
 		fprintf(stderr, "%s:%d (%s) OP %s is not a comparison\n",
 			__FILE__, __LINE__, __func__, jvst_op_name(op));
 		abort();
@@ -2518,6 +2519,7 @@ newop_load(struct arena_info *A, enum jvst_vm_op op,
 	case JVST_OP_BSET:
 	case JVST_OP_BAND:
 	case JVST_OP_RETURN:
+	case JVST_OP_UNIQUE:
 		fprintf(stderr, "OP %s is not a load\n",
 			jvst_op_name(op));
 		abort();
