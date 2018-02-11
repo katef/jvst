@@ -92,8 +92,6 @@ enum jvst_ir_expr_type {
 	JVST_IR_EXPR_TOK_NUM,		// num:  number value of the current token
 	JVST_IR_EXPR_TOK_LEN,		// size: length of current token
 
-	JVST_IR_EXPR_UNIQUE_OK,		// UNIQUE constraint has not been violated
-
 	JVST_IR_EXPR_COUNT, 		// counter value.  args: index; result: size
 	JVST_IR_EXPR_BCOUNT, 		// counts the number of bits set.  args: (bvec<index>, b0<size>, b1<size>
 	JVST_IR_EXPR_BTEST,		// tests if a bit is set.  args: (bvec<index>,bit<index>); result: bool

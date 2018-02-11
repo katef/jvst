@@ -621,7 +621,6 @@ ir_expr_tmp(struct jvst_ir_stmt *frame, struct jvst_ir_expr *expr)
 	case JVST_IR_EXPR_BTESTONE:
 	case JVST_IR_EXPR_BOOL:
 	case JVST_IR_EXPR_ISTOK:
-	case JVST_IR_EXPR_UNIQUE_OK:
 	case JVST_IR_EXPR_ISINT:
 	case JVST_IR_EXPR_MULTIPLE_OF:
 	case JVST_IR_EXPR_AND:
@@ -711,7 +710,6 @@ ir_expr_op(enum jvst_ir_expr_type op,
 	case JVST_IR_EXPR_BTESTONE:
 	case JVST_IR_EXPR_BCOUNT:
 	case JVST_IR_EXPR_ISTOK:
-	case JVST_IR_EXPR_UNIQUE_OK:
 	case JVST_IR_EXPR_ISINT:
 	case JVST_IR_EXPR_MULTIPLE_OF:
 	case JVST_IR_EXPR_NOT:
@@ -942,9 +940,6 @@ jvst_ir_expr_type_name(enum jvst_ir_expr_type type)
 	case JVST_IR_EXPR_ISTOK:
 		return "ISTOK";
 
-	case JVST_IR_EXPR_UNIQUE_OK:
-		return "UNIQUE_OK";
-
 	case JVST_IR_EXPR_AND:
 		return "AND";
 
@@ -1053,7 +1048,6 @@ jvst_ir_dump_expr(struct sbuf *buf, const struct jvst_ir_expr *expr, int indent)
 	case JVST_IR_EXPR_TOK_TYPE:
 	case JVST_IR_EXPR_TOK_NUM:
 	case JVST_IR_EXPR_TOK_LEN:
-	case JVST_IR_EXPR_UNIQUE_OK:
 		sbuf_snprintf(buf, "%s", jvst_ir_expr_type_name(expr->type));
 		return;
 
@@ -3570,9 +3564,6 @@ ir_unique_item_frame(void)
 	fr = ir_stmt_frame();
 	spp = &fr->u.frame.stmts;
 
-	*spp = ir_stmt_new(JVST_IR_STMT_TOKEN);
-	spp = &(*spp)->next;
-
 	*spp = ir_stmt_new(JVST_IR_STMT_UNIQUE_TOK);
 	spp = &(*spp)->next;
 
@@ -4330,7 +4321,6 @@ jvst_ir_expr_copy(struct jvst_ir_expr *ir, struct addr_fixup_list *fixups, struc
 	case JVST_IR_EXPR_TOK_TYPE:
 	case JVST_IR_EXPR_TOK_NUM:
 	case JVST_IR_EXPR_TOK_LEN:
-	case JVST_IR_EXPR_UNIQUE_OK:
 		return copy;
 
 	case JVST_IR_EXPR_NUM:
@@ -5806,7 +5796,6 @@ ir_linearize_rewrite_expr(struct jvst_ir_stmt *frame, struct jvst_ir_expr *expr)
 	case JVST_IR_EXPR_BTESTALL:
 	case JVST_IR_EXPR_BTESTANY:
 	case JVST_IR_EXPR_BTESTONE:
-	case JVST_IR_EXPR_UNIQUE_OK:
 		return expr;
 
 	case JVST_IR_EXPR_NE:
@@ -6041,6 +6030,9 @@ ir_linearize_stmt(struct op_linearizer *oplin, struct jvst_ir_stmt *stmt)
 	case JVST_IR_STMT_CONSUME:
 	case JVST_IR_STMT_INCR:
 	case JVST_IR_STMT_BSET:
+	case JVST_IR_STMT_UNIQUE_INIT:
+	case JVST_IR_STMT_UNIQUE_FINAL:
+	case JVST_IR_STMT_UNIQUE_TOK:
 		linstmt = jvst_ir_stmt_copy(stmt);
 		*oplin->ipp = linstmt;
 		oplin->ipp = &linstmt->next;
@@ -6266,9 +6258,6 @@ ir_linearize_stmt(struct op_linearizer *oplin, struct jvst_ir_stmt *stmt)
 
 	case JVST_IR_STMT_BCLEAR:
 	case JVST_IR_STMT_DECR:
-	case JVST_IR_STMT_UNIQUE_INIT:
-	case JVST_IR_STMT_UNIQUE_TOK:
-	case JVST_IR_STMT_UNIQUE_FINAL:
 		fprintf(stderr, "%s:%d (%s) linearizing IR statement %s not yet implemented\n",
 				__FILE__, __LINE__, __func__, 
 				jvst_ir_stmt_type_name(stmt->type));

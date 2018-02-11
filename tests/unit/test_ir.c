@@ -6124,7 +6124,6 @@ static void test_ir_unique_1(void)
                         ),
 
                         newir_frame(&A,
-                          newir_stmt(&A, JVST_IR_STMT_TOKEN),
                           newir_stmt(&A, JVST_IR_STMT_UNIQUE_TOK),
                           NULL
                         ),
@@ -6175,18 +6174,205 @@ static void test_ir_unique_1(void)
     },
 
     {
+      LINEARIZE,
+      newcnode_switch(&A, 1,
+          SJP_ARRAY_BEG, newcnode(&A, JVST_CNODE_ARR_UNIQUE),
+          SJP_NONE),
+
+      newir_frame(&A,
+        newir_bitvec(&A, 0, "uniq_contains_split", 2),
+        newir_stmt(&A, JVST_IR_STMT_TOKEN),
+        newir_if(&A, newir_istok(&A, SJP_OBJECT_END),
+          newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token"),
+          newir_if(&A, newir_istok(&A, SJP_ARRAY_BEG),
+            newir_seq(&A,
+              newir_stmt(&A, JVST_IR_STMT_UNIQUE_INIT),
+              newir_loop(&A, "ARR_OUTER", 0,
+                newir_loop(&A, "ARR_INNER", 1,
+                  newir_stmt(&A, JVST_IR_STMT_TOKEN),
+                  newir_if(&A, newir_istok(&A, SJP_ARRAY_END),
+                    newir_break(&A, "ARR_OUTER", 0),
+                    newir_seq(&A,
+                      newir_stmt(&A, JVST_IR_STMT_UNTOKEN),
+                      newir_splitvec(&A, 0, "uniq_contains_split",
+                        newir_frame(&A,
+                          newir_stmt(&A, JVST_IR_STMT_CONSUME),
+                          newir_stmt(&A, JVST_IR_STMT_VALID),
+                          NULL
+                        ),
+
+                        newir_frame(&A,
+                          newir_stmt(&A, JVST_IR_STMT_UNIQUE_TOK),
+                          NULL
+                        ),
+
+                        NULL
+                      ),
+
+                      newir_seq(&A,
+                        newir_if(&A, newir_btest(&A, 0, "uniq_contains_split", 1),
+                          newir_stmt(&A, JVST_IR_STMT_NOP),
+                          newir_invalid(&A, JVST_INVALID_NOT_UNIQUE, "array elements are not unique")
+                        ),
+
+                        NULL
+                      ),
+
+                      NULL
+                    )
+                  ),
+
+                  NULL
+                ),
+
+                NULL
+              ),
+
+              newir_seq(&A,
+                newir_stmt(&A, JVST_IR_STMT_UNIQUE_FINAL),
+                newir_stmt(&A, JVST_IR_STMT_VALID),
+                NULL
+              ),
+
+              NULL
+            ),
+
+            newir_if(&A, newir_istok(&A, SJP_ARRAY_END),
+              newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token"),
+              newir_seq(&A,
+                newir_stmt(&A, JVST_IR_STMT_CONSUME),
+                newir_stmt(&A, JVST_IR_STMT_VALID),
+                NULL
+              )
+            )
+          )
+        ),
+        NULL
+      ),
+
+      newir_program(&A,
+          newir_frame(&A, frameindex, 1,
+            newir_bitvec(&A, 0, "uniq_contains_split", 2),
+            newir_splitlist(&A, 0, 2, 2, 3),
+            newir_block(&A, 0, "entry",
+              newir_stmt(&A, JVST_IR_STMT_TOKEN),
+              newir_cbranch(&A, newir_istok(&A, SJP_OBJECT_END),
+                3, "invalid_1",
+                4, "false"
+              ),
+              NULL
+            ),
+
+            newir_block(&A, 4, "false",
+              newir_cbranch(&A, newir_istok(&A, SJP_ARRAY_BEG),
+                6, "true",
+                19, "false"
+              ),
+              NULL
+            ),
+
+            newir_block(&A, 19, "false",
+              newir_cbranch(&A, newir_istok(&A, SJP_ARRAY_END),
+                3, "invalid_1",
+                22, "false"
+              ),
+              NULL
+            ),
+
+            newir_block(&A, 22, "false",
+              newir_stmt(&A, JVST_IR_STMT_CONSUME),
+              newir_branch(&A, 18, "valid"),
+              NULL
+            ),
+
+            newir_block(&A, 18, "valid",
+              newir_stmt(&A, JVST_IR_STMT_VALID),
+              NULL
+            ),
+
+            newir_block(&A, 6, "true",
+              newir_stmt(&A, JVST_IR_STMT_UNIQUE_INIT),
+              newir_branch(&A, 10, "loop"),
+              NULL
+            ),
+
+            newir_block(&A, 10, "loop",
+              newir_stmt(&A, JVST_IR_STMT_TOKEN),
+              newir_cbranch(&A, newir_istok(&A, SJP_ARRAY_END),
+                7, "loop_end",
+                13, "false"
+              ),
+              NULL
+            ),
+
+            newir_block(&A, 13, "false",
+              newir_stmt(&A, JVST_IR_STMT_UNTOKEN),
+              newir_splitvec(&A, 0, "uniq_contains_split", splitlist, 0),
+              newir_cbranch(&A, newir_btest(&A, 0, "uniq_contains_split", 1),
+                15, "true",
+                17, "invalid_18"
+              ),
+              NULL
+            ),
+
+            newir_block(&A, 17, "invalid_18",
+              newir_invalid(&A, JVST_INVALID_NOT_UNIQUE, "array elements are not unique"),
+              NULL
+            ),
+
+            newir_block(&A, 15, "true",
+              newir_stmt(&A, JVST_IR_STMT_NOP),
+              newir_branch(&A, 10, "loop"),
+              NULL
+            ),
+
+            newir_block(&A, 7, "loop_end",
+              newir_stmt(&A, JVST_IR_STMT_UNIQUE_FINAL),
+              newir_branch(&A, 18, "valid"),
+              NULL
+            ),
+
+            newir_block(&A, 3, "invalid_1",
+              newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token"),
+              NULL
+            ),
+
+            NULL
+          ),
+
+          newir_frame(&A, frameindex, 2,
+            newir_block(&A, 0, "entry",
+              newir_stmt(&A, JVST_IR_STMT_CONSUME),
+              newir_branch(&A, 1, "valid"),
+              NULL
+            ),
+
+            newir_block(&A, 1, "valid",
+              newir_stmt(&A, JVST_IR_STMT_VALID),
+              NULL
+            ),
+
+            NULL
+          ),
+
+          newir_frame(&A, frameindex, 3,
+            newir_block(&A, 0, "entry",
+              newir_stmt(&A, JVST_IR_STMT_UNIQUE_TOK),
+              NULL
+            ),
+
+            NULL
+          ),
+
+
+          NULL
+      )
+    },
+
+    {
       TRANSLATE,
       newcnode_switch(&A, 1,
           SJP_ARRAY_BEG, newcnode_bool(&A, JVST_CNODE_AND,
-                           newcnode_contains(&A,
-                             newcnode_switch(&A, 1,
-                               SJP_NUMBER, newcnode_bool(&A, JVST_CNODE_AND,
-                                             newcnode_range(&A, JVST_CNODE_RANGE_MIN, 5.0, 0.0),
-                                             newcnode_valid(),
-                                             NULL),
-                               SJP_NONE
-                             )
-                           ),
 
                            newcnode_items(&A,
                              NULL,
@@ -6195,17 +6381,19 @@ static void test_ir_unique_1(void)
                                SJP_NONE),
                              NULL),
 
+                           newcnode(&A, JVST_CNODE_ARR_UNIQUE),
+
                            NULL),
           SJP_NONE),
 
       newir_frame(&A,
-        newir_bitvec(&A, 1, "contains", 1),
         newir_bitvec(&A, 0, "uniq_contains_split", 2),
         newir_stmt(&A, JVST_IR_STMT_TOKEN),
         newir_if(&A, newir_istok(&A, SJP_OBJECT_END),
           newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token"),
           newir_if(&A, newir_istok(&A, SJP_ARRAY_BEG),
             newir_seq(&A,
+              newir_stmt(&A, JVST_IR_STMT_UNIQUE_INIT),
               newir_loop(&A, "ARR_OUTER", 0,
                 newir_stmt(&A, JVST_IR_STMT_TOKEN),
                 newir_if(&A, newir_istok(&A, SJP_ARRAY_END),
@@ -6223,6 +6411,157 @@ static void test_ir_unique_1(void)
                           ),
                           newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token")
                         ),
+                        NULL
+                      ),
+
+                      newir_frame(&A,
+                        newir_stmt(&A, JVST_IR_STMT_UNIQUE_TOK),
+                        NULL
+                      ),
+
+                      NULL
+                    ),
+
+                    newir_seq(&A,
+                      newir_if(&A,
+                        newir_btest(&A, 0, "uniq_contains_split", 0),
+                        newir_stmt(&A, JVST_IR_STMT_NOP),
+                        newir_invalid(&A, JVST_INVALID_ARRAY, "array is invalid")
+                      ),
+                      newir_if(&A,
+                        newir_btest(&A, 0, "uniq_contains_split", 1),
+                        newir_stmt(&A, JVST_IR_STMT_NOP),
+                        newir_invalid(&A, JVST_INVALID_NOT_UNIQUE, "array elements are not unique")
+                      ),
+
+                      newir_loop(&A, "ARR_INNER", 1,
+                        newir_stmt(&A, JVST_IR_STMT_TOKEN),
+                        newir_if(&A, newir_istok(&A, SJP_ARRAY_END),
+                          newir_break(&A, "ARR_OUTER", 0),
+                          newir_seq(&A,
+                            newir_stmt(&A, JVST_IR_STMT_UNTOKEN),
+                            newir_splitvec(&A, 0, "uniq_contains_split",
+                              newir_frame(&A,
+                                newir_stmt(&A, JVST_IR_STMT_CONSUME),
+                                newir_stmt(&A, JVST_IR_STMT_VALID),
+                                NULL
+                              ),
+
+                              newir_frame(&A,
+                                newir_stmt(&A, JVST_IR_STMT_UNIQUE_TOK),
+                                NULL
+                              ),
+
+                              NULL
+                            ),
+
+                            newir_seq(&A,
+                              newir_if(&A,
+                                newir_btest(&A, 0, "uniq_contains_split", 1),
+                                newir_stmt(&A, JVST_IR_STMT_NOP),
+                                newir_invalid(&A, JVST_INVALID_NOT_UNIQUE, "array elements are not unique")
+                              ),
+
+                              NULL
+                            ),
+
+                            NULL
+                          )
+                        ),
+
+                        NULL
+                      ),
+
+                      NULL
+                    ),
+
+                    NULL
+                  )
+                ),
+
+                NULL
+              ),
+
+              newir_seq(&A,
+                newir_stmt(&A, JVST_IR_STMT_UNIQUE_FINAL),
+                newir_stmt(&A, JVST_IR_STMT_VALID),
+                NULL
+              ),
+
+              NULL
+            ),
+
+            newir_if(&A, newir_istok(&A, SJP_ARRAY_END),
+              newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token"),
+              newir_seq(&A,
+                newir_stmt(&A, JVST_IR_STMT_CONSUME),
+                newir_stmt(&A, JVST_IR_STMT_VALID),
+                NULL
+              )
+            )
+          )
+        ),
+        NULL
+      )
+    },
+
+    {
+      TRANSLATE,
+      newcnode_switch(&A, 1,
+          SJP_ARRAY_BEG, newcnode_bool(&A, JVST_CNODE_AND,
+                           newcnode_contains(&A,
+                             newcnode_switch(&A, 1,
+                               SJP_NUMBER, newcnode_bool(&A, JVST_CNODE_AND,
+                                             newcnode_range(&A, JVST_CNODE_RANGE_MIN, 5.0, 0.0),
+                                             newcnode_valid(),
+                                             NULL),
+                               SJP_NONE
+                             )
+                           ),
+
+                           newcnode(&A, JVST_CNODE_ARR_UNIQUE),
+
+                           newcnode_items(&A,
+                             NULL,
+                             newcnode_switch(&A, 0,
+                               SJP_STRING, newcnode_valid(),
+                               SJP_NONE),
+                             NULL),
+
+                           NULL),
+          SJP_NONE),
+
+      newir_frame(&A,
+        newir_bitvec(&A, 1, "contains", 1),
+        newir_bitvec(&A, 0, "uniq_contains_split", 3),
+        newir_stmt(&A, JVST_IR_STMT_TOKEN),
+        newir_if(&A, newir_istok(&A, SJP_OBJECT_END),
+          newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token"),
+          newir_if(&A, newir_istok(&A, SJP_ARRAY_BEG),
+            newir_seq(&A,
+              newir_stmt(&A, JVST_IR_STMT_UNIQUE_INIT),
+              newir_loop(&A, "ARR_OUTER", 0,
+                newir_stmt(&A, JVST_IR_STMT_TOKEN),
+                newir_if(&A, newir_istok(&A, SJP_ARRAY_END),
+                  newir_break(&A, "ARR_OUTER", 0),
+                  newir_seq(&A,
+                    newir_stmt(&A, JVST_IR_STMT_UNTOKEN),
+                    newir_splitvec(&A, 0, "uniq_contains_split",
+                      newir_frame(&A,
+                        newir_stmt(&A, JVST_IR_STMT_TOKEN),
+                        newir_if(&A, newir_istok(&A, SJP_STRING),
+                          newir_seq(&A,
+                            newir_stmt(&A, JVST_IR_STMT_CONSUME),
+                            newir_stmt(&A, JVST_IR_STMT_VALID),
+                            NULL
+                          ),
+                          newir_invalid(&A, JVST_INVALID_UNEXPECTED_TOKEN, "unexpected token")
+                        ),
+                        NULL
+                      ),
+
+                      newir_frame(&A,
+                        newir_stmt(&A, JVST_IR_STMT_UNIQUE_TOK),
                         NULL
                       ),
 
@@ -6265,6 +6604,11 @@ static void test_ir_unique_1(void)
                       ),
                       newir_if(&A,
                         newir_btest(&A, 0, "uniq_contains_split", 1),
+                        newir_stmt(&A, JVST_IR_STMT_NOP),
+                        newir_invalid(&A, JVST_INVALID_NOT_UNIQUE, "array elements are not unique")
+                      ),
+                      newir_if(&A,
+                        newir_btest(&A, 0, "uniq_contains_split", 2),
                         newir_bitop(&A, JVST_IR_STMT_BSET, 1, "contains", 0),
                         newir_stmt(&A, JVST_IR_STMT_NOP)
                       ),
@@ -6279,6 +6623,11 @@ static void test_ir_unique_1(void)
                               newir_frame(&A,
                                 newir_stmt(&A, JVST_IR_STMT_CONSUME),
                                 newir_stmt(&A, JVST_IR_STMT_VALID),
+                                NULL
+                              ),
+
+                              newir_frame(&A,
+                                newir_stmt(&A, JVST_IR_STMT_UNIQUE_TOK),
                                 NULL
                               ),
 
@@ -6314,12 +6663,16 @@ static void test_ir_unique_1(void)
                             ),
 
                             newir_seq(&A,
-                              newir_if(&A,
-                                newir_btest(&A, 0, "uniq_contains_split", 1),
-                                newir_bitop(&A, JVST_IR_STMT_BSET, 1, "contains", 0),
-                                newir_stmt(&A, JVST_IR_STMT_NOP)
-                              ),
-
+                                newir_if(&A,
+                                  newir_btest(&A, 0, "uniq_contains_split", 1),
+                                  newir_stmt(&A, JVST_IR_STMT_NOP),
+                                  newir_invalid(&A, JVST_INVALID_NOT_UNIQUE, "array elements are not unique")
+                                ),
+                                newir_if(&A,
+                                  newir_btest(&A, 0, "uniq_contains_split", 2),
+                                  newir_bitop(&A, JVST_IR_STMT_BSET, 1, "contains", 0),
+                                  newir_stmt(&A, JVST_IR_STMT_NOP)
+                                ),
                               NULL
                             ),
 
@@ -6340,9 +6693,13 @@ static void test_ir_unique_1(void)
                 NULL
               ),
 
-              newir_if(&A, newir_btest(&A, 1, "contains", 0),
-                newir_stmt(&A, JVST_IR_STMT_VALID),
-                newir_invalid(&A, JVST_INVALID_UNSATISFIED_CONTAINS, "contains constraint is not satisfied")
+              newir_seq(&A,
+                newir_stmt(&A, JVST_IR_STMT_UNIQUE_FINAL),
+                newir_if(&A, newir_btest(&A, 1, "contains", 0),
+                  newir_stmt(&A, JVST_IR_STMT_VALID),
+                  newir_invalid(&A, JVST_INVALID_UNSATISFIED_CONTAINS, "contains constraint is not satisfied")
+                ),
+                NULL
               ),
 
               NULL
