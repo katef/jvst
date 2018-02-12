@@ -390,6 +390,8 @@ union jvst_vm_stackval {
 	double   f;
 };
 
+struct jvst_vm_unique;
+
 struct jvst_vm {
 	struct jvst_vm_program *prog;
 
@@ -422,6 +424,8 @@ struct jvst_vm {
 
 	char pstack[JVST_VM_PARSER_STKSIZE];
 	char pbuf[JVST_VM_PARSER_BUFSIZE];
+
+	struct jvst_vm_unique *uniq;
 };
 
 void

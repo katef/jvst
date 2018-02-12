@@ -2335,6 +2335,7 @@ encode_pass1(struct op_encoder *enc, struct jvst_op_instr *first)
 		case JVST_OP_BSET:
 		case JVST_OP_BAND:
 		case JVST_OP_RETURN:
+		case JVST_OP_UNIQUE:
 			a = encode_arg(instr->args[0]);
 			b = encode_arg(instr->args[1]);
 

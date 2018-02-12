@@ -3703,13 +3703,6 @@ arr_translate_contains_or_unique(struct jvst_ir_stmt *arr_item, struct ir_arr_bu
 	return ilpp;
 }
 
-/*
-static struct jvst_ir_stmt **
-arr_translate_contains_or_unique(struct jvst_ir_stmt *arr_item, struct ir_arr_builder *builder, struct jvst_ir_stmt **ilpp)
-{
-}
-*/
-
 static struct jvst_ir_stmt *
 ir_translate_array(struct jvst_cnode *top, struct jvst_ir_stmt *frame)
 {

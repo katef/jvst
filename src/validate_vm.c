@@ -12,6 +12,7 @@
 
 #include "xalloc.h"
 #include "sjp_testing.h"
+#include "hmap.h"
 #include "validate_ir.h"  // XXX - this is for INVALID codes, which should be moved!
 #include "debug.h"
 
@@ -472,12 +473,20 @@ jvst_vm_init_defaults(struct jvst_vm *vm, struct jvst_vm_program *prog)
 			      ARRAYLEN(vm->pbuf));
 }
 
+static void
+uniq_finalize(struct jvst_vm_unique *uniq, struct jvst_vm *vm);
+
 void
 jvst_vm_finalize(struct jvst_vm *vm)
 {
+	static struct jvst_vm zero = { 0 };
+
 	size_t i;
 
-	static struct jvst_vm zero = { 0 };
+	if (vm->uniq) {
+		uniq_finalize(vm->uniq, vm);
+	}
+
 	free(vm->stack);
 
 	for (i=0; i < vm->nsplit; i++) {
@@ -1104,6 +1113,110 @@ vm_split(struct jvst_vm *vm, int split, union jvst_vm_stackval *slot, int splitv
 	return JVST_VALID;
 }
 
+#define DEFAULT_UNIQ_BUCKETS 16
+#define DEFAULT_UNIQ_LOAD   0.6f
+#define UNIQ_BUFSIZE  4096
+#define UNIQ_STACK    4096
+
+struct unique_entry
+{
+	enum SJP_EVENT type;
+	uint64_t hash;
+	char *data;
+	size_t n;
+};
+
+enum unique_entry_type {
+	UNIQ_TRUE = 0,
+	UNIQ_FALSE,
+	UNIQ_NULL,
+	UNIQ_NUM,
+	UNIQ_STR,
+	UNIQ_OBJ,
+	UNIQ_ARR,
+};
+
+struct unique_stack_entry {
+	enum unique_entry_type type;
+	union {
+		double num;
+
+		struct {
+			char *data;
+			size_t n;
+		} str;
+
+		struct {
+			struct unique_stack_entry *items;
+		} arr;
+
+		struct {
+			size_t len;
+			size_t cap;
+			struct {
+				char *data;
+				size_t n;
+			} *keys;
+			struct unique_stack_entry *vals;
+		} obj;
+	} u;
+};
+
+struct unique_object;
+
+
+enum jvst_vm_uniq_state {
+	UNIQ_DEFAULT = 0,
+	UNIQ_PARTIAL,
+	UNIQ_ARRAY_ELT,
+	UNIQ_OBJECT_KEY,
+	UNIQ_OBJECT_VAL,
+};
+
+struct jvst_vm_unique
+{
+	struct hmap *entries;
+	char buf0[UNIQ_BUFSIZE];
+	char *buf;
+	size_t len;
+	size_t cap;
+
+	char stack[UNIQ_STACK];
+	// need stack to store state of objects so we can sort them...
+};
+
+
+static struct jvst_vm_unique *
+uniq_initialize(struct jvst_vm *vm)
+{
+	(void) vm;
+
+	struct jvst_vm_unique *uniq;
+	uniq = malloc(sizeof *uniq);
+	uniq->entries = hmap_create_string(DEFAULT_UNIQ_BUCKETS, DEFAULT_UNIQ_LOAD);
+	uniq->buf = &uniq->buf0[0];
+	uniq->len = 0;
+	uniq->cap = sizeof uniq->buf0;
+	return uniq;
+}
+
+static void
+uniq_finalize(struct jvst_vm_unique *uniq, struct jvst_vm *vm)
+{
+	(void) vm;
+	hmap_free(uniq->entries);
+	free(uniq);
+}
+
+static int
+uniq_evaluate(struct jvst_vm_unique *uniq, struct jvst_vm *vm)
+{
+	(void) vm;
+	(void) uniq;
+	return 1;
+}
+
+
 #define DEBUG_OP(vm,pc,opcode) do{ if (DEBUG_OPCODES) { debug_op((vm),(pc),(opcode)); } } while(0)
 
 #define NEXT do{ vm->r_pc = ++pc; goto loop; } while(0)
@@ -1505,6 +1618,38 @@ loop:
 			ret = vm_split(vm,split,slot, (op == JVST_OP_SPLITV));
 			if (ret != JVST_VALID) {
 				goto finish;
+			}
+		}
+		NEXT;
+
+	case JVST_OP_UNIQUE:
+		{
+			uint32_t a0,a1;
+			a0 = jvst_vm_decode_arg0(opcode);
+			a1 = jvst_vm_decode_arg1(opcode);
+
+			int wh = jvst_vm_arg_tolit(a0);
+
+			switch (wh) {
+			case JVST_VM_UNIQUE_INIT:
+				vm->uniq = uniq_initialize(vm);
+				break;
+
+			case JVST_VM_UNIQUE_EVAL:
+				if (!uniq_evaluate(vm->uniq, vm)) {
+					vm->error = JVST_INVALID_NOT_UNIQUE;
+					ret = JVST_INVALID;
+					goto finish;
+				}
+				break;
+
+			case JVST_VM_UNIQUE_FINAL:
+				uniq_finalize(vm->uniq, vm);
+				vm->uniq = NULL;
+				break;
+
+			default:
+				PANIC(vm, -1, "invalid arg0 for UNIQUE op");
 			}
 		}
 		NEXT;
