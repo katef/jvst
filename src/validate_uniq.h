@@ -3,6 +3,7 @@
 
 #include "sjp_testing.h"
 #include "jdom.h"
+#include "validate.h"
 
 #define MODULE_NAME VALIDATE_UNIQ
 
@@ -28,6 +29,7 @@ enum jvst_vm_uniq_state {
   JVST_VM_UNIQ_ARRAY,
   JVST_VM_UNIQ_OBJKEY,
   JVST_VM_UNIQ_OBJVAL,
+  JVST_VM_UNIQ_DONE,
 };
 
 struct hmap;
@@ -76,7 +78,7 @@ jvst_vm_uniq_initialize(void);
 void
 jvst_vm_uniq_finalize(struct jvst_vm_unique *uniq);
 
-int
+enum jvst_result
 jvst_vm_uniq_evaluate(struct jvst_vm_unique *uniq, enum SJP_RESULT pret, struct sjp_event *evt);
 
 #undef MODULE_NAME

@@ -968,6 +968,18 @@ vm_split(struct jvst_vm *vm, int split, union jvst_vm_stackval *slot, int splitv
 			jvst_vm_init_defaults(&vm->splits[i], vm->prog);
 			vm->splits[i].r_pc = vm->prog->sdata[off + i];
 
+			// XXX - kludge to support unique constraints.
+			// This needs to be fixed!
+			{
+				uint32_t opcode = vm->prog->code[vm->splits[i].r_pc+1];
+				uint32_t op = jvst_vm_decode_op(opcode);
+				uint32_t a0 = jvst_vm_decode_arg0(opcode);
+				int wh = jvst_vm_arg_tolit(a0);
+				if (op == JVST_OP_UNIQUE && wh == JVST_VM_UNIQUE_EVAL) {
+					vm->splits[i].uniq = vm->uniq;
+				}
+			}
+
 			// split vms inherit the current token state
 			vm->splits[i].tokstate = vm->tokstate;
 		}
@@ -1105,6 +1117,12 @@ vm_split(struct jvst_vm *vm, int split, union jvst_vm_stackval *slot, int splitv
 	// clean up split resources and reset vm->nsplit
 	for (i=0; i < nproc; i++) {
 		assert(vm->splits[i].prog == NULL);
+
+		// XXX - kludge
+		if (vm->splits[i].uniq == vm->uniq) {
+			vm->splits[i].uniq = NULL;
+		}
+
 		jvst_vm_finalize(&vm->splits[i]);
 	}
 	vm->nsplit = 0;
@@ -1530,10 +1548,22 @@ loop:
 				break;
 
 			case JVST_VM_UNIQUE_EVAL:
-				if (!jvst_vm_uniq_evaluate(vm->uniq, vm->pret, &vm->evt)) {
-					vm->error = JVST_INVALID_NOT_UNIQUE;
-					ret = JVST_INVALID;
-					goto finish;
+				{
+					int ret = jvst_vm_uniq_evaluate(vm->uniq, vm->pret, &vm->evt);
+					switch (ret) {
+					case JVST_VALID:
+					case JVST_NEXT:
+					case JVST_MORE:
+						return ret;
+
+					case JVST_INVALID:
+						vm->error = JVST_INVALID_NOT_UNIQUE;
+						ret = JVST_INVALID;
+						goto finish;
+
+					default:
+						PANIC(vm, -1, "unexpected return from jvst_vm_uniq_evaluate");
+					}
 				}
 				break;
 

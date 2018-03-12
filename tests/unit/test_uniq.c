@@ -75,7 +75,8 @@ run_test(const char *fname, const struct uniq_test *t)
 
     assert(t->steps[i].buf != &END[0]);
 
-    int is_uniq = jvst_vm_uniq_evaluate(uniq, ret, &evt);
+    int uniq_ret = jvst_vm_uniq_evaluate(uniq, ret, &evt);
+    int is_uniq = (uniq_ret != JVST_INVALID);
 
     int expect_uniq = !t->steps[i].not_uniq;
     if (expect_uniq != is_uniq) {

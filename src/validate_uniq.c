@@ -467,18 +467,22 @@ static void uniq_add_entry(struct jvst_vm_unique *uniq, struct jvst_vm_uniq_entr
  */
 
 
-int
+enum jvst_result
 jvst_vm_uniq_evaluate(struct jvst_vm_unique *uniq, enum SJP_RESULT pret, struct sjp_event *evt)
 {
 	struct jvst_vm_uniq_entry *entry;
 
 	if (SJP_ERROR(pret)) {
-		return 0;
+		return JVST_INVALID;
 	}
 
 	if (pret == SJP_PARTIAL || pret == SJP_MORE) {
 		// FIXME: need to handle partial!
-		return 0;
+		return JVST_MORE;
+	}
+
+	if (uniq->top == 0 && uniq->stack[uniq->top].state == JVST_VM_UNIQ_DONE) {
+		return JVST_VALID;
 	}
 
 	assert(pret == SJP_OK);
@@ -500,9 +504,14 @@ jvst_vm_uniq_evaluate(struct jvst_vm_unique *uniq, enum SJP_RESULT pret, struct 
 
 	case SJP_ARRAY_BEG:
 		uniq_stack_init(&uniq->stack[++uniq->top], JVST_VM_UNIQ_ARRAY);
-		return 1;
+		return JVST_NEXT;
 
 	case SJP_ARRAY_END:
+		if (uniq->top == 0) {
+			uniq->stack[uniq->top].state = JVST_VM_UNIQ_DONE;
+			return JVST_VALID;
+		}
+
 		assert(uniq->stack[uniq->top].state == JVST_VM_UNIQ_ARRAY);
 		entry = array_entry(uniq);
 		uniq_stack_final(&uniq->stack[uniq->top--]);
@@ -510,7 +519,7 @@ jvst_vm_uniq_evaluate(struct jvst_vm_unique *uniq, enum SJP_RESULT pret, struct 
 
 	case SJP_OBJECT_BEG:
 		uniq_stack_init(&uniq->stack[++uniq->top], JVST_VM_UNIQ_OBJKEY);
-		return 1;
+		return JVST_NEXT;
 
 	case SJP_OBJECT_END:
 		assert(uniq->stack[uniq->top].state == JVST_VM_UNIQ_OBJKEY);
@@ -528,25 +537,25 @@ jvst_vm_uniq_evaluate(struct jvst_vm_unique *uniq, enum SJP_RESULT pret, struct 
 			free_entry(entry);
 			// XXX - set state to
 			// unique violation
-			return 0;
+			return JVST_INVALID;
 		}
 
 		hmap_setptr(uniq->entries, entry, NULL);
-		return 1;
+		return JVST_VALID;
 
 	case JVST_VM_UNIQ_ARRAY:
 		uniq_add_entry(uniq, entry);
-		return 1;
+		return JVST_NEXT;
 
 	case JVST_VM_UNIQ_OBJKEY:
 		uniq_add_entry(uniq, entry);
 		uniq->stack[uniq->top].state = JVST_VM_UNIQ_OBJVAL;
-		return 1;
+		return JVST_NEXT;
 
 	case JVST_VM_UNIQ_OBJVAL:
 		uniq_add_entry(uniq, entry);
 		uniq->stack[uniq->top].state = JVST_VM_UNIQ_OBJKEY;
-		return 1;
+		return JVST_NEXT;
 
 	default:
 		SHOULD_NOT_REACH();
