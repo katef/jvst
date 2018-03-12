@@ -6309,7 +6309,7 @@ static void test_ir_unique_1(void)
               newir_stmt(&A, JVST_IR_STMT_UNTOKEN),
               newir_splitvec(&A, 0, "uniq_contains_split", splitlist, 0),
               newir_cbranch(&A, newir_btest(&A, 0, "uniq_contains_split", 1),
-                15, "true",
+                10, "loop",
                 17, "invalid_18"
               ),
               NULL
@@ -6317,12 +6317,6 @@ static void test_ir_unique_1(void)
 
             newir_block(&A, 17, "invalid_18",
               newir_invalid(&A, JVST_INVALID_NOT_UNIQUE, "array elements are not unique"),
-              NULL
-            ),
-
-            newir_block(&A, 15, "true",
-              newir_stmt(&A, JVST_IR_STMT_NOP),
-              newir_branch(&A, 10, "loop"),
               NULL
             ),
 

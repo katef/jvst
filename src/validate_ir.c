@@ -6018,6 +6018,9 @@ ir_linearize_stmt(struct op_linearizer *oplin, struct jvst_ir_stmt *stmt)
 
 	switch (stmt->type) {
 	case JVST_IR_STMT_NOP:
+		// omit NOP from linearized stream
+		return;
+
 	case JVST_IR_STMT_TOKEN:
 	case JVST_IR_STMT_UNTOKEN:
 	case JVST_IR_STMT_CONSUME:

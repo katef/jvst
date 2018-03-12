@@ -4821,13 +4821,10 @@ void test_op_unique_1(void)
             newop_load(&A, JVST_OP_MOVE, oparg_slot(1), oparg_slot(0)),
             newop_instr2(&A, JVST_OP_BAND, oparg_slot(1), oparg_lit(2)),
             newop_cmp(&A, JVST_OP_ICMP, oparg_slot(1), oparg_lit(2)),
-            newop_br(&A, JVST_VM_BR_EQ, "true_15"),
+            newop_br(&A, JVST_VM_BR_EQ, "loop_10"),
 
             oplabel, "invalid_18_17",
             newop_return(&A, 18),
-
-            oplabel, "true_15",
-            newop_br(&A, JVST_VM_BR_ALWAYS, "loop_10"),
 
             oplabel, "loop_end_7",
             newop_instr2(&A, JVST_OP_UNIQUE, oparg_lit(JVST_VM_UNIQUE_FINAL), oparg_lit(0)),
