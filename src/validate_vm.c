@@ -12,7 +12,9 @@
 
 #include "xalloc.h"
 #include "sjp_testing.h"
+#include "hmap.h"
 #include "validate_ir.h"  // XXX - this is for INVALID codes, which should be moved!
+#include "validate_uniq.h"
 #include "debug.h"
 
 #define DEBUG_OPCODES (debug & DEBUG_VMOP)	// displays opcodes and the current frame's stack
@@ -56,6 +58,7 @@ jvst_op_name(enum jvst_vm_op op)
 	case JVST_OP_BSET:      return "BSET";
 	case JVST_OP_BAND:      return "BAND";
 	case JVST_OP_RETURN:    return "RETURN";
+	case JVST_OP_UNIQUE:	return "UNIQUE";
 	}
 
 	fprintf(stderr, "Unknown OP %d\n", op);
@@ -474,9 +477,14 @@ jvst_vm_init_defaults(struct jvst_vm *vm, struct jvst_vm_program *prog)
 void
 jvst_vm_finalize(struct jvst_vm *vm)
 {
+	static struct jvst_vm zero = { 0 };
+
 	size_t i;
 
-	static struct jvst_vm zero = { 0 };
+	if (vm->uniq) {
+		jvst_vm_uniq_finalize(vm->uniq);
+	}
+
 	free(vm->stack);
 
 	for (i=0; i < vm->nsplit; i++) {
@@ -960,6 +968,18 @@ vm_split(struct jvst_vm *vm, int split, union jvst_vm_stackval *slot, int splitv
 			jvst_vm_init_defaults(&vm->splits[i], vm->prog);
 			vm->splits[i].r_pc = vm->prog->sdata[off + i];
 
+			// XXX - kludge to support unique constraints.
+			// This needs to be fixed!
+			{
+				uint32_t opcode = vm->prog->code[vm->splits[i].r_pc+1];
+				uint32_t op = jvst_vm_decode_op(opcode);
+				uint32_t a0 = jvst_vm_decode_arg0(opcode);
+				int wh = jvst_vm_arg_tolit(a0);
+				if (op == JVST_OP_UNIQUE && wh == JVST_VM_UNIQUE_EVAL) {
+					vm->splits[i].uniq = vm->uniq;
+				}
+			}
+
 			// split vms inherit the current token state
 			vm->splits[i].tokstate = vm->tokstate;
 		}
@@ -1097,6 +1117,12 @@ vm_split(struct jvst_vm *vm, int split, union jvst_vm_stackval *slot, int splitv
 	// clean up split resources and reset vm->nsplit
 	for (i=0; i < nproc; i++) {
 		assert(vm->splits[i].prog == NULL);
+
+		// XXX - kludge
+		if (vm->splits[i].uniq == vm->uniq) {
+			vm->splits[i].uniq = NULL;
+		}
+
 		jvst_vm_finalize(&vm->splits[i]);
 	}
 	vm->nsplit = 0;
@@ -1504,6 +1530,50 @@ loop:
 			ret = vm_split(vm,split,slot, (op == JVST_OP_SPLITV));
 			if (ret != JVST_VALID) {
 				goto finish;
+			}
+		}
+		NEXT;
+
+	case JVST_OP_UNIQUE:
+		{
+			uint32_t a0,a1;
+			a0 = jvst_vm_decode_arg0(opcode);
+			a1 = jvst_vm_decode_arg1(opcode);
+
+			int wh = jvst_vm_arg_tolit(a0);
+
+			switch (wh) {
+			case JVST_VM_UNIQUE_INIT:
+				vm->uniq = jvst_vm_uniq_initialize();
+				break;
+
+			case JVST_VM_UNIQUE_EVAL:
+				{
+					int ret = jvst_vm_uniq_evaluate(vm->uniq, vm->pret, &vm->evt);
+					switch (ret) {
+					case JVST_VALID:
+					case JVST_NEXT:
+					case JVST_MORE:
+						return ret;
+
+					case JVST_INVALID:
+						vm->error = JVST_INVALID_NOT_UNIQUE;
+						ret = JVST_INVALID;
+						goto finish;
+
+					default:
+						PANIC(vm, -1, "unexpected return from jvst_vm_uniq_evaluate");
+					}
+				}
+				break;
+
+			case JVST_VM_UNIQUE_FINAL:
+				jvst_vm_uniq_finalize(vm->uniq);
+				vm->uniq = NULL;
+				break;
+
+			default:
+				PANIC(vm, -1, "invalid arg0 for UNIQUE op");
 			}
 		}
 		NEXT;

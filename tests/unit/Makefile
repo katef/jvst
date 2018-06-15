@@ -5,6 +5,7 @@ TEST_PROG += test_constraints
 TEST_PROG += test_ir
 TEST_PROG += test_op
 TEST_PROG += test_ids
+TEST_PROG += test_uniq
 
 # currently each test_*.c is a separate program
 TEST_SRC += tests/unit/test_validation.c
@@ -12,6 +13,7 @@ TEST_SRC += tests/unit/test_constraints.c
 TEST_SRC += tests/unit/test_ir.c
 TEST_SRC += tests/unit/test_op.c
 TEST_SRC += tests/unit/test_ids.c
+TEST_SRC += tests/unit/test_uniq.c
 
 TEST_SRC += tests/unit/validate_testing.c
 TEST_SRC += tests/unit/ir_testing.c

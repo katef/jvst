@@ -368,6 +368,10 @@ newschema_p(struct arena_info *A, int types, ...)
 			if (s->contains == NULL) {
 				s->contains = schema;
 			}
+		} else if (strcmp(pname, "uniqueItems") == 0) {
+			int uniq;
+			uniq = va_arg(args, int);
+			s->unique_items = !!uniq;
 		} else if (strcmp(pname, "minItems") == 0) {
 			s->min_items = va_arg(args, int);
 			s->kws |= KWS_MIN_ITEMS;
@@ -2395,6 +2399,7 @@ newop_cmp(struct arena_info *A, enum jvst_vm_op op,
 	case JVST_OP_BAND:
 	case JVST_OP_RETURN:
 	case JVST_OP_MOVE:
+	case JVST_OP_UNIQUE:
 		fprintf(stderr, "%s:%d (%s) OP %s is not a comparison\n",
 			__FILE__, __LINE__, __func__, jvst_op_name(op));
 		abort();
@@ -2514,6 +2519,7 @@ newop_load(struct arena_info *A, enum jvst_vm_op op,
 	case JVST_OP_BSET:
 	case JVST_OP_BAND:
 	case JVST_OP_RETURN:
+	case JVST_OP_UNIQUE:
 		fprintf(stderr, "OP %s is not a load\n",
 			jvst_op_name(op));
 		abort();
